@@ -34,6 +34,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     region: '',
     giftcard_category: '',
     is_subscription: false,
+    subscription_duration_months: '',
     variant_name: '',
     parent_product_id: null,
     is_variant: false
@@ -115,7 +116,10 @@ const AdminProducts = ({ user, logout, settings }) => {
     try {
       const payload = {
         ...formData,
-        price: parseFloat(formData.price)
+        price: parseFloat(formData.price),
+        subscription_duration_months: formData.subscription_duration_months
+          ? parseInt(formData.subscription_duration_months, 10)
+          : null
       };
 
       if (editingProduct) {
@@ -147,14 +151,15 @@ const AdminProducts = ({ user, logout, settings }) => {
       stock_available: product.stock_available,
       delivery_type: product.delivery_type,
       requires_player_id: product.requires_player_id || false,
-      player_id_label: product.player_id_label || 'Player ID',
       requires_credentials: product.requires_credentials || false,
+      player_id_label: product.player_id_label || 'Player ID',
       credential_fields: product.credential_fields && product.credential_fields.length > 0
         ? product.credential_fields
         : ['email', 'password'],
       region: product.region || '',
       giftcard_category: product.giftcard_category || '',
       is_subscription: product.is_subscription || false,
+      subscription_duration_months: product.subscription_duration_months ? String(product.subscription_duration_months) : '',
       variant_name: product.variant_name || '',
       parent_product_id: product.parent_product_id || null,
       is_variant: !!product.parent_product_id
@@ -191,6 +196,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       region: '',
       giftcard_category: '',
       is_subscription: false,
+      subscription_duration_months: '',
       variant_name: '',
       parent_product_id: null,
       is_variant: false
@@ -519,6 +525,27 @@ const AdminProducts = ({ user, logout, settings }) => {
                         + Add Field
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {(formData.is_subscription || formData.category === 'subscription') && (
+                  <div className="p-4 bg-yellow-400/10 border border-yellow-400/30 rounded-lg">
+                    <Label htmlFor="subscription_duration_months" className="text-white">
+                      Subscription Duration (Months)
+                    </Label>
+                    <Input
+                      id="subscription_duration_months"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={formData.subscription_duration_months}
+                      onChange={(e) => handleChange('subscription_duration_months', e.target.value)}
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50 mt-2"
+                      placeholder="e.g., 1, 2, 6, 12, 24"
+                    />
+                    <p className="text-white/60 text-xs mt-2">
+                      This is used to set <strong>subscription_end_date</strong> when the order is completed.
+                    </p>
                   </div>
                 )}
 

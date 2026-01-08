@@ -2128,20 +2128,23 @@ async def check_and_credit_referral(order: dict):
     user = await db.users.find_one({"id": order['user_id']})
     if not user or not user.get('referred_by'):
         return
+
+    # Only one payout per referred user (first subscription purchase).
+    existing_payout = await db.referral_payouts.find_one({"referred_user_id": order["user_id"]})
+    if existing_payout:
+        return
     
     # Check if order contains subscription
     subscription_product_ids: List[str] = []
     for item in order.get('items', []):
-        product = await db.products.find_one({"id": item.get('product_id')})
+        product_id = item.get('product_id')
+        if not product_id:
+            continue
+        product = await db.products.find_one({"id": product_id}, {"_id": 0})
         if product and product.get('is_subscription'):
-            subscription_product_ids.append(product.get("id"))
+            subscription_product_ids.append(product_id)
 
     if not subscription_product_ids:
-        return
-    
-    # Check if this is the first PAID+COMPLETED subscription order for this referred user
-    prior_payout = await db.referral_payouts.find_one({"referred_user_id": order['user_id']})
-    if prior_payout:
         return
     
     # Credit referrer $1
@@ -2157,10 +2160,10 @@ async def check_and_credit_referral(order: dict):
         "referrer_code": referrer_code,
         "referred_user_id": order['user_id'],
         "order_id": order['id'],
+        "payout_type": "first_subscription",
         "amount": 1.0,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
-
 
 # ==================== WALLET (STORE CREDIT) ENDPOINTS ====================
 
@@ -2248,7 +2251,11 @@ async def admin_adjust_wallet(req: AdminWalletAdjustRequest):
         {"$inc": {"wallet_balance": float(delta)}}
     )
     
-    if update_result.matched_count == 0:
+    matched_count = getattr(update_result, "matched_count", None)
+    if matched_count is None and isinstance(update_result, dict):
+        matched_count = update_result.get("matched_count")
+
+    if not matched_count:
         raise HTTPException(status_code=500, detail=f"Failed to update wallet: user not found in update operation")
     
     # modified_count can be 0 if the field didn't exist and was created, or in rare edge cases
@@ -2902,7 +2909,7 @@ async def complete_order_with_referral_check(order_id: str):
         logging.error(f"Subscription email check error: {e}")
     
     # Check and credit referral
-    await check_and_credit_referral(order)
+    await check_and_credit_referral(updated or order)
 
     # Award loyalty credits for successful order
     await _record_loyalty_credits_if_needed(order_id)
