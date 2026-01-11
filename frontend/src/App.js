@@ -35,7 +35,7 @@ import WalletPage from './pages/WalletPage';
 import MinutesTransferPage from './pages/MinutesTransferPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/+$/, ''); // Remove trailing slashes
 export const API = `${BACKEND_URL}/api`;
 
 // Create axios instance
