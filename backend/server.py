@@ -461,6 +461,33 @@ async def _set_subscription_dates_if_needed(order_id: str) -> Optional[Dict[str,
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return updated
 
+
+async def finalize_order_completion(order_id: str) -> None:
+    """
+    Finalize completion-time effects for an order (idempotent).
+    - set subscription_start_date/subscription_end_date for subscription orders
+    - send subscription reminder/expiry emails
+    - pay referral payout (first subscription order only)
+    - award loyalty credits
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return
+
+    if order.get("payment_status") != "paid" or order.get("order_status") != "completed":
+        return
+
+    updated = await _set_subscription_dates_if_needed(order_id)
+    order_for_effects = updated or order
+
+    try:
+        await _maybe_send_subscription_emails(order_for_effects)
+    except Exception as e:
+        logging.error(f"Subscription email check error: {e}")
+
+    await check_and_credit_referral(order_for_effects)
+    await _record_loyalty_credits_if_needed(order_id)
+
 async def _maybe_send_subscription_emails(order: dict):
     """Send reminder emails (5 days before + at expiry) once per order."""
     if not order:
@@ -1180,23 +1207,13 @@ async def update_order_status(order_id: str, payment_status: Optional[str] = Non
     result = await db.orders.update_one({"id": order_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
-
     # Record coupon usage once payment is marked as paid
     if payment_status == "paid":
         await _record_coupon_usage_if_needed(order_id)
 
-    # If order is completed, trigger referral payout check (idempotent)
+    # If order is completed, finalize completion effects (idempotent)
     if order_status == "completed":
-        order = await db.orders.find_one({"id": order_id})
-        if order:
-            # Set subscription dates (if applicable) and run emails
-            updated = await _set_subscription_dates_if_needed(order_id)
-            try:
-                await _maybe_send_subscription_emails(updated or order)
-            except Exception as e:
-                logging.error(f"Subscription email check error: {e}")
-            await check_and_credit_referral(order)
-            await _record_loyalty_credits_if_needed(order_id)
+        await finalize_order_completion(order_id)
     
     return {"message": "Order updated successfully"}
 
@@ -1217,14 +1234,10 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
     result = await db.orders.update_one({"id": order_id}, {"$set": updates})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
+    # Ensure all completion side-effects are applied (subscription dates, referral, credits, emails).
+    await finalize_order_completion(order_id)
 
-    # Set subscription dates if this order is a subscription
-    order = await _set_subscription_dates_if_needed(order_id)
-    if not order:
-        order = await db.orders.find_one({"id": order_id}, {"_id": 0})
-
-    # Award loyalty credits once order is completed+paid
-    await _record_loyalty_credits_if_needed(order_id)
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
 
     # Send delivery email (includes expiry if subscription)
     try:
@@ -1254,14 +1267,6 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
             _send_resend_email(settings, order["user_email"], "Your delivery is ready", html)
     except Exception as e:
         logging.error(f"Delivery email error: {e}")
-
-    # Schedule/trigger reminder checks immediately
-    if order:
-        try:
-            await _maybe_send_subscription_emails(order)
-        except Exception as e:
-            logging.error(f"Subscription email check error: {e}")
-
     return {"message": "Order delivered successfully"}
 
 
@@ -2115,33 +2120,46 @@ async def upload_image(file: UploadFile = File(...)):
 
 async def check_and_credit_referral(order: dict):
     """Check if order qualifies for referral payout and credit referrer"""
-    # Only for paid + completed orders
-    if order.get("payment_status") != "paid" or order.get("order_status") != "completed":
+    # Idempotency (fast path).
+    if order.get("referral_paid"):
         return
 
-    # Idempotency: don't pay twice for same order
-    already_paid = await db.referral_payouts.find_one({"order_id": order.get("id")})
-    if already_paid:
+    # Only for paid + completed orders.
+    if order.get("payment_status") != "paid" or order.get("order_status") != "completed":
         return
 
     # Check if user was referred
     user = await db.users.find_one({"id": order['user_id']})
     if not user or not user.get('referred_by'):
         return
-    
-    # Check if order contains subscription
+
+    # Idempotency (strong): don't pay twice for same referred user or order.
+    existing_for_user = await db.referral_payouts.find_one({"referred_user_id": order["user_id"]})
+    if existing_for_user:
+        await db.orders.update_one(
+            {"id": order.get("id")},
+            {"$set": {"referral_paid": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return
+
+    if await db.referral_payouts.find_one({"order_id": order.get("id")}):
+        await db.orders.update_one(
+            {"id": order.get("id")},
+            {"$set": {"referral_paid": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return
+
+    # Check if order contains at least one subscription product.
     subscription_product_ids: List[str] = []
     for item in order.get('items', []):
-        product = await db.products.find_one({"id": item.get('product_id')})
+        product_id = item.get('product_id')
+        if not product_id:
+            continue
+        product = await db.products.find_one({"id": product_id}, {"_id": 0})
         if product and product.get('is_subscription'):
             subscription_product_ids.append(product.get("id"))
 
     if not subscription_product_ids:
-        return
-    
-    # Check if this is the first PAID+COMPLETED subscription order for this referred user
-    prior_payout = await db.referral_payouts.find_one({"referred_user_id": order['user_id']})
-    if prior_payout:
         return
     
     # Credit referrer $1
@@ -2157,10 +2175,16 @@ async def check_and_credit_referral(order: dict):
         "referrer_code": referrer_code,
         "referred_user_id": order['user_id'],
         "order_id": order['id'],
+        "payout_type": "first_subscription",
         "amount": 1.0,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
 
+    # Mark order so we don't pay again quickly.
+    await db.orders.update_one(
+        {"id": order.get("id")},
+        {"$set": {"referral_paid": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
 
 # ==================== WALLET (STORE CREDIT) ENDPOINTS ====================
 
@@ -2894,18 +2918,7 @@ async def complete_order_with_referral_check(order_id: str):
     )
 
     await _record_coupon_usage_if_needed(order_id)
-    await _set_subscription_dates_if_needed(order_id)
-    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
-    try:
-        await _maybe_send_subscription_emails(updated or order)
-    except Exception as e:
-        logging.error(f"Subscription email check error: {e}")
-    
-    # Check and credit referral
-    await check_and_credit_referral(order)
-
-    # Award loyalty credits for successful order
-    await _record_loyalty_credits_if_needed(order_id)
+    await finalize_order_completion(order_id)
     
     return {"message": "Order completed"}
 
