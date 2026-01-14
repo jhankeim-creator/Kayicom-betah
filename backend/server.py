@@ -3260,18 +3260,14 @@ async def update_admin_email():
     """Update existing admin email to kayicom509@gmail.com (keeps password unchanged)"""
     try:
         new_email = "kayicom509@gmail.com"
+        old_email_to_find = "admin@kayicom.com"  # The email that's currently working
         
-        # Check if admin with new email already exists
-        existing_new = await db.users.find_one({"email": new_email})
-        if existing_new:
-            return {
-                "status": "success",
-                "message": f"Admin already has email: {new_email}",
-                "email": new_email
-            }
+        # FIRST: Try to find the admin with the old email (admin@kayicom.com) - this is the one that works
+        existing_admin = await db.users.find_one({"email": old_email_to_find, "role": "admin"})
         
-        # Find existing admin user
-        existing_admin = await db.users.find_one({"role": "admin"})
+        # If not found, find any admin user
+        if not existing_admin:
+            existing_admin = await db.users.find_one({"role": "admin"})
         
         if not existing_admin:
             return {
@@ -3279,19 +3275,34 @@ async def update_admin_email():
                 "message": "No admin user found. Please create admin first."
             }
         
+        # Check if this admin already has the new email
+        if existing_admin.get("email") == new_email:
+            return {
+                "status": "success",
+                "message": f"Admin already has email: {new_email}",
+                "email": new_email
+            }
+        
         # Update admin email
         old_email = existing_admin.get("email")
+        admin_id = existing_admin.get("_id")
+        
+        # Update by _id to be more specific
         await db.users.update_one(
-            {"role": "admin"},
+            {"_id": admin_id},
             {"$set": {"email": new_email}}
         )
+        
+        # Verify the update
+        updated = await db.users.find_one({"_id": admin_id})
         
         return {
             "status": "success",
             "message": f"Admin email updated successfully",
             "old_email": old_email,
-            "new_email": new_email,
-            "note": "Password remains unchanged"
+            "new_email": updated.get("email"),
+            "admin_id": str(admin_id),
+            "note": "Password remains unchanged. Try logging in with the new email."
         }
         
     except Exception as e:
