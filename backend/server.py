@@ -35,7 +35,8 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
 
 # Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use bcrypt directly with explicit rounds to avoid compatibility issues
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
 
 # Create the main app
 
@@ -675,12 +676,28 @@ async def login(credentials: LoginRequest):
     
     logging.info(f"Login attempt for {credentials.email}, using field: {password_field}, hash preview: {password_value[:20]}...")
     
-    # Verify password
+    # Verify password - try multiple methods
+    password_valid = False
     try:
+        # Method 1: Use passlib
         password_valid = pwd_context.verify(credentials.password, password_value)
+        logging.info(f"Password verification (passlib): {password_valid}")
     except Exception as e:
-        logging.error(f"Password verification error for {credentials.email}: {str(e)}")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        logging.error(f"Password verification error (passlib) for {credentials.email}: {str(e)}")
+        # Method 2: Try bcrypt directly as fallback
+        try:
+            import bcrypt
+            # Check if hash is valid bcrypt format
+            if password_value.startswith('$2b$') or password_value.startswith('$2a$') or password_value.startswith('$2y$'):
+                password_bytes = credentials.password.encode('utf-8')
+                hash_bytes = password_value.encode('utf-8')
+                password_valid = bcrypt.checkpw(password_bytes, hash_bytes)
+                logging.info(f"Password verification (bcrypt direct): {password_valid}")
+        except Exception as e2:
+            logging.error(f"Password verification error (bcrypt direct) for {credentials.email}: {str(e2)}")
+    
+    if not password_valid:
+        logging.error(f"All password verification methods failed for {credentials.email}")
     
     if not password_valid:
         # Try the other field if available
@@ -3400,6 +3417,63 @@ async def check_admin():
 
 # Endpoint to reset admin password (for deployment setup)
 # Test login endpoint for debugging
+# Test password verification with different methods
+@app.post("/setup/test-password-verify")
+async def test_password_verify():
+    """Test password verification with the stored hash"""
+    try:
+        admin_email = "kayicom509@gmail.com"
+        test_password = "admin123"
+        
+        user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        if not user:
+            return {"status": "error", "message": "Admin not found"}
+        
+        password_value = user.get("password")
+        if not password_value:
+            return {"status": "error", "message": "No password field found"}
+        
+        results = {}
+        
+        # Test 1: passlib verify
+        try:
+            results["passlib_verify"] = pwd_context.verify(test_password, password_value)
+        except Exception as e:
+            results["passlib_verify"] = f"Error: {str(e)}"
+        
+        # Test 2: bcrypt direct
+        try:
+            import bcrypt
+            password_bytes = test_password.encode('utf-8')
+            hash_bytes = password_value.encode('utf-8')
+            results["bcrypt_direct"] = bcrypt.checkpw(password_bytes, hash_bytes)
+        except Exception as e:
+            results["bcrypt_direct"] = f"Error: {str(e)}"
+        
+        # Test 3: Check hash format
+        results["hash_format"] = {
+            "starts_with_2b": password_value.startswith('$2b$'),
+            "starts_with_2a": password_value.startswith('$2a$'),
+            "starts_with_2y": password_value.startswith('$2y$'),
+            "length": len(password_value),
+            "first_30_chars": password_value[:30]
+        }
+        
+        return {
+            "status": "success",
+            "email": admin_email,
+            "test_password": test_password,
+            "results": results
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # Diagnostic endpoint to check password hash
 @app.get("/setup/debug-password")
 async def debug_password():
