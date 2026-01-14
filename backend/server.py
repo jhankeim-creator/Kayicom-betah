@@ -3312,6 +3312,60 @@ async def update_admin_email():
             "message": f"Failed to update admin email: {str(e)}"
         }
 
+# Endpoint to check admin user status
+@app.get("/setup/check-admin")
+async def check_admin():
+    """Check admin user status and verify password"""
+    try:
+        admin_email = "kayicom509@gmail.com"
+        
+        # Find admin user
+        admin_user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        
+        if not admin_user:
+            # Try to find any admin
+            admin_user = await db.users.find_one({"role": "admin"})
+        
+        if not admin_user:
+            return {
+                "status": "error",
+                "message": "No admin user found"
+            }
+        
+        # Check password field
+        has_password = "password" in admin_user
+        has_password_hash = "password_hash" in admin_user
+        password_field = "password" if has_password else ("password_hash" if has_password_hash else None)
+        
+        # Test password verification
+        test_password = "admin123"
+        password_valid = False
+        if password_field and admin_user.get(password_field):
+            try:
+                password_valid = pwd_context.verify(test_password, admin_user[password_field])
+            except:
+                password_valid = False
+        
+        return {
+            "status": "success",
+            "admin_found": True,
+            "email": admin_user.get("email"),
+            "role": admin_user.get("role"),
+            "has_password_field": has_password,
+            "has_password_hash_field": has_password_hash,
+            "password_field_used": password_field,
+            "password_valid_for_admin123": password_valid,
+            "is_blocked": admin_user.get("is_blocked", False),
+            "admin_id": str(admin_user.get("_id"))
+        }
+        
+    except Exception as e:
+        logger.error(f"Error checking admin: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to check admin: {str(e)}"
+        }
+
 # Endpoint to reset admin password (for deployment setup)
 @app.post("/setup/reset-admin-password")
 async def reset_admin_password():
@@ -3336,29 +3390,40 @@ async def reset_admin_password():
         # Hash the new password
         hashed_password = pwd_context.hash(new_password)
         
-        # Update password
+        # Update password - set both fields to be safe
         admin_id = admin_user.get("_id")
+        update_data = {
+            "password": hashed_password,
+            "password_hash": hashed_password  # Set both to ensure compatibility
+        }
+        
         await db.users.update_one(
             {"_id": admin_id},
-            {"$set": {"password": hashed_password}}
+            {"$set": update_data}
         )
         
-        # Verify the update
+        # Verify the update and test password
         updated = await db.users.find_one({"_id": admin_id})
+        password_field = "password" if "password" in updated else "password_hash"
+        password_verified = pwd_context.verify(new_password, updated[password_field])
         
         return {
             "status": "success",
             "message": "Admin password reset successfully",
             "email": updated.get("email"),
             "new_password": new_password,
+            "password_verified": password_verified,
+            "password_field": password_field,
             "note": "You can now login with this password"
         }
         
     except Exception as e:
         logger.error(f"Error resetting admin password: {e}")
+        import traceback
         return {
             "status": "error",
-            "message": f"Failed to reset password: {str(e)}"
+            "message": f"Failed to reset password: {str(e)}",
+            "traceback": traceback.format_exc()
         }
 
 @app.on_event("shutdown")
