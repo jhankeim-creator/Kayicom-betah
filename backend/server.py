@@ -3368,6 +3368,73 @@ async def check_admin():
 
 # Endpoint to reset admin password (for deployment setup)
 # Test login endpoint for debugging
+# Direct login test endpoint
+@app.post("/setup/direct-login")
+async def direct_login_test():
+    """Test the actual login endpoint directly"""
+    try:
+        from fastapi import Request
+        import json
+        
+        # Simulate the login request
+        login_data = {
+            "email": "kayicom509@gmail.com",
+            "password": "admin123"
+        }
+        
+        # Call the actual login endpoint logic
+        user = await db.users.find_one({"email": login_data["email"]})
+        
+        if not user:
+            return {
+                "status": "error",
+                "message": "User not found",
+                "email": login_data["email"]
+            }
+        
+        if user.get("is_blocked"):
+            return {
+                "status": "error",
+                "message": "Account is blocked"
+            }
+        
+        # Use same logic as login endpoint
+        password_field = 'password_hash' if 'password_hash' in user else 'password'
+        
+        if password_field not in user:
+            return {
+                "status": "error",
+                "message": f"Password field '{password_field}' not found",
+                "available_fields": [k for k in user.keys() if 'pass' in k.lower()]
+            }
+        
+        password_valid = pwd_context.verify(login_data["password"], user[password_field])
+        
+        if not password_valid:
+            return {
+                "status": "error",
+                "message": "Password verification failed",
+                "password_field": password_field,
+                "password_hash_preview": user[password_field][:30] + "..." if user.get(password_field) else None
+            }
+        
+        return {
+            "status": "success",
+            "message": "Login would succeed",
+            "user_id": user.get("id"),
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "password_field_used": password_field
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": f"Direct login test failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
 @app.post("/setup/test-login")
 async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin123"):
     """Test login directly to debug issues"""
@@ -3388,41 +3455,38 @@ async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin
                 "step": "blocked_check"
             }
         
-        # Check both password fields
-        has_password = 'password' in user and user.get('password')
-        has_password_hash = 'password_hash' in user and user.get('password_hash')
+        # Check both password fields (as booleans)
+        has_password = bool('password' in user and user.get('password'))
+        has_password_hash = bool('password_hash' in user and user.get('password_hash'))
         
         # Try password_hash first (as login endpoint does)
         password_field = 'password_hash' if has_password_hash else 'password'
         
         password_valid = False
         verification_error = None
+        password_hash_value = None
+        password_value = None
         
-        if password_field == 'password_hash' and has_password_hash:
+        # Try password_hash first (matching login endpoint logic)
+        if has_password_hash:
+            password_hash_value = user.get('password_hash')
             try:
-                password_valid = pwd_context.verify(password, user['password_hash'])
-            except Exception as e:
-                verification_error = str(e)
-        elif has_password:
-            try:
-                password_valid = pwd_context.verify(password, user['password'])
-            except Exception as e:
-                verification_error = str(e)
-        
-        if not password_valid:
-            # Try the other field
-            if password_field == 'password_hash' and has_password:
-                try:
-                    password_valid = pwd_context.verify(password, user['password'])
-                    password_field = 'password'
-                except:
-                    pass
-            elif password_field == 'password' and has_password_hash:
-                try:
-                    password_valid = pwd_context.verify(password, user['password_hash'])
+                password_valid = pwd_context.verify(password, password_hash_value)
+                if password_valid:
                     password_field = 'password_hash'
-                except:
-                    pass
+            except Exception as e:
+                verification_error = f"password_hash verify error: {str(e)}"
+        
+        # If password_hash failed, try password field
+        if not password_valid and has_password:
+            password_value = user.get('password')
+            try:
+                password_valid = pwd_context.verify(password, password_value)
+                if password_valid:
+                    password_field = 'password'
+            except Exception as e:
+                if not verification_error:
+                    verification_error = f"password verify error: {str(e)}"
         
         if not password_valid:
             return {
@@ -3432,9 +3496,10 @@ async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin
                 "password_field_tried": password_field,
                 "has_password": has_password,
                 "has_password_hash": has_password_hash,
-                "password_hash_preview": user.get('password', '')[:20] + "..." if user.get('password') else None,
-                "password_hash_field_preview": user.get('password_hash', '')[:20] + "..." if user.get('password_hash') else None,
-                "verification_error": verification_error
+                "password_hash_preview": (password_value[:30] + "...") if password_value else None,
+                "password_hash_field_preview": (password_hash_value[:30] + "...") if password_hash_value else None,
+                "verification_error": verification_error,
+                "note": "Both fields tested, verification failed for both"
             }
         
         return {
@@ -3485,17 +3550,12 @@ async def reset_admin_password():
                 "message": "Generated password hash failed verification test"
             }
         
-        # Update password - set both fields to the SAME hash
+        # Update password - set both fields to the SAME hash in a single operation
         admin_id = admin_user.get("_id")
         
-        # First, unset both fields to clear any bad data
-        await db.users.update_one(
-            {"_id": admin_id},
-            {"$unset": {"password": "", "password_hash": ""}}
-        )
-        
-        # Then set both to the same correct hash
-        await db.users.update_one(
+        # Use replace_one to ensure clean update, or update_one with $set
+        # Let's use update_one with $set to update both fields
+        result = await db.users.update_one(
             {"_id": admin_id},
             {"$set": {
                 "password": hashed_password,
@@ -3503,17 +3563,44 @@ async def reset_admin_password():
             }}
         )
         
-        # Verify the update and test password - test BOTH fields
+        if result.modified_count == 0 and result.matched_count == 0:
+            return {
+                "status": "error",
+                "message": "Failed to update password - user not found"
+            }
+        
+        # Re-fetch to verify
         updated = await db.users.find_one({"_id": admin_id})
+        if not updated:
+            return {
+                "status": "error",
+                "message": "Failed to retrieve updated user"
+            }
+        
+        # Verify both fields exist and work
         password_verified_password = False
         password_verified_hash = False
+        password_exists = bool(updated.get("password"))
+        password_hash_exists = bool(updated.get("password_hash"))
         
-        if updated.get("password"):
+        if password_exists:
             password_verified_password = pwd_context.verify(new_password, updated["password"])
-        if updated.get("password_hash"):
+        if password_hash_exists:
             password_verified_hash = pwd_context.verify(new_password, updated["password_hash"])
         
         password_verified = password_verified_password or password_verified_hash
+        
+        # If password_hash wasn't set, try one more time
+        if not password_hash_exists:
+            await db.users.update_one(
+                {"_id": admin_id},
+                {"$set": {"password_hash": hashed_password}}
+            )
+            # Re-check
+            updated = await db.users.find_one({"_id": admin_id})
+            if updated.get("password_hash"):
+                password_verified_hash = pwd_context.verify(new_password, updated["password_hash"])
+                password_verified = password_verified_password or password_verified_hash
         
         return {
             "status": "success",
