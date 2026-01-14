@@ -3388,27 +3388,53 @@ async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin
                 "step": "blocked_check"
             }
         
-        # Check password field
-        password_field = 'password_hash' if 'password_hash' in user else 'password'
+        # Check both password fields
+        has_password = 'password' in user and user.get('password')
+        has_password_hash = 'password_hash' in user and user.get('password_hash')
         
-        if password_field not in user:
-            return {
-                "status": "error",
-                "message": f"Password field '{password_field}' not found in user",
-                "step": "password_field_check",
-                "available_fields": list(user.keys())
-            }
+        # Try password_hash first (as login endpoint does)
+        password_field = 'password_hash' if has_password_hash else 'password'
         
-        # Verify password
-        password_valid = pwd_context.verify(password, user[password_field])
+        password_valid = False
+        verification_error = None
+        
+        if password_field == 'password_hash' and has_password_hash:
+            try:
+                password_valid = pwd_context.verify(password, user['password_hash'])
+            except Exception as e:
+                verification_error = str(e)
+        elif has_password:
+            try:
+                password_valid = pwd_context.verify(password, user['password'])
+            except Exception as e:
+                verification_error = str(e)
+        
+        if not password_valid:
+            # Try the other field
+            if password_field == 'password_hash' and has_password:
+                try:
+                    password_valid = pwd_context.verify(password, user['password'])
+                    password_field = 'password'
+                except:
+                    pass
+            elif password_field == 'password' and has_password_hash:
+                try:
+                    password_valid = pwd_context.verify(password, user['password_hash'])
+                    password_field = 'password_hash'
+                except:
+                    pass
         
         if not password_valid:
             return {
                 "status": "error",
                 "message": "Password verification failed",
                 "step": "password_verification",
-                "password_field": password_field,
-                "password_hash_exists": bool(user.get(password_field))
+                "password_field_tried": password_field,
+                "has_password": has_password,
+                "has_password_hash": has_password_hash,
+                "password_hash_preview": user.get('password', '')[:20] + "..." if user.get('password') else None,
+                "password_hash_field_preview": user.get('password_hash', '')[:20] + "..." if user.get('password_hash') else None,
+                "verification_error": verification_error
             }
         
         return {
@@ -3448,25 +3474,46 @@ async def reset_admin_password():
                 "message": "No admin user found"
             }
         
-        # Hash the new password
+        # Hash the new password - generate fresh hash
         hashed_password = pwd_context.hash(new_password)
         
-        # Update password - set both fields to be safe
-        admin_id = admin_user.get("_id")
-        update_data = {
-            "password": hashed_password,
-            "password_hash": hashed_password  # Set both to ensure compatibility
-        }
+        # Verify the hash works before saving
+        test_verify = pwd_context.verify(new_password, hashed_password)
+        if not test_verify:
+            return {
+                "status": "error",
+                "message": "Generated password hash failed verification test"
+            }
         
+        # Update password - set both fields to the SAME hash
+        admin_id = admin_user.get("_id")
+        
+        # First, unset both fields to clear any bad data
         await db.users.update_one(
             {"_id": admin_id},
-            {"$set": update_data}
+            {"$unset": {"password": "", "password_hash": ""}}
         )
         
-        # Verify the update and test password
+        # Then set both to the same correct hash
+        await db.users.update_one(
+            {"_id": admin_id},
+            {"$set": {
+                "password": hashed_password,
+                "password_hash": hashed_password
+            }}
+        )
+        
+        # Verify the update and test password - test BOTH fields
         updated = await db.users.find_one({"_id": admin_id})
-        password_field = "password" if "password" in updated else "password_hash"
-        password_verified = pwd_context.verify(new_password, updated[password_field])
+        password_verified_password = False
+        password_verified_hash = False
+        
+        if updated.get("password"):
+            password_verified_password = pwd_context.verify(new_password, updated["password"])
+        if updated.get("password_hash"):
+            password_verified_hash = pwd_context.verify(new_password, updated["password_hash"])
+        
+        password_verified = password_verified_password or password_verified_hash
         
         return {
             "status": "success",
@@ -3474,7 +3521,8 @@ async def reset_admin_password():
             "email": updated.get("email"),
             "new_password": new_password,
             "password_verified": password_verified,
-            "password_field": password_field,
+            "password_field_verified": password_verified_password,
+            "password_hash_verified": password_verified_hash,
             "note": "You can now login with this password"
         }
         
