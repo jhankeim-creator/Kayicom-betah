@@ -3368,6 +3368,67 @@ async def check_admin():
 
 # Endpoint to reset admin password (for deployment setup)
 # Test login endpoint for debugging
+# Diagnostic endpoint to check password hash
+@app.get("/setup/debug-password")
+async def debug_password():
+    """Debug password hash and verification"""
+    try:
+        admin_email = "kayicom509@gmail.com"
+        test_password = "admin123"
+        
+        user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        
+        if not user:
+            return {"status": "error", "message": "Admin not found"}
+        
+        password_value = user.get("password")
+        password_hash_value = user.get("password_hash")
+        
+        # Test verification
+        password_verify_result = None
+        password_hash_verify_result = None
+        
+        if password_value:
+            try:
+                password_verify_result = pwd_context.verify(test_password, password_value)
+            except Exception as e:
+                password_verify_result = f"Error: {str(e)}"
+        
+        if password_hash_value:
+            try:
+                password_hash_verify_result = pwd_context.verify(test_password, password_hash_value)
+            except Exception as e:
+                password_hash_verify_result = f"Error: {str(e)}"
+        
+        # Generate a fresh hash for comparison
+        fresh_hash = pwd_context.hash(test_password)
+        fresh_verify = pwd_context.verify(test_password, fresh_hash)
+        
+        return {
+            "status": "success",
+            "email": user.get("email"),
+            "has_password": bool(password_value),
+            "has_password_hash": bool(password_hash_value),
+            "password_length": len(password_value) if password_value else 0,
+            "password_hash_length": len(password_hash_value) if password_hash_value else 0,
+            "password_starts_with": password_value[:10] if password_value else None,
+            "password_hash_starts_with": password_hash_value[:10] if password_hash_value else None,
+            "password_verify_result": password_verify_result,
+            "password_hash_verify_result": password_hash_verify_result,
+            "fresh_hash_starts_with": fresh_hash[:10],
+            "fresh_hash_verify": fresh_verify,
+            "test_password": test_password,
+            "note": "If verify fails, the hash might be corrupted"
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": str(e),
+            "traceback": traceback.format_exc()
+        }
+
 # Direct login test endpoint
 @app.post("/setup/direct-login")
 async def direct_login_test():
@@ -3539,16 +3600,20 @@ async def reset_admin_password():
                 "message": "No admin user found"
             }
         
-        # Hash the new password - generate fresh hash
+        # Hash the new password - generate fresh hash multiple times to ensure it's valid
         hashed_password = pwd_context.hash(new_password)
         
-        # Verify the hash works before saving
+        # Verify the hash works before saving (test multiple times)
         test_verify = pwd_context.verify(new_password, hashed_password)
         if not test_verify:
-            return {
-                "status": "error",
-                "message": "Generated password hash failed verification test"
-            }
+            # Try generating again
+            hashed_password = pwd_context.hash(new_password)
+            test_verify = pwd_context.verify(new_password, hashed_password)
+            if not test_verify:
+                return {
+                    "status": "error",
+                    "message": "Generated password hash failed verification test - this should never happen"
+                }
         
         # Update password - set both fields to the SAME hash in a single operation
         admin_id = admin_user.get("_id")
