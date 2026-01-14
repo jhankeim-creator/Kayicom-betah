@@ -658,12 +658,44 @@ async def login(credentials: LoginRequest):
         raise HTTPException(status_code=403, detail="Account is blocked. Contact support.")
     
     # Support both 'password' and 'password_hash' field names
-    password_field = 'password_hash' if 'password_hash' in user else 'password'
-    logging.info(f"Login attempt for {credentials.email}, using field: {password_field}")
+    # Try password_hash first, then password
+    password_field = None
+    password_value = None
     
-    if not pwd_context.verify(credentials.password, user[password_field]):
-        logging.error(f"Login failed: incorrect password for {credentials.email}")
+    if 'password_hash' in user and user.get('password_hash'):
+        password_field = 'password_hash'
+        password_value = user['password_hash']
+    elif 'password' in user and user.get('password'):
+        password_field = 'password'
+        password_value = user['password']
+    
+    if not password_field or not password_value:
+        logging.error(f"Login failed: no password field found for {credentials.email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    logging.info(f"Login attempt for {credentials.email}, using field: {password_field}, hash preview: {password_value[:20]}...")
+    
+    # Verify password
+    try:
+        password_valid = pwd_context.verify(credentials.password, password_value)
+    except Exception as e:
+        logging.error(f"Password verification error for {credentials.email}: {str(e)}")
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    if not password_valid:
+        # Try the other field if available
+        if password_field == 'password_hash' and 'password' in user and user.get('password'):
+            try:
+                password_valid = pwd_context.verify(credentials.password, user['password'])
+                if password_valid:
+                    password_field = 'password'
+                    logging.info(f"Login successful using fallback password field for {credentials.email}")
+            except:
+                pass
+        
+        if not password_valid:
+            logging.error(f"Login failed: incorrect password for {credentials.email}, field: {password_field}")
+            raise HTTPException(status_code=401, detail="Invalid credentials")
     
     logging.info(f"Login successful for {credentials.email}")
 
