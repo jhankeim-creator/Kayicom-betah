@@ -3367,6 +3367,67 @@ async def check_admin():
         }
 
 # Endpoint to reset admin password (for deployment setup)
+# Test login endpoint for debugging
+@app.post("/setup/test-login")
+async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin123"):
+    """Test login directly to debug issues"""
+    try:
+        user = await db.users.find_one({"email": email})
+        
+        if not user:
+            return {
+                "status": "error",
+                "message": f"User not found with email: {email}",
+                "step": "user_lookup"
+            }
+        
+        if user.get("is_blocked"):
+            return {
+                "status": "error",
+                "message": "Account is blocked",
+                "step": "blocked_check"
+            }
+        
+        # Check password field
+        password_field = 'password_hash' if 'password_hash' in user else 'password'
+        
+        if password_field not in user:
+            return {
+                "status": "error",
+                "message": f"Password field '{password_field}' not found in user",
+                "step": "password_field_check",
+                "available_fields": list(user.keys())
+            }
+        
+        # Verify password
+        password_valid = pwd_context.verify(password, user[password_field])
+        
+        if not password_valid:
+            return {
+                "status": "error",
+                "message": "Password verification failed",
+                "step": "password_verification",
+                "password_field": password_field,
+                "password_hash_exists": bool(user.get(password_field))
+            }
+        
+        return {
+            "status": "success",
+            "message": "Login test successful",
+            "user_id": user.get("id"),
+            "email": user.get("email"),
+            "role": user.get("role"),
+            "password_field_used": password_field
+        }
+        
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "message": f"Test login failed: {str(e)}",
+            "traceback": traceback.format_exc()
+        }
+
 @app.post("/setup/reset-admin-password")
 async def reset_admin_password():
     """Reset admin password to admin123"""
