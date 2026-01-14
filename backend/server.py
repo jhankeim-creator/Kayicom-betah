@@ -3312,6 +3312,55 @@ async def update_admin_email():
             "message": f"Failed to update admin email: {str(e)}"
         }
 
+# Endpoint to reset admin password (for deployment setup)
+@app.post("/setup/reset-admin-password")
+async def reset_admin_password():
+    """Reset admin password to admin123"""
+    try:
+        admin_email = "kayicom509@gmail.com"
+        new_password = "admin123"
+        
+        # Find admin user
+        admin_user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        
+        if not admin_user:
+            # Try to find any admin
+            admin_user = await db.users.find_one({"role": "admin"})
+        
+        if not admin_user:
+            return {
+                "status": "error",
+                "message": "No admin user found"
+            }
+        
+        # Hash the new password
+        hashed_password = pwd_context.hash(new_password)
+        
+        # Update password
+        admin_id = admin_user.get("_id")
+        await db.users.update_one(
+            {"_id": admin_id},
+            {"$set": {"password": hashed_password}}
+        )
+        
+        # Verify the update
+        updated = await db.users.find_one({"_id": admin_id})
+        
+        return {
+            "status": "success",
+            "message": "Admin password reset successfully",
+            "email": updated.get("email"),
+            "new_password": new_password,
+            "note": "You can now login with this password"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error resetting admin password: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to reset password: {str(e)}"
+        }
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
