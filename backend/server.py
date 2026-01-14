@@ -1,4 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, Request
+
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from dotenv import load_dotenv
@@ -2926,33 +2927,36 @@ class SeedResponse(BaseModel):
     results: Dict[str, Any]
 
 async def create_admin_internal() -> Dict[str, Any]:
-    """Create admin user if doesn't exist, or update old admin email to new one"""
+    """Create admin user if doesn't exist, or update existing admin email to kayicom509@gmail.com"""
     try:
         new_email = "kayicom509@gmail.com"
-        old_email = "info.kayicom.com@gmx.fr"
+        default_password = "admin123"
 
         # 1. Check if the new email already exists
         existing_new = await db.users.find_one({"email": new_email})
         if existing_new:
             return {"status": "skipped", "message": "Admin user with new email already exists", "user_id": str(existing_new.get("_id"))}
 
-        # 2. Check if the old email exists to update it
-        existing_old = await db.users.find_one({"email": old_email})
-        if existing_old:
-            await db.users.update_one({"email": old_email}, {"$set": {"email": new_email}})
-            return {"status": "updated", "message": f"Updated admin email from {old_email} to {new_email}", "user_id": str(existing_old.get("_id"))}
+        # 2. Check if there's any existing admin user (by role) to update their email
+        existing_admin = await db.users.find_one({"role": "admin"})
+        if existing_admin:
+            old_email = existing_admin.get("email")
+            await db.users.update_one({"role": "admin"}, {"$set": {"email": new_email}})
+            return {"status": "updated", "message": f"Updated admin email from {old_email} to {new_email} (password unchanged)", "user_id": str(existing_admin.get("_id"))}
 
-        # Create admin user
-        hashed_password = pwd_context.hash("admin123")
+        # 3. Create new admin user if none exists
+        hashed_password = pwd_context.hash(default_password)
 
         admin_user = {
             "id": "admin-001",
-            "email": "kayicom509@gmail.com",
+            "email": new_email,
             "full_name": "Admin User",
             "password": hashed_password,
             "role": "admin",
             "referral_code": "ADMIN001",
             "referral_balance": 0.0,
+            "wallet_balance": 0.0,
+            "credits_balance": 0,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
 
@@ -3249,6 +3253,53 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+# Endpoint to update admin email (for deployment setup)
+@app.post("/setup/update-admin-email")
+async def update_admin_email():
+    """Update existing admin email to kayicom509@gmail.com (keeps password unchanged)"""
+    try:
+        new_email = "kayicom509@gmail.com"
+        
+        # Check if admin with new email already exists
+        existing_new = await db.users.find_one({"email": new_email})
+        if existing_new:
+            return {
+                "status": "success",
+                "message": f"Admin already has email: {new_email}",
+                "email": new_email
+            }
+        
+        # Find existing admin user
+        existing_admin = await db.users.find_one({"role": "admin"})
+        
+        if not existing_admin:
+            return {
+                "status": "error",
+                "message": "No admin user found. Please create admin first."
+            }
+        
+        # Update admin email
+        old_email = existing_admin.get("email")
+        await db.users.update_one(
+            {"role": "admin"},
+            {"$set": {"email": new_email}}
+        )
+        
+        return {
+            "status": "success",
+            "message": f"Admin email updated successfully",
+            "old_email": old_email,
+            "new_email": new_email,
+            "note": "Password remains unchanged"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating admin email: {e}")
+        return {
+            "status": "error",
+            "message": f"Failed to update admin email: {str(e)}"
+        }
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

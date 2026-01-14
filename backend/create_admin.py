@@ -31,38 +31,60 @@ except Exception as e:
     exit(1)
 
 async def create_admin():
-    """Create admin user if it doesn't exist"""
+    """Create admin user if it doesn't exist, or update existing admin email"""
     try:
-        # Check if admin already exists
-        existing = await db.users.find_one({"email": "kayicom509@gmail.com"})
+        new_email = "kayicom509@gmail.com"
+        default_password = "admin123"
         
-        if existing:
-            print("✅ Admin user already exists!")
-            print(f"📧 Email: {existing.get('email')}")
+        # Check if admin with new email already exists
+        existing_new = await db.users.find_one({"email": new_email})
+        
+        if existing_new:
+            print("✅ Admin user already exists with the correct email!")
+            print(f"📧 Email: {existing_new.get('email')}")
+            print(f"👤 Role: {existing_new.get('role')}")
             return
         
-        # Create admin user
-        hashed_password = pwd_context.hash("admin123")
+        # Check if there's an existing admin user with different email
+        existing_admin = await db.users.find_one({"role": "admin"})
+        
+        if existing_admin:
+            # Update existing admin email to new email
+            old_email = existing_admin.get('email')
+            await db.users.update_one(
+                {"role": "admin"},
+                {"$set": {"email": new_email}}
+            )
+            print("✅ Admin email updated successfully!")
+            print(f"📧 Old Email: {old_email}")
+            print(f"📧 New Email: {new_email}")
+            print(f"🔑 Password: (unchanged - using existing password)")
+            return
+        
+        # Create new admin user if none exists
+        hashed_password = pwd_context.hash(default_password)
         
         admin_user = {
             "id": "admin-001",
-            "email": "kayicom509@gmail.com",
+            "email": new_email,
             "full_name": "Admin User",
             "password": hashed_password,
             "role": "admin",
             "referral_code": "ADMIN001",
             "referral_balance": 0.0,
+            "wallet_balance": 0.0,
+            "credits_balance": 0,
             "created_at": datetime.now(timezone.utc).isoformat()
         }
         
         await db.users.insert_one(admin_user)
         print("✅ Admin user created successfully!")
-        print("📧 Email: kayicom509@gmail.com")
-        print("🔑 Password: admin123")
+        print(f"📧 Email: {new_email}")
+        print(f"🔑 Password: {default_password}")
         print("⚠️  IMPORTANT: Change password after first login!")
         
     except Exception as e:
-        print(f"❌ Error creating admin user: {e}")
+        print(f"❌ Error creating/updating admin user: {e}")
         raise
     finally:
         client.close()
