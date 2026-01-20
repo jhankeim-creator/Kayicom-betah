@@ -14,7 +14,7 @@ import uuid
 #   BASE_URL="https://your-domain/api" python3 comprehensive_backend_test.py
 import os
 BASE_URL = os.environ.get("BASE_URL", "https://kayicom-payments.preview.emergentagent.com/api")
-ADMIN_EMAIL = "info.kayicom.com@gmx.fr"
+ADMIN_EMAIL = "Info.kayicom.com@gmx.fr"
 ADMIN_PASSWORD = "admin123"
 
 class KayiComBackendTester:

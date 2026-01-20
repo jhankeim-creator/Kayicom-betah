@@ -68,7 +68,7 @@ Caribbean's #1 Digital Marketplace for gift cards, game top-ups, subscriptions, 
 
 ## 🔐 Admin Access
 
-**Email**: info.kayicom.com@gmx.fr  
+**Email**: Info.kayicom.com@gmx.fr
 **Password**: admin123
 
 ⚠️ **IMPORTANT**: Change password after first login!
