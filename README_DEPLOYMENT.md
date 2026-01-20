@@ -56,7 +56,7 @@ See `RAILWAY_DEPLOYMENT.md` for detailed instructions.
 
 ## 🔑 Default Admin Credentials
 
-- Email: `admin@kayicom.com`
+- Email: `Info.kayicom.com@gmx.fr`
 - Password: `admin123`
 
 ⚠️ **Change password after first login!**

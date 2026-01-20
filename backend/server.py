@@ -2976,9 +2976,9 @@ class SeedResponse(BaseModel):
     results: Dict[str, Any]
 
 async def create_admin_internal() -> Dict[str, Any]:
-    """Create admin user if doesn't exist, or update existing admin email to kayicom509@gmail.com"""
+    """Create admin user if doesn't exist, or update existing admin email to Info.kayicom.com@gmx.fr"""
     try:
-        new_email = "kayicom509@gmail.com"
+        new_email = "Info.kayicom.com@gmx.fr"
         default_password = "admin123"
 
         # 1. Check if the new email already exists
@@ -3241,7 +3241,7 @@ async def seed_database(request: SeedRequest):
         results["game_configs"] = await seed_games_internal()
 
         # Check final state
-        final_admin = await db.users.count_documents({"email": "kayicom509@gmail.com"})
+        final_admin = await db.users.count_documents({"email": "Info.kayicom.com@gmx.fr"})
         final_products = await db.products.count_documents({})
         final_games = await db.games.count_documents({})
 
@@ -3306,17 +3306,10 @@ async def health():
 # Endpoint to update admin email (for deployment setup)
 @app.post("/setup/update-admin-email")
 async def update_admin_email():
-    """Update existing admin email to kayicom509@gmail.com (keeps password unchanged)"""
+    """Update existing admin email to Info.kayicom.com@gmx.fr (keeps password unchanged)"""
     try:
-        new_email = "kayicom509@gmail.com"
-        old_email_to_find = "admin@kayicom.com"  # The email that's currently working
-        
-        # FIRST: Try to find the admin with the old email (admin@kayicom.com) - this is the one that works
-        existing_admin = await db.users.find_one({"email": old_email_to_find, "role": "admin"})
-        
-        # If not found, find any admin user
-        if not existing_admin:
-            existing_admin = await db.users.find_one({"role": "admin"})
+        new_email = "Info.kayicom.com@gmx.fr"
+        existing_admin = await db.users.find_one({"role": "admin"})
         
         if not existing_admin:
             return {
@@ -3366,7 +3359,7 @@ async def update_admin_email():
 async def check_admin():
     """Check admin user status and verify password"""
     try:
-        admin_email = "kayicom509@gmail.com"
+        admin_email = "Info.kayicom.com@gmx.fr"
         
         # Find admin user
         admin_user = await db.users.find_one({"email": admin_email, "role": "admin"})
@@ -3422,7 +3415,7 @@ async def check_admin():
 async def test_password_verify():
     """Test password verification with the stored hash"""
     try:
-        admin_email = "kayicom509@gmail.com"
+        admin_email = "Info.kayicom.com@gmx.fr"
         test_password = "admin123"
         
         user = await db.users.find_one({"email": admin_email, "role": "admin"})
@@ -3479,7 +3472,7 @@ async def test_password_verify():
 async def debug_password():
     """Debug password hash and verification"""
     try:
-        admin_email = "kayicom509@gmail.com"
+        admin_email = "Info.kayicom.com@gmx.fr"
         test_password = "admin123"
         
         user = await db.users.find_one({"email": admin_email, "role": "admin"})
@@ -3545,7 +3538,7 @@ async def direct_login_test():
         
         # Simulate the login request
         login_data = {
-            "email": "kayicom509@gmail.com",
+            "email": "Info.kayicom.com@gmx.fr",
             "password": "admin123"
         }
         
@@ -3603,7 +3596,7 @@ async def direct_login_test():
         }
 
 @app.post("/setup/test-login")
-async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin123"):
+async def test_login(email: str = "Info.kayicom.com@gmx.fr", password: str = "admin123"):
     """Test login directly to debug issues"""
     try:
         user = await db.users.find_one({"email": email})
@@ -3690,7 +3683,7 @@ async def test_login(email: str = "kayicom509@gmail.com", password: str = "admin
 async def reset_admin_password():
     """Reset admin password to admin123"""
     try:
-        admin_email = "kayicom509@gmail.com"
+        admin_email = "Info.kayicom.com@gmx.fr"
         new_password = "admin123"
         
         # Find admin user

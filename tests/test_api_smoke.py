@@ -367,7 +367,7 @@ def test_admin_customers_list_and_search(app_module):
         [
             {"id": "cu-1", "role": "customer", "email": "john@example.com", "full_name": "John", "customer_id": "KC-10101010", "wallet_balance": 0.0, "credits_balance": 0},
             {"id": "cu-2", "role": "customer", "email": "mary@example.com", "full_name": "Mary", "customer_id": "KC-20202020", "wallet_balance": 1.0, "credits_balance": 5},
-            {"id": "ad-1", "role": "admin", "email": "admin@example.com", "full_name": "Admin", "customer_id": "", "wallet_balance": 0.0, "credits_balance": 0},
+            {"id": "ad-1", "role": "admin", "email": "Info.kayicom.com@gmx.fr", "full_name": "Admin", "customer_id": "", "wallet_balance": 0.0, "credits_balance": 0},
         ]
     )
     client = TestClient(app_module.app)

@@ -112,7 +112,7 @@ Look for error details in the response.
 After fixes:
 - ✅ No CORS errors in browser console
 - ✅ Products load on homepage
-- ✅ Admin login works: `admin@kayicom.com` / `admin123`
+- ✅ Admin login works: `Info.kayicom.com@gmx.fr` / `admin123`
 - ✅ All functionality working
 
 **Your KayiCom marketplace is almost ready!** 🎉

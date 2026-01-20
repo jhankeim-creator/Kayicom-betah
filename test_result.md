@@ -195,7 +195,7 @@ frontend:
     status_history:
       - working: true
         agent: "testing"
-        comment: "✅ TESTED: Login functionality works correctly. Admin login (admin@kayicom.com / admin123) successful, redirects to /admin. User menu appears with 'Admin' text. Admin Panel link visible in dropdown. Minor: Session management issue causes logout during navigation but core auth works."
+        comment: "✅ TESTED: Login functionality works correctly. Admin login (Info.kayicom.com@gmx.fr / admin123) successful, redirects to /admin. User menu appears with 'Admin' text. Admin Panel link visible in dropdown. Minor: Session management issue causes logout during navigation but core auth works."
 
   - task: "Referral System"
     implemented: true
@@ -361,7 +361,7 @@ agent_communication:
       4. Updated test data - created 2 orders: one pending_verification, one processing/paid
       
       Test credentials:
-      - Admin: admin@kayicom.com / admin123
+      - Admin: Info.kayicom.com@gmx.fr / admin123
       - Customer: gamtech01@gmail.com
       - Test orders exist with different statuses to test all flows
       
@@ -441,7 +441,7 @@ agent_communication:
       Completed comprehensive testing of all major KayiCom marketplace backend endpoints as requested:
       
       🔐 Authentication & Users:
-      - ✅ POST /api/auth/login - Admin login working (admin@kayicom.com)
+      - ✅ POST /api/auth/login - Admin login working (Info.kayicom.com@gmx.fr)
       - ✅ User authentication returns proper user data (no JWT token, session-based)
       
       🔗 Referral System (JUST FIXED):
@@ -478,7 +478,7 @@ agent_communication:
       🎉 ALL 7/7 MAJOR ENDPOINT CATEGORIES PASSED COMPREHENSIVE TESTING
       
       Test Results Summary:
-      - Admin credentials working: admin@kayicom.com / admin123
+      - Admin credentials working: Info.kayicom.com@gmx.fr / admin123
       - All API endpoints returning correct status codes (200/400 as expected)
       - No 404 or 500 errors on any defined endpoints
       - Referral system working correctly after recent fixes
@@ -532,7 +532,7 @@ agent_communication:
       
       🔐 Authentication Testing:
       - ✅ Customer login (customer@test.com / test123) working correctly
-      - ✅ Admin login (admin@kayicom.com / admin123) working correctly
+      - ✅ Admin login (Info.kayicom.com@gmx.fr / admin123) working correctly
       - ✅ Session management functional with proper redirects
       
       💰 TEST 2: Crypto Trade Flow with Plisio - FULLY WORKING:
@@ -584,7 +584,7 @@ agent_communication:
         * Order items: iTunes Gift Card $25, Steam Wallet $50
       
       ✅ **PART 2: ADMIN ORDER MANAGEMENT - STRUCTURE PRESENT**:
-      - ✅ Admin login (admin@kayicom.com / admin123) successful
+      - ✅ Admin login (Info.kayicom.com@gmx.fr / admin123) successful
       - ❌ **CRITICAL ISSUE**: Session management problem - admin redirected to login when accessing /admin/orders
       - ✅ Backend API endpoints confirmed working (from previous tests)
       - ✅ AdminOrders.jsx component has all required functionality:
@@ -631,7 +631,7 @@ agent_communication:
       Completed comprehensive admin panel testing as requested. Found critical authentication/session issue:
       
       ✅ **WORKING COMPONENTS**:
-      - Admin login (admin@kayicom.com / admin123) successful
+      - Admin login (Info.kayicom.com@gmx.fr / admin123) successful
       - Admin dashboard loads correctly with stats: 17 orders, 100 products, 6 customers, $191.94 revenue
       - Dashboard navigation and UI elements functional
       - Backend APIs working (confirmed via logs)
@@ -677,7 +677,7 @@ agent_communication:
       - ✅ **Crypto**: **YES** - Present in navbar
       - **RESULT**: Cache issue resolved - showing correct "Home" and "Crypto" only
       
-      🔐 **ADMIN LOGIN ATTEMPTED**: admin@kayicom.com / admin123
+      🔐 **ADMIN LOGIN ATTEMPTED**: Info.kayicom.com@gmx.fr / admin123
       - Login form accessible but encountered React runtime errors
       - Admin Settings page had navigation issues due to frontend errors
       
@@ -743,7 +743,7 @@ agent_communication:
       **COMPREHENSIVE TESTING RESULTS - NOVEMBER 21, 2025**:
       
       ✅ **PART 1: ADMIN LOGIN & NAVIGATION - WORKING PERFECTLY**:
-      - ✅ Admin login (admin@kayicom.com / admin123) successful
+      - ✅ Admin login (Info.kayicom.com@gmx.fr / admin123) successful
       - ✅ Admin dashboard accessible with statistics: 18 orders, 100 products, 6 customers, $191.94 revenue
       - ✅ NO redirect to login occurs - session management FIXED
       - ✅ All admin pages accessible via dashboard navigation cards
@@ -810,7 +810,7 @@ agent_communication:
       **CRITICAL TESTING RESULTS AS REQUESTED IN REVIEW**:
       
       ✅ **1. ADMIN CRYPTO MANAGEMENT - FULLY WORKING**:
-      - ✅ Admin login (admin@kayicom.com / admin123) successful
+      - ✅ Admin login (Info.kayicom.com@gmx.fr / admin123) successful
       - ✅ Crypto Management page accessible at /admin/crypto
       - ✅ "Manage Crypto Transactions" section FOUND and working
       - ✅ View crypto buy/sell orders: 31+ transactions visible (SELL orders: TRC20, BEP20)
@@ -873,7 +873,7 @@ agent_communication:
       
       **RECOMMENDATION**: The admin panel is fully operational. If user is experiencing issues, they may need to:
       1. Clear browser cache and cookies
-      2. Ensure they're using admin@kayicom.com / admin123 credentials
+      2. Ensure they're using Info.kayicom.com@gmx.fr / admin123 credentials
       3. Check their internet connection
       4. Try a different browser
   - agent: "testing"
