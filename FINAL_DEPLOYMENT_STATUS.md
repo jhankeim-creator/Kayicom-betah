@@ -110,7 +110,7 @@ cd backend && python create_admin.py
 ## 🔑 Default Login Credentials
 
 **Admin Account:**
-- Email: `admin@kayicom.com`
+- Email: `Info.kayicom.com@gmx.fr`
 - Password: `admin123`
 - **⚠️ CHANGE PASSWORD AFTER FIRST LOGIN**
 

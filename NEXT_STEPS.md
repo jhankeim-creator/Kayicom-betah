@@ -112,7 +112,7 @@ After frontend deploys and you have the frontend URL:
 2. Try to:
    - Load the homepage
    - Register a new user
-   - Login with admin: `admin@kayicom.com` / `admin123`
+   - Login with admin: `Info.kayicom.com@gmx.fr` / `admin123`
    - Access admin panel
 
 ---

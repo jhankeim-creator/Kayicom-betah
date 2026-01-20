@@ -120,7 +120,7 @@ This document summarizes all the changes made to prepare KayiCom for Railway dep
 
 ## 🔑 Default Admin Credentials
 
-- Email: `admin@kayicom.com`
+- Email: `Info.kayicom.com@gmx.fr`
 - Password: `admin123`
 
 ⚠️ **IMPORTANT:** Change password after first login!

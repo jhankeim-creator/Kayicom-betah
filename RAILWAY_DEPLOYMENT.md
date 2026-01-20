@@ -116,7 +116,7 @@ After deployment, you need to create the admin user and seed products.
 
 1. Visit your frontend URL: `https://your-frontend.up.railway.app`
 2. Test admin login:
-   - Email: `admin@kayicom.com`
+   - Email: `Info.kayicom.com@gmx.fr`
    - Password: `admin123`
 3. Verify:
    - ✅ Frontend loads

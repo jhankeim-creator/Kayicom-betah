@@ -132,7 +132,7 @@ After DNS propagation:
 1. ✅ `https://kayicom.com` - Frontend loads
 2. ✅ `https://api.kayicom.com` - API responds
 3. ✅ SSL certificates work (padlock icon)
-4. ✅ Admin login works: `admin@kayicom.com` / `admin123`
+4. ✅ Admin login works: `Info.kayicom.com@gmx.fr` / `admin123`
 
 ---
 

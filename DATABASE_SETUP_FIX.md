@@ -47,7 +47,7 @@ async def check_db():
     db = client[os.environ.get('DB_NAME', 'kayicom')]
     
     # Check admin user
-    admin = await db.users.find_one({'email': 'admin@kayicom.com'})
+    admin = await db.users.find_one({'email': 'Info.kayicom.com@gmx.fr'})
     print(f'Admin user: {admin is not None}')
     
     # Check products
@@ -78,7 +78,7 @@ Railway provides its own MongoDB instance, so you need to:
 
 ### Step 1: Test Admin Login
 1. Go to: `https://kayicom.com/admin`
-2. **Email:** `admin@kayicom.com`
+2. **Email:** `Info.kayicom.com@gmx.fr`
 3. **Password:** `admin123`
 4. Should login successfully ✅
 
@@ -133,7 +133,7 @@ async def check_admin():
     client = AsyncIOMotorClient(os.environ.get('MONGO_URL'))
     db = client[os.environ.get('DB_NAME', 'kayicom'))
     
-    admin = await db.users.find_one({'email': 'admin@kayicom.com'})
+    admin = await db.users.find_one({'email': 'Info.kayicom.com@gmx.fr'})
     if admin:
         print(f'✅ Admin exists: {admin[\"email\"]}')
         print(f'Role: {admin.get(\"role\")}')
@@ -167,7 +167,7 @@ cd backend && python -c "import asyncio; from motor.motor_asyncio import AsyncIO
 ## 🎯 Final Result
 
 After running these scripts:
-- ✅ Admin login works (`admin@kayicom.com` / `admin123`)
+- ✅ Admin login works (`Info.kayicom.com@gmx.fr` / `admin123`)
 - ✅ Products appear on site
 - ✅ Full marketplace functionality
 - ✅ Ready for customers!

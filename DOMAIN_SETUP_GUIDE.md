@@ -239,7 +239,7 @@ After setup, test these features:
 3. ✅ **SSL Certificate:** Padlock icon in browser
 
 4. ✅ **Admin Panel:** `https://kayicom.com/admin`
-   - Login with admin@kayicom.com / admin123
+   - Login with Info.kayicom.com@gmx.fr / admin123
    - All admin features work
 
 5. ✅ **Mobile:** Test on phone/tablet

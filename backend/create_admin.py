@@ -33,7 +33,7 @@ except Exception as e:
 async def create_admin():
     """Create admin user if it doesn't exist, or update existing admin email"""
     try:
-        new_email = "kayicom509@gmail.com"
+        new_email = "Info.kayicom.com@gmx.fr"
         default_password = "admin123"
         
         # Check if admin with new email already exists

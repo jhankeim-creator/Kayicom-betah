@@ -54,7 +54,7 @@ NODE_ENV=production
 2. **Wait 2-3 minutes** for redeployment
 3. **Test login:**
    - Go to: `https://kayicom.com/admin`
-   - Email: `admin@kayicom.com`
+  - Email: `Info.kayicom.com@gmx.fr`
    - Password: `admin123`
 
 ## 🧪 Verify Fix
