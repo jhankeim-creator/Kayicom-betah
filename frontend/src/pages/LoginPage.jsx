@@ -1,29 +1,38 @@
 import { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { axiosInstance, LanguageContext } from '../App';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 const LoginPage = ({ login, settings }) => {
   const { t } = useContext(LanguageContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const response = await axiosInstance.post('/auth/login', { email, password });
-      login(response.data);
+      const normalizedEmail = email.trim().toLowerCase();
+      const response = await axiosInstance.post('/auth/login', { email: normalizedEmail, password });
+      login(response.data, { remember: rememberMe });
       toast.success(t('loginSuccess'));
-      navigate(response.data.role === 'admin' ? '/admin' : '/dashboard');
+      const from = location.state?.from;
+      const redirectTo = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : (response.data.role === 'admin' ? '/admin' : '/dashboard');
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       toast.error(error.response?.data?.detail || t('error'));
     } finally {
@@ -59,6 +68,7 @@ const LoginPage = ({ login, settings }) => {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
                   required
                   className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
                   placeholder="you@email.com"
@@ -68,16 +78,38 @@ const LoginPage = ({ login, settings }) => {
 
               <div>
                 <Label htmlFor="password" className="text-gray-300">{t('password')}</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
-                  placeholder="••••••••"
-                  data-testid="password-input"
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    required
+                    className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500 pr-10"
+                    placeholder="••••••••"
+                    data-testid="password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                    aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="rememberMe"
+                  checked={rememberMe}
+                  onCheckedChange={(checked) => setRememberMe(Boolean(checked))}
                 />
+                <Label htmlFor="rememberMe" className="text-gray-300 cursor-pointer">
+                  {t('rememberMe')}
+                </Label>
               </div>
 
               <Button

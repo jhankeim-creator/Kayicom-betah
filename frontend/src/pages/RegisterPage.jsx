@@ -1,12 +1,12 @@
 import { useState, useContext } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { axiosInstance, LanguageContext } from '../App';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
 const RegisterPage = ({ login, settings }) => {
   const { t } = useContext(LanguageContext);
@@ -22,7 +22,10 @@ const RegisterPage = ({ login, settings }) => {
     confirmPassword: ''
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -39,25 +42,31 @@ const RegisterPage = ({ login, settings }) => {
     setLoading(true);
 
     try {
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      const normalizedName = formData.full_name.trim();
       const endpoint = referralCode 
         ? `/auth/register-with-referral?referral_code=${referralCode}`
         : '/auth/register';
       
       await axiosInstance.post(endpoint, {
-        full_name: formData.full_name,
-        email: formData.email,
+        full_name: normalizedName,
+        email: normalizedEmail,
         password: formData.password
       });
 
       // Auto login after registration
       const loginResponse = await axiosInstance.post('/auth/login', {
-        email: formData.email,
+        email: normalizedEmail,
         password: formData.password
       });
       
-      login(loginResponse.data);
+      login(loginResponse.data, { remember: true });
       toast.success(t('success'));
-      navigate('/dashboard');
+      const from = location.state?.from;
+      const redirectTo = from?.pathname
+        ? `${from.pathname}${from.search || ''}${from.hash || ''}`
+        : '/dashboard';
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       toast.error(error.response?.data?.detail || t('error'));
     } finally {
@@ -94,6 +103,7 @@ const RegisterPage = ({ login, settings }) => {
                   type="text"
                   value={formData.full_name}
                   onChange={handleChange}
+                  autoComplete="name"
                   required
                   className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
                   placeholder="John Doe"
@@ -109,6 +119,7 @@ const RegisterPage = ({ login, settings }) => {
                   type="email"
                   value={formData.email}
                   onChange={handleChange}
+                  autoComplete="email"
                   required
                   className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
                   placeholder="you@email.com"
@@ -118,32 +129,54 @@ const RegisterPage = ({ login, settings }) => {
 
               <div>
                 <Label htmlFor="password" className="text-gray-300">{t('password')}</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                  className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
-                  placeholder="••••••••"
-                  data-testid="password-input"
-                />
+                <div className="relative">
+                  <Input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    required
+                    className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500 pr-10"
+                    placeholder="••••••••"
+                    data-testid="password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                    aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <div>
                 <Label htmlFor="confirmPassword" className="text-gray-300">{t('confirmPassword')}</Label>
-                <Input
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  type="password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                  className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500"
-                  placeholder="••••••••"
-                  data-testid="confirm-password-input"
-                />
+                <div className="relative">
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    autoComplete="new-password"
+                    required
+                    className="bg-gray-900/50 border-white/10 text-white placeholder:text-gray-500 pr-10"
+                    placeholder="••••••••"
+                    data-testid="confirm-password-input"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((prev) => !prev)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200"
+                    aria-label={showConfirmPassword ? t('hidePassword') : t('showPassword')}
+                  >
+                    {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
               </div>
 
               <Button

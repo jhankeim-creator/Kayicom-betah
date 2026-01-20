@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 
 const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [paymentMethod, setPaymentMethod] = useState('crypto_plisio');
   const [loading, setLoading] = useState(false);
 
@@ -22,7 +23,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const handleCheckout = async () => {
     if (!user) {
       toast.error('You must login before purchasing');
-      navigate('/login');
+      navigate('/login', { state: { from: location }, replace: true });
       return;
     }
 
@@ -75,7 +76,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
         <div className="container mx-auto px-4 py-20 text-center">
           <h2 className="text-2xl text-white mb-4">You must login to continue</h2>
-          <Button onClick={() => navigate('/login')} className="bg-white text-purple-600 hover:bg-gray-100">
+          <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} className="bg-white text-purple-600 hover:bg-gray-100">
             Login
           </Button>
         </div>
