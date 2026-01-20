@@ -61,6 +61,9 @@ export const translations = {
     dontHaveAccount: "Don't have an account?",
     alreadyHaveAccount: 'Already have an account?',
     createAccount: 'Create Account',
+    rememberMe: 'Remember me',
+    showPassword: 'Show password',
+    hidePassword: 'Hide password',
     
     // Cart & Checkout
     yourCart: 'Your Cart',
@@ -210,6 +213,9 @@ export const translations = {
     dontHaveAccount: 'Vous n\'avez pas de compte?',
     alreadyHaveAccount: 'Vous avez déjà un compte?',
     createAccount: 'Créer un Compte',
+    rememberMe: 'Se souvenir de moi',
+    showPassword: 'Afficher le mot de passe',
+    hidePassword: 'Masquer le mot de passe',
     
     // Cart & Checkout
     yourCart: 'Votre Panier',

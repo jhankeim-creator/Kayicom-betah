@@ -64,16 +64,26 @@ function App() {
   const [language, setLanguage] = useState('en'); // Default to English
   const [loading, setLoading] = useState(true); // Add loading state
 
-  useEffect(() => {
-    // Load user from localStorage
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
+  const getStoredUser = () => {
+    const readUser = (storage) => {
+      const raw = storage.getItem('user');
+      if (!raw) return null;
       try {
-        setUser(JSON.parse(savedUser));
+        return JSON.parse(raw);
       } catch (e) {
         console.error('Error parsing saved user:', e);
-        localStorage.removeItem('user');
+        storage.removeItem('user');
+        return null;
       }
+    };
+    return readUser(localStorage) || readUser(sessionStorage);
+  };
+
+  useEffect(() => {
+    // Load user from storage (local or session)
+    const savedUser = getStoredUser();
+    if (savedUser) {
+      setUser(savedUser);
     }
     setLoading(false); // Mark loading complete
 
@@ -102,7 +112,8 @@ function App() {
     }
   };
 
-  const login = (userData) => {
+  const login = (userData, options = {}) => {
+    const { remember = true } = options;
     const normalized = { ...(userData || {}) };
     // Add id field for consistency (backend sends user_id)
     if (normalized.user_id && !normalized.id) {
@@ -113,13 +124,16 @@ function App() {
       normalized.full_name = normalized.username;
     }
     setUser(normalized);
-    localStorage.setItem('user', JSON.stringify(normalized));
+    const storage = remember ? localStorage : sessionStorage;
+    storage.setItem('user', JSON.stringify(normalized));
+    (remember ? sessionStorage : localStorage).removeItem('user');
     return normalized; // Return for redirect logic
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('user');
+    sessionStorage.removeItem('user');
     const t = (key) => getTranslation(language, key);
     toast.success(t('logoutSuccess'));
   };
@@ -176,6 +190,7 @@ function App() {
   };
 
   const ProtectedRoute = ({ children, adminOnly = false }) => {
+    const location = useLocation();
     // Show loading while checking authentication
     if (loading) {
       return (
@@ -185,12 +200,12 @@ function App() {
       );
     }
 
-    // Check localStorage as fallback if user state is null
-    const savedUser = !user ? localStorage.getItem('user') : null;
-    const currentUser = user || (savedUser ? JSON.parse(savedUser) : null);
+    // Check storage as fallback if user state is null
+    const savedUser = !user ? getStoredUser() : null;
+    const currentUser = user || savedUser;
     
     if (!currentUser) {
-      return <Navigate to="/login" replace />;
+      return <Navigate to="/login" replace state={{ from: location }} />;
     }
     
     if (adminOnly && currentUser.role !== 'admin') {
