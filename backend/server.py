@@ -89,6 +89,12 @@ class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
+
+def _email_match(value: str) -> Dict[str, Any]:
+    """Build a case-insensitive exact match filter for emails."""
+    normalized = value.strip()
+    return {"$regex": f"^{re.escape(normalized)}$", "$options": "i"}
+
 # Product Models
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -626,7 +632,8 @@ class CryptoConfig(BaseModel):
 @api_router.post("/auth/register", response_model=User)
 async def register(user_data: UserCreate):
     # Check if user exists
-    existing = await db.users.find_one({"email": user_data.email})
+    email = user_data.email.strip()
+    existing = await db.users.find_one({"email": _email_match(email)})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -635,7 +642,7 @@ async def register(user_data: UserCreate):
     
     # Create user
     user = User(
-        email=user_data.email,
+        email=email,
         full_name=user_data.full_name,
         role="customer"
     )
@@ -650,9 +657,10 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login")
 async def login(credentials: LoginRequest):
-    user = await db.users.find_one({"email": credentials.email})
+    email = credentials.email.strip()
+    user = await db.users.find_one({"email": _email_match(email)})
     if not user:
-        logging.error(f"Login failed: user not found for {credentials.email}")
+        logging.error(f"Login failed: user not found for {email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     if user.get("is_blocked"):
@@ -671,10 +679,10 @@ async def login(credentials: LoginRequest):
         password_value = user['password']
     
     if not password_field or not password_value:
-        logging.error(f"Login failed: no password field found for {credentials.email}")
+        logging.error(f"Login failed: no password field found for {email}")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
-    logging.info(f"Login attempt for {credentials.email}, using field: {password_field}, hash preview: {password_value[:20]}...")
+    logging.info(f"Login attempt for {email}, using field: {password_field}, hash preview: {password_value[:20]}...")
     
     # Verify password - try multiple methods
     password_valid = False
@@ -683,7 +691,7 @@ async def login(credentials: LoginRequest):
         password_valid = pwd_context.verify(credentials.password, password_value)
         logging.info(f"Password verification (passlib): {password_valid}")
     except Exception as e:
-        logging.error(f"Password verification error (passlib) for {credentials.email}: {str(e)}")
+        logging.error(f"Password verification error (passlib) for {email}: {str(e)}")
         # Method 2: Try bcrypt directly as fallback
         try:
             import bcrypt
@@ -694,7 +702,7 @@ async def login(credentials: LoginRequest):
                 password_valid = bcrypt.checkpw(password_bytes, hash_bytes)
                 logging.info(f"Password verification (bcrypt direct): {password_valid}")
         except Exception as e2:
-            logging.error(f"Password verification error (bcrypt direct) for {credentials.email}: {str(e2)}")
+            logging.error(f"Password verification error (bcrypt direct) for {email}: {str(e2)}")
     
     if not password_valid:
         logging.error(f"All password verification methods failed for {credentials.email}")
@@ -1709,14 +1717,15 @@ async def get_referral_info(user_id: str):
 @api_router.post("/auth/register-with-referral")
 async def register_with_referral(user_data: UserCreate, referral_code: Optional[str] = None):
     """Register user with optional referral code"""
-    existing = await db.users.find_one({"email": user_data.email})
+    email = user_data.email.strip()
+    existing = await db.users.find_one({"email": _email_match(email)})
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
     
     hashed_password = pwd_context.hash(user_data.password)
     
     user = User(
-        email=user_data.email,
+        email=email,
         full_name=user_data.full_name,
         role="customer"
     )
@@ -2982,7 +2991,7 @@ async def create_admin_internal() -> Dict[str, Any]:
         default_password = "admin123"
 
         # 1. Check if the new email already exists
-        existing_new = await db.users.find_one({"email": new_email})
+        existing_new = await db.users.find_one({"email": _email_match(new_email)})
         if existing_new:
             return {"status": "skipped", "message": "Admin user with new email already exists", "user_id": str(existing_new.get("_id"))}
 
@@ -3241,7 +3250,7 @@ async def seed_database(request: SeedRequest):
         results["game_configs"] = await seed_games_internal()
 
         # Check final state
-        final_admin = await db.users.count_documents({"email": "Info.kayicom.com@gmx.fr"})
+        final_admin = await db.users.count_documents({"email": _email_match("Info.kayicom.com@gmx.fr")})
         final_products = await db.products.count_documents({})
         final_games = await db.games.count_documents({})
 
@@ -3318,7 +3327,7 @@ async def update_admin_email():
             }
         
         # Check if this admin already has the new email
-        if existing_admin.get("email") == new_email:
+        if (existing_admin.get("email") or "").lower() == new_email.lower():
             return {
                 "status": "success",
                 "message": f"Admin already has email: {new_email}",
@@ -3362,7 +3371,7 @@ async def check_admin():
         admin_email = "Info.kayicom.com@gmx.fr"
         
         # Find admin user
-        admin_user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        admin_user = await db.users.find_one({"email": _email_match(admin_email), "role": "admin"})
         
         if not admin_user:
             # Try to find any admin
@@ -3418,7 +3427,7 @@ async def test_password_verify():
         admin_email = "Info.kayicom.com@gmx.fr"
         test_password = "admin123"
         
-        user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        user = await db.users.find_one({"email": _email_match(admin_email), "role": "admin"})
         if not user:
             return {"status": "error", "message": "Admin not found"}
         
@@ -3475,7 +3484,7 @@ async def debug_password():
         admin_email = "Info.kayicom.com@gmx.fr"
         test_password = "admin123"
         
-        user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        user = await db.users.find_one({"email": _email_match(admin_email), "role": "admin"})
         
         if not user:
             return {"status": "error", "message": "Admin not found"}
@@ -3543,7 +3552,7 @@ async def direct_login_test():
         }
         
         # Call the actual login endpoint logic
-        user = await db.users.find_one({"email": login_data["email"]})
+        user = await db.users.find_one({"email": _email_match(login_data["email"])})
         
         if not user:
             return {
@@ -3599,7 +3608,7 @@ async def direct_login_test():
 async def test_login(email: str = "Info.kayicom.com@gmx.fr", password: str = "admin123"):
     """Test login directly to debug issues"""
     try:
-        user = await db.users.find_one({"email": email})
+        user = await db.users.find_one({"email": _email_match(email)})
         
         if not user:
             return {
@@ -3687,7 +3696,7 @@ async def reset_admin_password():
         new_password = "admin123"
         
         # Find admin user
-        admin_user = await db.users.find_one({"email": admin_email, "role": "admin"})
+        admin_user = await db.users.find_one({"email": _email_match(admin_email), "role": "admin"})
         
         if not admin_user:
             # Try to find any admin
