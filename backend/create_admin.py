@@ -4,6 +4,7 @@ Run this once after deploying to initialize admin account
 """
 import asyncio
 import os
+import re
 from motor.motor_asyncio import AsyncIOMotorClient
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -37,7 +38,8 @@ async def create_admin():
         default_password = "admin123"
         
         # Check if admin with new email already exists
-        existing_new = await db.users.find_one({"email": new_email})
+        email_match = {"$regex": f"^{re.escape(new_email)}$", "$options": "i"}
+        existing_new = await db.users.find_one({"email": email_match})
         
         if existing_new:
             print("✅ Admin user already exists with the correct email!")
