@@ -22,6 +22,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   const [paymentMethod, setPaymentMethod] = useState('paypal');
   const [receivingInfo, setReceivingInfo] = useState('');
   const [transactionId, setTransactionId] = useState('');
+  const [payerInfo, setPayerInfo] = useState('');
   const [paymentProofFile, setPaymentProofFile] = useState(null);
   const [buyStep, setBuyStep] = useState(1);
   const [uploadingProof, setUploadingProof] = useState(false);
@@ -191,6 +192,10 @@ const CryptoPage = ({ user, logout, settings }) => {
       toast.error('Please upload your payment proof');
       return;
     }
+    if (!payerInfo.trim() && !transactionId.trim()) {
+      toast.error('Please provide payer info or a payment reference');
+      return;
+    }
     setLoading(true);
 
     try {
@@ -205,6 +210,7 @@ const CryptoPage = ({ user, logout, settings }) => {
         amount_usd: parseFloat(amountUsd),
         wallet_address: walletAddress,
         payment_method: paymentMethod,
+        payer_info: payerInfo.trim(),
         transaction_id: transactionId || '',
         payment_proof: proofUrl
       });
@@ -217,6 +223,7 @@ const CryptoPage = ({ user, logout, settings }) => {
       setAmountUsd('');
       setWalletAddress('');
       setTransactionId('');
+      setPayerInfo('');
       setPaymentProofFile(null);
       setBuyStep(1);
       
@@ -534,6 +541,15 @@ const CryptoPage = ({ user, logout, settings }) => {
                         )}
                       </div>
 
+                      <div>
+                        <Label className="text-white">Payer Info (required)</Label>
+                        <Input
+                          placeholder="Enter payer email/username"
+                          value={payerInfo}
+                          onChange={(e) => setPayerInfo(e.target.value)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                        />
+                      </div>
                       <div>
                         <Label className="text-white">Payment Reference (optional)</Label>
                         <Input

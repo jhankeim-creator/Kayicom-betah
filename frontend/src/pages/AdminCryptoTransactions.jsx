@@ -113,6 +113,18 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                     <span>Payment Method:</span>
                     <span className="text-white">{tx.payment_method}</span>
                   </div>
+                  {tx.invoice_id && (
+                    <div className="flex justify-between text-white/70">
+                      <span>Invoice:</span>
+                      <span className="text-white">{tx.invoice_id}</span>
+                    </div>
+                  )}
+                  {tx.payer_info && (
+                    <div className="flex justify-between text-white/70">
+                      <span>Payer Info:</span>
+                      <span className="text-white text-sm break-all">{tx.payer_info}</span>
+                    </div>
+                  )}
                   {tx.wallet_address && (
                     <div className="flex justify-between text-white/70">
                       <span>Wallet:</span>
@@ -129,7 +141,7 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
 
                 {tx.transaction_id && (
                   <div className="bg-blue-500/10 p-3 rounded mb-3">
-                    <p className="text-blue-300 text-sm font-semibold">Transaction ID:</p>
+                    <p className="text-blue-300 text-sm font-semibold">Payment Reference:</p>
                     <p className="text-white text-xs break-all">{tx.transaction_id}</p>
                   </div>
                 )}
@@ -137,7 +149,21 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                 {tx.payment_proof && (
                   <div className="bg-green-500/10 p-3 rounded mb-3">
                     <p className="text-green-300 text-sm font-semibold">Payment Proof:</p>
-                    <p className="text-white text-xs break-all">{tx.payment_proof}</p>
+                    <a
+                      href={tx.payment_proof}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-white text-xs break-all underline"
+                    >
+                      View proof
+                    </a>
+                    <div className="mt-2">
+                      <img
+                        src={tx.payment_proof}
+                        alt="Payment proof"
+                        className="h-24 w-auto rounded border border-green-500/30"
+                      />
+                    </div>
                   </div>
                 )}
 
