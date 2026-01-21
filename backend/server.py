@@ -623,6 +623,11 @@ class CryptoSellRequest(BaseModel):
     transaction_id: Optional[str] = None
     payment_proof: Optional[str] = None
 
+
+class CryptoProofRequest(BaseModel):
+    transaction_id: Optional[str] = None
+    payment_proof: Optional[str] = None
+
 # Crypto Config Model
 class CryptoConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -2253,6 +2258,28 @@ async def get_user_crypto_transactions(user_id: str):
     ).sort("created_at", -1).to_list(100)
     
     return transactions
+
+
+@api_router.post("/crypto/transactions/{transaction_id}/proof")
+async def submit_crypto_payment_proof(transaction_id: str, payload: CryptoProofRequest):
+    """Attach payment proof/tx id for a pending crypto transaction."""
+    tx = await db.crypto_transactions.find_one({"id": transaction_id})
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.get("status") not in ["pending", "processing"]:
+        raise HTTPException(status_code=400, detail="Transaction is not pending")
+
+    updates = {}
+    if payload.transaction_id:
+        updates["transaction_id"] = payload.transaction_id
+    if payload.payment_proof:
+        updates["payment_proof"] = payload.payment_proof
+    if not updates:
+        raise HTTPException(status_code=400, detail="No proof data provided")
+
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.crypto_transactions.update_one({"id": transaction_id}, {"$set": updates})
+    return {"status": "ok", "message": "Payment proof submitted"}
 
 @api_router.get("/crypto/transactions/all")
 async def get_all_crypto_transactions():
