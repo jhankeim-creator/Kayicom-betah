@@ -156,7 +156,7 @@ The application is significantly more stable than at the start of the session. T
 1.  **User (Message 278):** Provided Plisio API key and asked for automatic address generation and UI adjustments for navbar/logo on web/mobile.
 2.  **User (Message 301):** Pointed out that new navbar buttons (Dashboard, Referral, etc.) were missing and that the Plisio integration wasn't working.
 3.  **User (Message 323):** Expressed anger that the agent claimed Plisio was working when it was failing on the live site.
-4.  **User (Message 343):** Clarified they only use the Emergent preview link (not localhost) and demanded all issues be fixed for production.
+4.  **User (Message 343):** Clarified they only use the Emergent preview link and demanded all issues be fixed for production.
 5.  **User (Message 357):** Asked to remove the MATIC network, pointed out a logical flaw in the crypto generation link, and asked to test Plisio on the main product checkout page.
 
 **Project Health Check:**

@@ -99,7 +99,7 @@ After frontend deploys and you have the frontend URL:
 1. Go back to **Backend service** → **Variables** tab
 
 2. **Update these variables:**
-   - `CORS_ORIGINS` → Change to: `https://your-frontend-url.up.railway.app,http://localhost:3000`
+   - `CORS_ORIGINS` → Change to: `https://your-frontend-url.up.railway.app`
    - `FRONTEND_URL` → Change to: `https://your-frontend-url.up.railway.app`
 
 3. Railway will automatically redeploy backend with new CORS settings

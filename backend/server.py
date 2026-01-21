@@ -359,7 +359,7 @@ class BulkEmailRequest(BaseModel):
 # ==================== EMAIL HELPERS ====================
 
 def _frontend_base_url() -> str:
-    return os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+    return os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
 
 
 def _reset_password_base_url() -> str:
@@ -1829,7 +1829,7 @@ async def get_referral_info(user_id: str):
         "referral_code": user.get('referral_code'),
         "referral_balance": user.get('referral_balance', 0.0),
         "total_referrals": referral_count,
-        "referral_link": f"{os.environ.get('FRONTEND_URL', 'http://localhost:3000')}/register?ref={user.get('referral_code')}"
+        "referral_link": f"{os.environ.get('FRONTEND_URL', 'https://kayicom.com')}/register?ref={user.get('referral_code')}"
     }
 
 @api_router.post("/auth/register-with-referral")

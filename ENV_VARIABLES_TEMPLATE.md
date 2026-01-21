@@ -11,7 +11,7 @@ Quick reference template for Railway environment variables.
 ```bash
 MONGO_URL=mongodb://mongo:YOUR_PASSWORD@containers-us-west-XXX.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://YOUR-FRONTEND-NAME.up.railway.app,http://localhost:3000
+CORS_ORIGINS=https://YOUR-FRONTEND-NAME.up.railway.app
 FRONTEND_URL=https://YOUR-FRONTEND-NAME.up.railway.app
 PORT=8000
 ```
@@ -21,7 +21,7 @@ PORT=8000
 ```bash
 MONGO_URL=mongodb://mongo:YOUR_PASSWORD@containers-us-west-XXX.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```
@@ -65,7 +65,7 @@ NODE_ENV=production
 ```
 MONGO_URL=mongodb://mongo:abc123xyz@containers-us-west-123.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom-app.up.railway.app,http://localhost:3000
+CORS_ORIGINS=https://kayicom-app.up.railway.app
 FRONTEND_URL=https://kayicom-app.up.railway.app
 PORT=8000
 ```
@@ -83,7 +83,7 @@ NODE_ENV=production
 ```
 MONGO_URL=mongodb://mongo:abc123xyz@containers-us-west-123.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```

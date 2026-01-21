@@ -95,7 +95,7 @@ Cloudflare automatically creates A records when you add a domain. But for Railwa
 3. **Wait 5-10 minutes**
 4. **Check Railway dashboard** - should show "Connected"
 5. **Update environment variables** in Railway:
-   - Backend: `CORS_ORIGINS=https://kayicom.com,http://localhost:3000`
+   - Backend: `CORS_ORIGINS=https://kayicom.com`
    - Frontend: `REACT_APP_BACKEND_URL=https://api.kayicom.com`
 6. **Test your live site!**
 

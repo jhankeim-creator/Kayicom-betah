@@ -33,11 +33,6 @@ function setupDevServer(config) {
     const isAllowedOrigin = (origin) => {
       if (!origin) return false;
 
-      // Allow localhost and 127.0.0.1 on any port
-      if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
-        return true;
-      }
-
       // Allow all emergent.sh subdomains
       if (origin.match(/^https:\/\/([a-zA-Z0-9-]+\.)*emergent\.sh$/)) {
         return true;
