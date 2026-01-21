@@ -9,6 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Package, Eye, Clock, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
+const formatSubscriptionDurationLabel = (months) => {
+  const value = Number(months);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value === 12) return '1 Year';
+  return `${value} ${value === 1 ? 'Month' : 'Months'}`;
+};
+
 const CustomerDashboard = ({ user, logout, settings }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -52,13 +59,21 @@ const CustomerDashboard = ({ user, logout, settings }) => {
       .filter(o => o.subscription_end_date)
       .map(o => {
         const end = new Date(o.subscription_end_date);
+        const start = o.subscription_start_date ? new Date(o.subscription_start_date) : null;
         const diffMs = end.getTime() - now;
         const diff = Math.max(0, diffMs);
         const days = Math.floor(diff / (24 * 3600 * 1000));
         const hours = Math.floor((diff % (24 * 3600 * 1000)) / (3600 * 1000));
         const mins = Math.floor((diff % (3600 * 1000)) / (60 * 1000));
         const secs = Math.floor((diff % (60 * 1000)) / 1000);
-        return { order: o, end, diffMs, remaining: { days, hours, mins, secs } };
+        const durationLabel = (() => {
+          if (!start || Number.isNaN(start.getTime())) return '';
+          const durationMs = end.getTime() - start.getTime();
+          if (durationMs <= 0) return '';
+          const months = Math.round(durationMs / (30 * 24 * 3600 * 1000));
+          return formatSubscriptionDurationLabel(months);
+        })();
+        return { order: o, end, diffMs, remaining: { days, hours, mins, secs }, durationLabel };
       });
   }, [orders, now]);
 
@@ -198,12 +213,15 @@ const CustomerDashboard = ({ user, logout, settings }) => {
                   My Subscriptions
                 </h2>
                 <div className="space-y-4">
-                  {subscriptionOrders.map(({ order, end, diffMs, remaining }) => (
+                  {subscriptionOrders.map(({ order, end, diffMs, remaining, durationLabel }) => (
                     <div key={order.id} className="p-4 rounded-lg bg-white/5 border border-white/10">
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                         <div>
                           <p className="text-white font-semibold">Order #{order.id.slice(0, 8)}</p>
                           <p className="text-white/60 text-sm">Ends: {end.toLocaleString()}</p>
+                          {durationLabel && (
+                            <p className="text-white/60 text-sm">Duration: {durationLabel}</p>
+                          )}
                         </div>
                         <div className="text-right">
                           {diffMs > 0 ? (

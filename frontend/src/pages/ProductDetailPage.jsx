@@ -9,6 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Package, ShoppingCart, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
+const formatSubscriptionDurationLabel = (months) => {
+  const value = Number(months);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value === 12) return '1 Year';
+  return `${value} ${value === 1 ? 'Month' : 'Months'}`;
+};
+
 const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
@@ -76,6 +83,21 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   }
 
   const selectedProduct = variants.find(v => v.id === selectedVariantId) || product;
+  const selectedDurationLabel = (() => {
+    if (selectedProduct?.subscription_duration_months) {
+      return formatSubscriptionDurationLabel(selectedProduct.subscription_duration_months);
+    }
+    if (selectedProduct?.category === 'subscription' && selectedProduct?.variant_name) {
+      return selectedProduct.variant_name;
+    }
+    return '';
+  })();
+  const getVariantLabel = (variant) => {
+    if (!variant) return '';
+    if (variant.variant_name) return variant.variant_name;
+    if (variant.subscription_duration_months) return formatSubscriptionDurationLabel(variant.subscription_duration_months);
+    return variant.name || '';
+  };
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -126,6 +148,11 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                   {selectedProduct.giftcard_category}
                 </span>
               )}
+              {selectedProduct.category === 'subscription' && selectedDurationLabel && (
+                <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
+                  Duration: {selectedDurationLabel}
+                </span>
+              )}
             </div>
 
             <div className="mb-8">
@@ -144,7 +171,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                   <SelectContent>
                     {variants.map(v => (
                       <SelectItem key={v.id} value={v.id}>
-                        {v.variant_name ? `${v.variant_name} - $${Number(v.price).toFixed(2)}` : `${v.name} - $${Number(v.price).toFixed(2)}`}
+                        {getVariantLabel(v) ? `${getVariantLabel(v)} - $${Number(v.price).toFixed(2)}` : `${v.name} - $${Number(v.price).toFixed(2)}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
