@@ -75,30 +75,37 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
         <h1 className="text-4xl font-bold text-white mb-8">Crypto Transactions</h1>
 
         <div className="grid gap-4">
-          {transactions.map((tx) => (
-            <Card key={tx.id} className="glass-effect border-white/20">
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start mb-4">
-                  <div>
-                    <p className="text-white font-bold text-lg">
-                      {tx.transaction_type === 'buy' ? '🟢 BUY' : '🔵 SELL'} - {tx.chain}
-                    </p>
-                    <p className="text-white/70">
-                      User: {tx.user_email || tx.user_id}
-                    </p>
-                    <p className="text-white/70 text-sm">
-                      {new Date(tx.created_at).toLocaleString()}
-                    </p>
+          {transactions.map((tx) => {
+            const proofUrl = tx.payment_proof || tx.payment_proof_url;
+            return (
+              <Card key={tx.id} className="glass-effect border-white/20">
+                <CardContent className="p-6">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <p className="text-white font-bold text-lg">
+                        {tx.transaction_type === 'buy' ? '🟢 BUY' : '🔵 SELL'} - {tx.chain}
+                      </p>
+                      <p className="text-white/70">
+                        User: {tx.user_email || tx.user_id}
+                      </p>
+                      <p className="text-white/70 text-sm">
+                        {new Date(tx.created_at).toLocaleString()}
+                      </p>
+                      {tx.transaction_id && (
+                        <p className="text-white/60 text-xs mt-1 break-all">
+                          Reference: {tx.transaction_id}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-sm ${
+                      tx.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                      tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                      tx.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                      'bg-gray-500/20 text-gray-400'
+                    }`}>
+                      {tx.status}
+                    </span>
                   </div>
-                  <span className={`px-3 py-1 rounded-full text-sm ${
-                    tx.status === 'completed' ? 'bg-green-500/20 text-green-400' :
-                    tx.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                    tx.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
-                    'bg-gray-500/20 text-gray-400'
-                  }`}>
-                    {tx.status}
-                  </span>
-                </div>
 
                 <div className="bg-white/5 p-4 rounded-lg mb-4 space-y-2">
                   <div className="flex justify-between text-white/70">
@@ -146,24 +153,26 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                   </div>
                 )}
 
-                {tx.payment_proof && (
+                {proofUrl && (
                   <div className="bg-green-500/10 p-3 rounded mb-3">
                     <p className="text-green-300 text-sm font-semibold">Payment Proof:</p>
                     <a
-                      href={tx.payment_proof}
+                      href={proofUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-white text-xs break-all underline"
                     >
                       View proof
                     </a>
-                    <div className="mt-2">
-                      <img
-                        src={tx.payment_proof}
-                        alt="Payment proof"
-                        className="h-24 w-auto rounded border border-green-500/30"
-                      />
-                    </div>
+                    {proofUrl.startsWith('data:image') && (
+                      <div className="mt-2">
+                        <img
+                          src={proofUrl}
+                          alt="Payment proof"
+                          className="h-24 w-auto rounded border border-green-500/30"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -240,9 +249,10 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                     )}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
 
           {transactions.length === 0 && (
             <Card className="glass-effect border-white/20">
