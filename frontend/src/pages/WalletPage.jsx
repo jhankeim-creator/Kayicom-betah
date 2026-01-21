@@ -270,7 +270,7 @@ const WalletPage = ({ user, logout, settings }) => {
                           className="inline-block mt-3 w-full"
                         >
                           <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white">
-                            Open Crypto Invoice
+                            Continue to Pay
                           </Button>
                         </a>
                       )}

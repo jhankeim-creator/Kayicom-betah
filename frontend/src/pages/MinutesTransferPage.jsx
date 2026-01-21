@@ -405,7 +405,7 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
               {selectedTransfer?.plisio_invoice_url && (
                 <a href={selectedTransfer.plisio_invoice_url} target="_blank" rel="noopener noreferrer" className="block">
                   <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white">
-                    Open Crypto Invoice
+                    Continue to Pay
                   </Button>
                 </a>
               )}

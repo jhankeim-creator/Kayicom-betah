@@ -68,7 +68,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     return (
       <div className="min-h-screen gradient-bg">
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
-        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Ap chaje...</div>
+        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Loading...</div>
       </div>
     );
   }
@@ -77,7 +77,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     return (
       <div className="min-h-screen gradient-bg">
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
-        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Pwodwi pa jwenn</div>
+        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Product not found</div>
       </div>
     );
   }

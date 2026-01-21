@@ -89,13 +89,13 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
       <div className="container mx-auto px-4 py-12">
-        <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-12" data-testid="checkout-title">Peman</h1>
+        <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-12" data-testid="checkout-title">Checkout</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
           {/* Payment Method */}
           <Card className="glass-effect border-white/20" data-testid="payment-methods">
             <CardContent className="p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">Chwazi Metòd Peman</h2>
+              <h2 className="text-2xl font-bold text-white mb-6">Choose Payment Method</h2>
               
               <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
                 <div className="space-y-3">

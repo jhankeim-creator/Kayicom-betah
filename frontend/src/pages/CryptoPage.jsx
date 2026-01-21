@@ -429,7 +429,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                       className="inline-block w-full mt-4"
                     >
                       <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold">
-                        Open Payment Invoice
+                        Continue to Pay
                       </Button>
                     </a>
                   )}
