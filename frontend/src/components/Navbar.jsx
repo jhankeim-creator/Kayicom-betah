@@ -15,7 +15,7 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
   const { t } = useContext(LanguageContext);
 
   return (
-    <nav className="sticky top-0 z-50 shadow-lg border-b border-purple-500/20" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
+    <nav className="sticky top-0 z-50 nav-surface">
       {settings?.announcement_enabled && settings?.announcement_message && (
         <div className="w-full bg-black/30 border-b border-white/10">
           <div className="w-full max-w-[1400px] mx-auto px-3 py-2 text-center text-white/90 text-sm">
@@ -36,24 +36,24 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
 
           {/* Desktop Menu */}
           <div className="hidden lg:flex items-center space-x-4 xl:space-x-6 text-sm xl:text-base">
-            <Link to="/" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-home">
+            <Link to="/" className="nav-link" data-testid="nav-home">
               Home
             </Link>
-            <Link to="/crypto" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-crypto">
+            <Link to="/crypto" className="nav-link" data-testid="nav-crypto">
               Crypto
             </Link>
             {user && (
               <>
-                <Link to="/dashboard" className="text-white font-medium hover:text-pink-400 transition">
+                <Link to="/dashboard" className="nav-link">
                   Dashboard
                 </Link>
-                <Link to="/mobile-topup" className="text-white font-medium hover:text-pink-400 transition">
+                <Link to="/mobile-topup" className="nav-link">
                   Topup Mobile
                 </Link>
-                <Link to="/referral" className="text-white font-medium hover:text-pink-400 transition">
+                <Link to="/referral" className="nav-link">
                   Referral
                 </Link>
-                <Link to="/withdraw" className="text-white font-medium hover:text-pink-400 transition">
+                <Link to="/withdraw" className="nav-link">
                   Withdraw
                 </Link>
               </>
@@ -63,11 +63,9 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
           {/* Mobile Menu - Hamburger for logged in users */}
           <div className="flex lg:hidden items-center gap-1">
             {!user && (
-              <>
-                <Link to="/crypto" className="text-white hover:text-pink-400 p-1.5">
-                  <span className="text-xs font-semibold">Crypto</span>
-                </Link>
-              </>
+              <Link to="/crypto" className="nav-link p-1.5 text-xs font-semibold">
+                Crypto
+              </Link>
             )}
           </div>
 
