@@ -33,6 +33,7 @@ const AdminOrders = ({ user, logout, settings }) => {
   const [deliveryDialog, setDeliveryDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [deliveryInfo, setDeliveryInfo] = useState('');
+  const [deliveryItems, setDeliveryItems] = useState([]);
   const [refundDialog, setRefundDialog] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
@@ -90,9 +91,27 @@ const AdminOrders = ({ user, logout, settings }) => {
     }
   };
 
+  const buildDeliveryItems = (order) => {
+    const existingItems = order?.delivery_info?.items || [];
+    return (order?.items || []).map((item, index) => {
+      const existing = existingItems.find((entry) => (
+        (entry.product_id && entry.product_id === item.product_id) ||
+        (entry.product_name && entry.product_name === item.product_name)
+      ));
+      return {
+        key: `${item.product_id || item.product_name || index}-${index}`,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        details: existing?.details || ''
+      };
+    });
+  };
+
   const handleDeliverOrder = (order) => {
     setSelectedOrder(order);
-    setDeliveryInfo('');
+    setDeliveryInfo(order?.delivery_info?.details || '');
+    setDeliveryItems(buildDeliveryItems(order));
     setDeliveryDialog(true);
   };
 
@@ -101,6 +120,12 @@ const AdminOrders = ({ user, logout, settings }) => {
     setRefundAmount(String(order.total_amount || ''));
     setRefundReason('Order refund');
     setRefundDialog(true);
+  };
+
+  const updateDeliveryItem = (index, value) => {
+    setDeliveryItems((prev) => prev.map((item, i) => (
+      i === index ? { ...item, details: value } : item
+    )));
   };
 
   const submitRefund = async () => {
@@ -125,7 +150,17 @@ const AdminOrders = ({ user, logout, settings }) => {
   };
 
   const submitDelivery = async () => {
-    if (!deliveryInfo.trim()) {
+    const trimmedDetails = deliveryInfo.trim();
+    const itemPayload = (deliveryItems || [])
+      .map((item) => ({
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        details: (item.details || '').trim()
+      }))
+      .filter((item) => item.details);
+
+    if (!trimmedDetails && itemPayload.length === 0) {
       toast.error('Please enter delivery information');
       return;
     }
@@ -133,7 +168,8 @@ const AdminOrders = ({ user, logout, settings }) => {
     try {
       // Update order with delivery info and mark as completed
       await axiosInstance.put(`/orders/${selectedOrder.id}/delivery`, {
-        delivery_details: deliveryInfo
+        delivery_details: trimmedDetails,
+        items: itemPayload
       });
       
       toast.success('Order delivered successfully! Customer will receive the information.');
@@ -307,9 +343,24 @@ const AdminOrders = ({ user, logout, settings }) => {
                             <p className="text-white/70 text-xs">
                               {new Date(order.delivery_info.delivered_at).toLocaleString('en-US')}
                             </p>
-                            <div className="mt-2 p-2 bg-white/5 rounded">
-                              <p className="text-white/80 text-xs whitespace-pre-wrap">{order.delivery_info.details}</p>
-                            </div>
+                            {order.delivery_info.details && (
+                              <div className="mt-2 p-2 bg-white/5 rounded">
+                                <p className="text-white/80 text-xs whitespace-pre-wrap">{order.delivery_info.details}</p>
+                              </div>
+                            )}
+                            {Array.isArray(order.delivery_info.items) && order.delivery_info.items.length > 0 && (
+                              <div className="mt-3 space-y-2">
+                                <p className="text-white/80 text-xs font-semibold">Item Credentials:</p>
+                                {order.delivery_info.items.map((item, index) => (
+                                  <div key={`${item.product_id || item.product_name}-${index}`} className="p-2 bg-white/5 rounded">
+                                    <p className="text-white/80 text-xs font-semibold">
+                                      {item.product_name || item.product_id || 'Item'}
+                                    </p>
+                                    <p className="text-white/70 text-xs whitespace-pre-wrap">{item.details}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
 
@@ -346,7 +397,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                           </>
                         )}
 
-                        {order.order_status === 'processing' && order.payment_status === 'paid' && (
+                        {(order.payment_status === 'paid' || order.order_status === 'completed' || order.order_status === 'processing') && (
                           <>
                             <Button
                               className="w-full gradient-button text-white"
@@ -354,16 +405,18 @@ const AdminOrders = ({ user, logout, settings }) => {
                               data-testid={`deliver-order-${order.id}`}
                             >
                               <Send size={16} className="mr-2" />
-                              Deliver Order
+                              {order.delivery_info ? 'Update Delivery' : 'Deliver Order'}
                             </Button>
-                            <Button
-                              className="w-full bg-blue-500 hover:bg-blue-600 text-white"
-                              onClick={() => handleCompleteOrder(order.id)}
-                              data-testid={`complete-order-${order.id}`}
-                            >
-                              <CheckCircle size={16} className="mr-2" />
-                              Mark Complete
-                            </Button>
+                            {order.order_status === 'processing' && (
+                              <Button
+                                className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                                onClick={() => handleCompleteOrder(order.id)}
+                                data-testid={`complete-order-${order.id}`}
+                              >
+                                <CheckCircle size={16} className="mr-2" />
+                                Mark Complete
+                              </Button>
+                            )}
                           </>
                         )}
 
@@ -398,14 +451,41 @@ const AdminOrders = ({ user, logout, settings }) => {
             <DialogTitle className="text-white">Deliver Order #{selectedOrder?.id?.slice(0, 8)}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {deliveryItems.length > 0 && (
+              <div>
+                <Label className="text-white">Item Credentials</Label>
+                <div className="mt-2 space-y-3">
+                  {deliveryItems.map((item, index) => (
+                    <div key={item.key} className="p-3 bg-white/5 border border-white/10 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-white text-sm font-semibold">
+                          {item.product_name || item.product_id || 'Item'}
+                        </p>
+                        {item.quantity && (
+                          <span className="text-xs text-white/60">Qty: {item.quantity}</span>
+                        )}
+                      </div>
+                      <Textarea
+                        value={item.details}
+                        onChange={(e) => updateDeliveryItem(index, e.target.value)}
+                        className="bg-white/10 border-white/20 text-white placeholder:text-gray-500"
+                        placeholder="Enter credentials, codes, or delivery details for this item..."
+                        rows={3}
+                        data-testid={`delivery-item-${index}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
-              <Label className="text-white">Delivery Information</Label>
+              <Label className="text-white">Delivery Notes (Optional)</Label>
               <Textarea
                 value={deliveryInfo}
                 onChange={(e) => setDeliveryInfo(e.target.value)}
                 className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 mt-2"
-                placeholder="Enter codes, credentials, or delivery instructions..."
-                rows={6}
+                placeholder="General delivery instructions for the customer..."
+                rows={4}
                 data-testid="delivery-info-input"
               />
             </div>

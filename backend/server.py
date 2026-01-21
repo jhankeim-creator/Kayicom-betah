@@ -1376,23 +1376,59 @@ async def update_order_status(order_id: str, payment_status: Optional[str] = Non
     
     return {"message": "Order updated successfully"}
 
-# Delivery Management Model
+# Delivery Management Models
+class DeliveryItem(BaseModel):
+    product_id: Optional[str] = None
+    product_name: Optional[str] = None
+    quantity: Optional[int] = None
+    details: str
+
+
 class DeliveryInfo(BaseModel):
-    delivery_details: str  # Credentials, codes, or instructions
+    delivery_details: Optional[str] = None  # Credentials, codes, or instructions
+    items: Optional[List[DeliveryItem]] = None
 
 @api_router.put("/orders/{order_id}/delivery")
 async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
     """Update order with delivery information and mark as completed"""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    existing_info = order.get("delivery_info") or {}
+    details = delivery_info.delivery_details
+    if details is None:
+        details = existing_info.get("details", "")
+    items = delivery_info.items
+    if items is None:
+        items = existing_info.get("items", [])
+
+    normalized_items = []
+    for item in items or []:
+        if isinstance(item, DeliveryItem):
+            data = item.model_dump()
+        elif isinstance(item, dict):
+            data = item
+        else:
+            continue
+        if data.get("details") and str(data.get("details")).strip():
+            normalized_items.append(data)
+
+    if not (details and str(details).strip()) and not normalized_items:
+        raise HTTPException(status_code=400, detail="Delivery details required")
+
     updates = {
-        "delivery_info": {"details": delivery_info.delivery_details, "delivered_at": datetime.now(timezone.utc).isoformat()},
+        "delivery_info": {
+            "details": details or "",
+            "items": normalized_items,
+            "delivered_at": datetime.now(timezone.utc).isoformat()
+        },
         "order_status": "completed",
         "payment_status": "paid",
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    result = await db.orders.update_one({"id": order_id}, {"$set": updates})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
+    await db.orders.update_one({"id": order_id}, {"$set": updates})
 
     # Set subscription dates if this order is a subscription
     order = await _set_subscription_dates_if_needed(order_id)
@@ -1418,12 +1454,29 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
                 elif isinstance(end, datetime):
                     end_str = _format_dt(end)
             extra = f"<p><b>Subscription ends:</b> {end_str}</p>" if end_str else ""
+            items_html = ""
+            item_list = updates["delivery_info"].get("items") or []
+            if item_list:
+                list_rows = "".join(
+                    f"<li><b>{i.get('product_name') or i.get('product_id') or 'Item'}:</b> "
+                    f"<pre style='background:#111827;color:#D1D5DB;padding:8px;border-radius:6px;white-space:pre-wrap;margin:6px 0'>{i.get('details')}</pre></li>"
+                    for i in item_list
+                )
+                items_html = f"<p><b>Item delivery details:</b></p><ul>{list_rows}</ul>"
+
+            details_block = ""
+            if updates["delivery_info"].get("details"):
+                details_block = (
+                    "<p><b>Delivery notes:</b></p>"
+                    f"<pre style='background:#111827;color:#D1D5DB;padding:12px;border-radius:8px;white-space:pre-wrap'>{updates['delivery_info']['details']}</pre>"
+                )
+
             html = (
                 f"<div style='font-family:Arial,sans-serif'>"
                 f"<h2>Your order has been delivered</h2>"
                 f"<p><b>Order:</b> {order_id}</p>"
-                f"<p><b>Delivery details:</b></p>"
-                f"<pre style='background:#111827;color:#D1D5DB;padding:12px;border-radius:8px;white-space:pre-wrap'>{delivery_info.delivery_details}</pre>"
+                f"{items_html}"
+                f"{details_block}"
                 f"{extra}"
                 f"</div>"
             )
@@ -2136,33 +2189,13 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     total_usd = amount_usd - fee
     
     transaction_id = str(uuid.uuid4())
-    
-    # Create Plisio invoice for receiving USDT from customer
-    plisio_invoice = None
-    
-    if settings and settings.get('plisio_api_key'):
-        try:
-            plisio_helper = PlisioHelper(settings['plisio_api_key'])
-            
-            # Plisio uses just 'USDT' and handles chain automatically
-            plisio_currency = 'USDT'
-            
-            plisio_result = await plisio_helper.create_invoice(
-                amount=request.amount_crypto,
-                currency=plisio_currency,
-                order_name=f"Sell USDT Order",
-                order_number=transaction_id,
-                email=user_email
-            )
-            
-            if plisio_result.get('success'):
-                plisio_invoice = plisio_result
-            else:
-                print(f"Plisio invoice creation failed: {plisio_result.get('error')}")
-        except Exception as e:
-            print(f"Plisio integration error: {str(e)}")
-            # Continue without Plisio integration
-    
+
+    # Internal-only flow: always use admin wallets (no external invoices)
+    admin_wallets = (crypto_settings.get("wallets") or {})
+    wallet_address = admin_wallets.get(request.chain) or config.get(f"wallet_{request.chain.lower()}")
+    if not wallet_address:
+        raise HTTPException(status_code=400, detail=f"Admin wallet not configured for {request.chain}")
+
     # Create transaction
     transaction = {
         "id": transaction_id,
@@ -2181,7 +2214,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "receiving_info": request.receiving_info,
         "transaction_id": request.transaction_id,
         "payment_proof": request.payment_proof,
-        "plisio_invoice_id": plisio_invoice.get('txn_id') if plisio_invoice else None,
+        "wallet_address": wallet_address,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -2193,24 +2226,12 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "message": "Crypto sell order created. Send USDT to the address below",
         "transaction_id": transaction['id'],
         "total_usd_to_receive": total_usd,
-        "amount_crypto": request.amount_crypto
+        "amount_crypto": request.amount_crypto,
+        "payment_method": request.payment_method,
+        "wallet_address": wallet_address,
+        "instructions": (crypto_settings.get("sell_instructions") or "").strip()
     }
-    
-    # Add Plisio details if available
-    if plisio_invoice:
-        response['plisio'] = {
-            "wallet_address": plisio_invoice.get("wallet_address"),
-            "invoice_url": plisio_invoice.get("invoice_url"),
-            "qr_code": plisio_invoice.get("qr_code"),
-            "amount_crypto": plisio_invoice.get("amount_crypto"),
-            "message": "Send USDT to this unique address. Payment will be automatically detected."
-        }
-    else:
-        # Fallback to admin wallet if Plisio not available
-        admin_wallets = crypto_settings.get("wallets") or {}
-        response['wallet_address'] = admin_wallets.get(request.chain) or config.get(f"wallet_{request.chain.lower()}")
-        response['message'] = "Send USDT to admin wallet. You'll need to provide transaction ID."
-    
+
     return response
 
 @api_router.get("/crypto/transactions/user/{user_id}")
