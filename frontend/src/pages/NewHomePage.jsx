@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp } from 'lucide-react';
+import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
 const NewHomePage = ({ user, logout, cart, settings }) => {
@@ -17,10 +17,34 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
     loadFeaturedProducts();
   }, []);
 
+  const groupProducts = (items) => {
+    const groups = new Map();
+    for (const p of items) {
+      const groupId = p.parent_product_id || p.id;
+      const group = groups.get(groupId) || { groupId, variants: [] };
+      group.variants.push(p);
+      groups.set(groupId, group);
+    }
+    return Array.from(groups.values()).map((g) => {
+      const sorted = [...g.variants].sort((a, b) => (a.price || 0) - (b.price || 0));
+      const rep = sorted[0];
+      const minPrice = sorted[0]?.price ?? rep.price;
+      const maxPrice = sorted[sorted.length - 1]?.price ?? rep.price;
+      return {
+        ...rep,
+        _variant_count: g.variants.length,
+        _min_price: minPrice,
+        _max_price: maxPrice,
+        _group_id: g.groupId,
+      };
+    });
+  };
+
   const loadFeaturedProducts = async () => {
     try {
       const response = await axiosInstance.get('/products');
-      setFeaturedProducts(response.data.slice(0, 8));
+      const grouped = groupProducts(response.data || []);
+      setFeaturedProducts(grouped.slice(0, 8));
     } catch (error) {
       console.error('Error loading products:', error);
       toast.error('Error loading products');
@@ -29,36 +53,63 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
     }
   };
 
-  const categories = [
-    { 
+  const categoryMeta = {
+    giftcard: { 
       name: t('giftCards'), 
       icon: Gift, 
       path: '/products/giftcard', 
       gradient: 'from-pink-500 to-rose-500',
       bgImage: 'https://images.unsplash.com/photo-1549465220-1a8b9238cd48?w=400'
     },
-    { 
+    topup: { 
       name: t('gameTopup'), 
       icon: Gamepad2, 
       path: '/products/topup', 
       gradient: 'from-cyan-500 to-blue-500',
       bgImage: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=400'
     },
-    { 
+    subscription: { 
       name: t('subscriptions'), 
       icon: Tv, 
       path: '/products/subscription', 
       gradient: 'from-purple-500 to-indigo-500',
       bgImage: 'https://images.unsplash.com/photo-1522869635100-9f4c5e86aa37?w=400'
     },
-    { 
+    service: { 
       name: t('services'), 
       icon: Wrench, 
       path: '/products/service', 
       gradient: 'from-green-500 to-emerald-500',
       bgImage: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=400'
     },
-  ];
+    crypto: {
+      name: t('crypto'),
+      icon: TrendingUp,
+      path: '/crypto',
+      gradient: 'from-amber-500 to-orange-500',
+      bgImage: 'https://images.unsplash.com/photo-1518544889280-59fefb46e1a8?w=400'
+    }
+  };
+
+  const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
+  const categories = (() => {
+    const raw = (settings?.product_categories || ['giftcard', 'topup', 'subscription', 'service'])
+      .map(normalizeCategory)
+      .filter(Boolean);
+    const unique = Array.from(new Set(raw.length ? raw : ['giftcard', 'topup', 'subscription', 'service']));
+    return unique.map((key) => {
+      const meta = categoryMeta[key];
+      if (meta) return meta;
+      const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+      return {
+        name: label,
+        icon: Package,
+        path: `/products/${key}`,
+        gradient: 'from-slate-500 to-slate-700',
+        bgImage: 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?w=400'
+      };
+    });
+  })();
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -205,7 +256,11 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
                   <CardContent className="p-4 bg-gray-900/50">
                     <h3 className="text-sm md:text-base font-bold text-white mb-2 line-clamp-2">{product.name}</h3>
                     <div className="flex items-center justify-between">
-                      <span className="text-xl font-bold gradient-text">${product.price}</span>
+                      <span className="text-xl font-bold gradient-text">
+                        {product._variant_count > 1
+                          ? `From $${Number(product._min_price).toFixed(2)}`
+                          : `$${Number(product.price).toFixed(2)}`}
+                      </span>
                       <Button size="sm" className="gradient-button text-white text-xs" data-testid={`buy-btn-${product.id}`}>
                         Buy Now
                       </Button>

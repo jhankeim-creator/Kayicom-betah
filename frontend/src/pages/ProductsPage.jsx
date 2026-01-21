@@ -13,8 +13,13 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   const { category } = useParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState(category || '');
+  const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
+  const [selectedCategory, setSelectedCategory] = useState(normalizeCategory(category));
   const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    setSelectedCategory(normalizeCategory(category));
+  }, [category]);
 
   useEffect(() => {
     loadProducts();
@@ -37,13 +42,27 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
     }
   };
 
-  const categories = [
-    { value: '', label: 'All' },
-    { value: 'giftcard', label: 'Gift Cards' },
-    { value: 'topup', label: 'Game Top-Up' },
-    { value: 'subscription', label: 'Subscriptions' },
-    { value: 'service', label: 'Services' },
-  ];
+  const categoryLabels = {
+    giftcard: 'Gift Cards',
+    topup: 'Game Top-Up',
+    subscription: 'Subscriptions',
+    service: 'Services',
+    crypto: 'Crypto',
+  };
+
+  const categories = (() => {
+    const fromSettings = (settings?.product_categories || []).map(normalizeCategory);
+    const fromProducts = products.map((p) => normalizeCategory(p.category));
+    const unique = Array.from(new Set([...fromSettings, ...fromProducts].filter(Boolean)));
+    if (selectedCategory && !unique.includes(selectedCategory)) {
+      unique.push(selectedCategory);
+    }
+    const formatted = unique.map((value) => ({
+      value,
+      label: categoryLabels[value] || value.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+    }));
+    return [{ value: '', label: 'All' }, ...formatted];
+  })();
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
@@ -103,14 +122,17 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
       );
   })();
 
+  const selectedCategoryLabel = categories.find((cat) => cat.value === selectedCategory)?.label || 'All';
+
   return (
     <div className="min-h-screen gradient-bg">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
       <div className="container mx-auto px-4 py-12">
-        <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-8" data-testid="products-title">
-          All Products
+        <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-3" data-testid="products-title">
+          {selectedCategory ? `${selectedCategoryLabel} Products` : 'All Products'}
         </h1>
+        <p className="text-center text-white/70 mb-8">Find the best digital deals instantly.</p>
 
         {/* Search */}
         <div className="max-w-xl mx-auto mb-6">

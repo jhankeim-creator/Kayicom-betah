@@ -52,6 +52,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
       sell_rate_usdt: 0.98,
       transaction_fee_percent: 2.0,
       min_transaction_usd: 10.0,
+      sell_instructions: '',
       wallets: { BEP20: '', TRC20: '', MATIC: '' }
     },
     minutes_transfer_enabled: false,
@@ -114,6 +115,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
             sell_rate_usdt: 0.98,
             transaction_fee_percent: 2.0,
             min_transaction_usd: 10.0,
+            sell_instructions: '',
             wallets: { BEP20: '', TRC20: '', MATIC: '' }
           },
           minutes_transfer_enabled: currentSettings.minutes_transfer_enabled || false,
@@ -1044,6 +1046,16 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               className="bg-white/10 border-white/20 text-white mt-1"
                               value={formData.crypto_settings?.min_transaction_usd ?? 10.0}
                               onChange={(e) => handleCryptoSettingsChange('min_transaction_usd', parseFloat(e.target.value))}
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <Label className="text-white/70 text-sm">Sell USDT Instructions</Label>
+                            <Textarea
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                              placeholder="Add instructions customers should see when selling USDT."
+                              rows={3}
+                              value={formData.crypto_settings?.sell_instructions || ''}
+                              onChange={(e) => handleCryptoSettingsChange('sell_instructions', e.target.value)}
                             />
                           </div>
                         </div>

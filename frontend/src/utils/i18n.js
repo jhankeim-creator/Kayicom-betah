@@ -29,6 +29,7 @@ export const translations = {
     gameTopup: 'Game Top-Up',
     subscriptions: 'Subscriptions',
     services: 'Services',
+    crypto: 'Crypto',
     
     // What We Offer
     whatWeOffer: 'What We Offer',
@@ -191,6 +192,7 @@ export const translations = {
     gameTopup: 'Recharge de Jeux',
     subscriptions: 'Abonnements',
     services: 'Services',
+    crypto: 'Crypto',
     
     // What We Offer
     whatWeOffer: 'Ce Que Nous Offrons',
