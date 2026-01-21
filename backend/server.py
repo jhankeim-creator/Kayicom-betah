@@ -2274,29 +2274,52 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     transaction_id = str(uuid.uuid4())
     invoice_id = f"INV-{transaction_id[:8].upper()}"
 
-    if not settings or not settings.get('plisio_api_key'):
-        raise HTTPException(status_code=400, detail="Plisio not configured for automatic processing")
+    # Determine fallback wallet from settings/config
+    wallets = (crypto_settings.get("wallets") or {}) if isinstance(crypto_settings, dict) else {}
+    manual_wallet = wallets.get(chain)
+    if not manual_wallet:
+        fallback_key = f"wallet_{chain.lower()}"
+        manual_wallet = config.get(fallback_key)
 
-    callback_url = _plisio_callback_url()
-    if not callback_url:
-        raise HTTPException(status_code=400, detail="BACKEND_URL not configured for Plisio callback")
+    processing_mode = "manual"
+    wallet_address = None
+    invoice_url = None
+    qr_code = None
+    plisio_invoice_id = None
+    processing_warning = None
 
-    plisio_helper = PlisioHelper(settings['plisio_api_key'])
-    plisio_result = await plisio_helper.create_invoice(
-        amount=request.amount_crypto,
-        currency="USDT",
-        order_name="Sell USDT Order",
-        order_number=transaction_id,
-        callback_url=callback_url,
-        email=user_email,
-        source_currency="USDT",
-        source_amount=request.amount_crypto
-    )
+    if settings and settings.get('plisio_api_key'):
+        callback_url = _plisio_callback_url()
+        if not callback_url:
+            processing_warning = "Automatic processing unavailable: BACKEND_URL not configured"
+        else:
+            plisio_helper = PlisioHelper(settings['plisio_api_key'])
+            plisio_result = await plisio_helper.create_invoice(
+                amount=request.amount_crypto,
+                currency="USDT",
+                order_name="Sell USDT Order",
+                order_number=transaction_id,
+                callback_url=callback_url,
+                email=user_email,
+                source_currency="USDT",
+                source_amount=request.amount_crypto
+            )
 
-    if not plisio_result.get("success"):
-        raise HTTPException(status_code=502, detail=f"Plisio invoice failed: {plisio_result.get('error')}")
+            if plisio_result.get("success"):
+                processing_mode = "automatic"
+                wallet_address = plisio_result.get("wallet_address")
+                invoice_url = plisio_result.get("invoice_url")
+                qr_code = plisio_result.get("qr_code")
+                plisio_invoice_id = plisio_result.get("invoice_id")
+            else:
+                processing_warning = f"Automatic processing unavailable: {plisio_result.get('error')}"
+    else:
+        processing_warning = "Automatic processing unavailable: Plisio not configured"
 
-    wallet_address = plisio_result.get("wallet_address")
+    if not wallet_address:
+        wallet_address = manual_wallet
+        if not wallet_address:
+            raise HTTPException(status_code=400, detail="No admin wallet configured for this network")
 
     # Create transaction
     transaction = {
@@ -2318,9 +2341,11 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "transaction_id": request.transaction_id,
         "payment_proof": request.payment_proof,
         "wallet_address": wallet_address,
-        "plisio_invoice_id": plisio_result.get("invoice_id"),
-        "plisio_invoice_url": plisio_result.get("invoice_url"),
-        "qr_code": plisio_result.get("qr_code"),
+        "processing_mode": processing_mode,
+        "processing_note": processing_warning,
+        "plisio_invoice_id": plisio_invoice_id,
+        "plisio_invoice_url": invoice_url,
+        "qr_code": qr_code,
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -2328,8 +2353,12 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     
     await db.crypto_transactions.insert_one(transaction)
     
+    message = "Crypto sell order created. Send USDT to the unique address below. Payment will be auto-detected."
+    if processing_mode != "automatic":
+        message = "Crypto sell order created. Send USDT to the wallet below and submit proof for manual review."
+
     response = {
-        "message": "Crypto sell order created. Send USDT to the unique address below. Payment will be auto-detected.",
+        "message": message,
         "transaction_id": transaction['id'],
         "invoice_id": invoice_id,
         "total_usd_to_receive": total_usd,
@@ -2337,8 +2366,10 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "payment_method": request.payment_method,
         "wallet_address": wallet_address,
         "instructions": (crypto_settings.get("sell_instructions") or "").strip(),
-        "invoice_url": plisio_result.get("invoice_url"),
-        "qr_code": plisio_result.get("qr_code")
+        "invoice_url": invoice_url,
+        "qr_code": qr_code,
+        "processing_mode": processing_mode,
+        "warning": processing_warning
     }
 
     return response
