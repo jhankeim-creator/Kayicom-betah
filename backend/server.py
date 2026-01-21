@@ -630,6 +630,7 @@ class CryptoBuyRequest(BaseModel):
     amount_usd: float
     payment_method: str
     wallet_address: str
+    payer_info: Optional[str] = None
     transaction_id: Optional[str] = None
     payment_proof: Optional[str] = None
 
@@ -2158,6 +2159,8 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     
     if not request.payment_proof:
         raise HTTPException(status_code=400, detail="Payment proof is required")
+    if not (request.transaction_id and str(request.transaction_id).strip()) and not (request.payer_info and str(request.payer_info).strip()):
+        raise HTTPException(status_code=400, detail="Payment reference or payer info is required")
 
     # Get rate
     rate_key = f"buy_rate_{chain.lower()}"
@@ -2206,6 +2209,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
         "payment_method": request.payment_method,
         "payment_info": payment_info,
         "wallet_address": request.wallet_address,
+        "payer_info": request.payer_info,
         "transaction_id": request.transaction_id,
         "payment_proof": request.payment_proof,
         "status": "pending",
