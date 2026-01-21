@@ -9,6 +9,8 @@ from starlette.responses import Response
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import hashlib
+import secrets
 import math
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
@@ -88,6 +90,15 @@ async def _generate_unique_customer_id() -> str:
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=20)
+    new_password: str = Field(min_length=6)
 
 
 def _email_match(value: str) -> Dict[str, Any]:
@@ -349,6 +360,21 @@ class BulkEmailRequest(BaseModel):
 
 def _frontend_base_url() -> str:
     return os.environ.get("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+
+def _reset_password_base_url() -> str:
+    env_url = os.environ.get("RESET_PASSWORD_BASE_URL")
+    if env_url:
+        return env_url.rstrip("/")
+    return f"{_frontend_base_url()}/reset-password"
+
+
+def _build_reset_link(token: str) -> str:
+    return f"{_reset_password_base_url()}?token={token}"
+
+
+def _hash_reset_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 def _format_dt(dt: datetime) -> str:
     try:
@@ -739,6 +765,98 @@ async def login(credentials: LoginRequest):
         "role": user['role'],
         "is_blocked": bool(user.get("is_blocked", False))
     }
+
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(payload: ForgotPasswordRequest):
+    """Send password reset link if email exists."""
+    email = payload.email.strip().lower()
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    # Allow environment fallback for Resend if settings not set
+    if not settings.get("resend_api_key") and os.environ.get("RESEND_API_KEY"):
+        settings = {
+            **settings,
+            "resend_api_key": os.environ.get("RESEND_API_KEY"),
+            "resend_from_email": settings.get("resend_from_email") or os.environ.get("RESEND_FROM_EMAIL"),
+        }
+    if not settings.get("resend_api_key"):
+        raise HTTPException(status_code=500, detail="Email service not configured")
+
+    user = await db.users.find_one({"email": _email_match(email)})
+    # Always return success to avoid user enumeration
+    if not user:
+        return {"status": "ok", "message": "If the email exists, a reset link has been sent."}
+
+    now = datetime.now(timezone.utc)
+    # Invalidate any previous tokens for this user
+    await db.password_resets.update_many(
+        {"user_id": user["id"], "used_at": None},
+        {"$set": {"used_at": now}}
+    )
+
+    token = secrets.token_urlsafe(32)
+    token_hash = _hash_reset_token(token)
+    expires_at = now + timedelta(hours=1)
+    await db.password_resets.insert_one({
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "email": user.get("email"),
+        "token_hash": token_hash,
+        "created_at": now,
+        "expires_at": expires_at,
+        "used_at": None,
+    })
+
+    reset_link = _build_reset_link(token)
+    subject = "Reset your KayiCom password"
+    html = (
+        "<p>You requested to reset your KayiCom password.</p>"
+        f"<p><a href=\"{reset_link}\">Reset your password</a></p>"
+        "<p>This link expires in 60 minutes. If you did not request this, you can ignore this email.</p>"
+    )
+    try:
+        _send_resend_email(settings, user.get("email"), subject, html)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Forgot password email send failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send reset email")
+
+    return {"status": "ok", "message": "If the email exists, a reset link has been sent."}
+
+
+@api_router.post("/auth/reset-password")
+async def reset_password(payload: ResetPasswordRequest):
+    """Reset password using a valid token."""
+    token = payload.token.strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+    now = datetime.now(timezone.utc)
+    token_hash = _hash_reset_token(token)
+    reset_record = await db.password_resets.find_one({
+        "token_hash": token_hash,
+        "used_at": None,
+        "expires_at": {"$gt": now},
+    })
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+
+    user = await db.users.find_one({"id": reset_record["user_id"]})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    hashed_password = pwd_context.hash(payload.new_password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"password": hashed_password, "password_hash": hashed_password}}
+    )
+    await db.password_resets.update_one(
+        {"_id": reset_record["_id"]},
+        {"$set": {"used_at": now}}
+    )
+
+    return {"status": "ok", "message": "Password reset successful"}
 
 # ==================== PRODUCT ENDPOINTS ====================
 

@@ -28,6 +28,8 @@ import AdminMinutesTransfers from './pages/AdminMinutesTransfers';
 import AdminCustomers from './pages/AdminCustomers';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
 import ReferralPage from './pages/ReferralPage';
 import WithdrawPage from './pages/WithdrawPage';
 import CryptoPage from './pages/CryptoPage';
@@ -230,6 +232,8 @@ function App() {
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />
           <Route path="/login" element={<LoginPage login={login} settings={settings} />} />
           <Route path="/register" element={<RegisterPage login={login} settings={settings} />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage settings={settings} />} />
+          <Route path="/reset-password" element={<ResetPasswordPage settings={settings} />} />
           
           <Route
             path="/dashboard"

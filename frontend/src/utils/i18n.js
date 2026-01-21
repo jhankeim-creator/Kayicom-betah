@@ -64,6 +64,16 @@ export const translations = {
     rememberMe: 'Remember me',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    forgotPassword: 'Forgot password?',
+    resetPassword: 'Reset password',
+    sendResetLink: 'Send reset link',
+    backToLogin: 'Back to login',
+    newPassword: 'New password',
+    confirmNewPassword: 'Confirm new password',
+    passwordsDoNotMatch: 'Passwords do not match',
+    resetLinkSent: 'If the email exists, a reset link has been sent.',
+    resetSuccess: 'Password reset successful. Please log in.',
+    tokenMissing: 'Reset token is missing or invalid.',
     
     // Cart & Checkout
     yourCart: 'Your Cart',
@@ -216,6 +226,16 @@ export const translations = {
     rememberMe: 'Se souvenir de moi',
     showPassword: 'Afficher le mot de passe',
     hidePassword: 'Masquer le mot de passe',
+    forgotPassword: 'Mot de passe oublié?',
+    resetPassword: 'Réinitialiser le mot de passe',
+    sendResetLink: 'Envoyer le lien de réinitialisation',
+    backToLogin: 'Retour à la connexion',
+    newPassword: 'Nouveau mot de passe',
+    confirmNewPassword: 'Confirmer le nouveau mot de passe',
+    passwordsDoNotMatch: 'Les mots de passe ne correspondent pas',
+    resetLinkSent: 'Si l\'email existe, un lien de réinitialisation a été envoyé.',
+    resetSuccess: 'Mot de passe réinitialisé. Veuillez vous connecter.',
+    tokenMissing: 'Jeton de réinitialisation manquant ou invalide.',
     
     // Cart & Checkout
     yourCart: 'Votre Panier',
