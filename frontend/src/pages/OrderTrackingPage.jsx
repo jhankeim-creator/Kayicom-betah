@@ -140,6 +140,11 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
   }
 
   const subscriptionEnd = order.subscription_end_date ? new Date(order.subscription_end_date) : null;
+  const deliveryDetails = (order.delivery_info?.details || '').trim();
+  const deliveryItems = Array.isArray(order.delivery_info?.items)
+    ? order.delivery_info.items.filter((item) => item?.details && String(item.details).trim())
+    : [];
+  const hasDeliveryInfo = order.delivery_info && (deliveryDetails || deliveryItems.length > 0);
   const subscriptionRemaining = (() => {
     if (!subscriptionEnd) return null;
     const diffMs = subscriptionEnd.getTime() - now;
@@ -195,7 +200,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
           </Card>
 
           {/* Delivery Information - Shows when order is completed */}
-          {order.delivery_info && order.delivery_info.details && (
+          {hasDeliveryInfo && (
             <Card className="glass-effect border-green-500/30 border-2" data-testid="delivery-info">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3 mb-4">
@@ -205,12 +210,32 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                 <p className="text-white/70 text-sm mb-4">
                   Delivered on: {new Date(order.delivery_info.delivered_at).toLocaleString('en-US')}
                 </p>
-                <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <Label className="text-white font-semibold mb-2 block">Your Delivery Details:</Label>
-                  <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm">
-                    {order.delivery_info.details}
-                  </pre>
-                </div>
+                {deliveryDetails && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <Label className="text-white font-semibold mb-2 block">Delivery Notes:</Label>
+                    <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm">
+                      {deliveryDetails}
+                    </pre>
+                  </div>
+                )}
+                {deliveryItems.length > 0 && (
+                  <div className="mt-4 space-y-3">
+                    <Label className="text-white font-semibold block">Item Delivery Details:</Label>
+                    {deliveryItems.map((item, index) => (
+                      <div
+                        key={`${item.product_id || item.product_name || 'item'}-${index}`}
+                        className="bg-white/5 border border-white/10 rounded-lg p-4"
+                      >
+                        <p className="text-white/80 text-sm font-semibold mb-2">
+                          {item.product_name || item.product_id || `Item ${index + 1}`}
+                        </p>
+                        <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm">
+                          {item.details}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <p className="text-white/60 text-xs mt-3">
                   💡 Please save this information. Contact support if you have any issues.
                 </p>
@@ -281,7 +306,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                       className="block"
                     >
                       <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-4 text-lg">
-                        🔗 Open Payment Invoice
+                        🔗 Continue to Pay
                       </Button>
                     </a>
                   </div>
