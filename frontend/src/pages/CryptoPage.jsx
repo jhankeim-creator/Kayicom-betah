@@ -168,14 +168,23 @@ const CryptoPage = ({ user, logout, settings }) => {
     return { usd, fee, total: usd - fee };
   };
 
+  const minBuyUsd = config?.min_transaction_usd || config?.min_buy_usd || 10;
+  const maxBuyUsd = config?.max_buy_usd || 10000;
+  const minSellUsdt = config?.min_sell_usdt || 10;
+  const maxSellUsdt = config?.max_sell_usdt || 10000;
+
   const handleBuyContinue = () => {
     if (!user) {
       toast.error('Please login to buy crypto');
       return;
     }
 
-    if (!amountUsd || parseFloat(amountUsd) < (config?.min_transaction_usd || 10)) {
-      toast.error(`Minimum buy is $${config?.min_transaction_usd || 10}`);
+    if (!amountUsd || parseFloat(amountUsd) < minBuyUsd) {
+      toast.error(`Minimum buy is $${minBuyUsd}`);
+      return;
+    }
+    if (parseFloat(amountUsd) > maxBuyUsd) {
+      toast.error(`Maximum buy is $${maxBuyUsd}`);
       return;
     }
 
@@ -247,6 +256,14 @@ const CryptoPage = ({ user, logout, settings }) => {
       toast.error('Please enter valid crypto amount');
       return;
     }
+    if (parseFloat(amountCrypto) < minSellUsdt) {
+      toast.error(`Minimum sell is ${minSellUsdt} USDT`);
+      return;
+    }
+    if (parseFloat(amountCrypto) > maxSellUsdt) {
+      toast.error(`Maximum sell is ${maxSellUsdt} USDT`);
+      return;
+    }
 
     if (!receivingInfo) {
       toast.error('Please enter your receiving payment info (PayPal email, etc)');
@@ -269,7 +286,12 @@ const CryptoPage = ({ user, logout, settings }) => {
       // Clear form fields
       setAmountCrypto('');
       setReceivingInfo('');
-      toast.success('Sell order created! Send USDT to the wallet below.');
+      const mode = response.data?.processing_mode;
+      if (mode === 'automatic') {
+        toast.success('✅ Unique address generated! Send USDT to the wallet above.');
+      } else {
+        toast.success('Sell order created! Send USDT to the wallet above and submit proof.');
+      }
       setTimeout(() => {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }, 100);
@@ -361,7 +383,7 @@ const CryptoPage = ({ user, logout, settings }) => {
           )}
 
           {/* SELL USDT - Internal wallet */}
-          {sellPaymentInfo?.wallet_address && (
+                  {sellPaymentInfo?.wallet_address && (
             <Card className="glass-effect border-emerald-500/40 mb-8">
               <CardContent className="p-6">
                 <div className="text-center">
@@ -411,11 +433,24 @@ const CryptoPage = ({ user, logout, settings }) => {
                       </Button>
                     </a>
                   )}
-                  <div className="mt-4 text-left bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-lg">
-                    <p className="text-emerald-200 text-sm">
-                      ✅ <strong>Automatic processing:</strong> Your deposit will be confirmed automatically after it is received on-chain.
-                    </p>
-                  </div>
+                  {sellPaymentInfo.warning && (
+                    <div className="mt-4 text-left bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg">
+                      <p className="text-amber-200 text-sm">{sellPaymentInfo.warning}</p>
+                    </div>
+                  )}
+                  {sellPaymentInfo.processing_mode === 'automatic' ? (
+                    <div className="mt-4 text-left bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-lg">
+                      <p className="text-emerald-200 text-sm">
+                        ✅ <strong>Automatic processing:</strong> Your deposit will be confirmed automatically after it is received on-chain.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 text-left bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg">
+                      <p className="text-blue-200 text-sm">
+                        📝 <strong>Manual review:</strong> After sending USDT, please submit your payment proof from your transaction history.
+                      </p>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -455,7 +490,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                         <Label className="text-white">Amount (USD)</Label>
                         <Input
                           type="number"
-                          placeholder={`Min $${config?.min_transaction_usd || 10}`}
+                          placeholder={`Min $${minBuyUsd}`}
                           value={amountUsd}
                           onChange={(e) => setAmountUsd(e.target.value)}
                           className="bg-white/10 border-white/20 text-white mt-1"
@@ -614,7 +649,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                     <Label className="text-white">Amount (USDT)</Label>
                     <Input
                       type="number"
-                      placeholder="Enter USDT amount you're sending"
+                      placeholder={`Min ${minSellUsdt} USDT`}
                       value={amountCrypto}
                       onChange={(e) => setAmountCrypto(e.target.value)}
                       className="bg-white/10 border-white/20 text-white mt-1"
@@ -683,8 +718,10 @@ const CryptoPage = ({ user, logout, settings }) => {
               <CardContent className="p-6">
                 <h2 className="text-2xl font-bold text-white mb-4">Your Transactions</h2>
                 <div className="space-y-3">
-                  {transactions.map((tx) => (
-                    <div key={tx.id} className="bg-white/5 p-4 rounded-lg">
+                  {transactions.map((tx) => {
+                    const requiresProof = tx.transaction_type === 'buy' || tx.processing_mode === 'manual' || !tx.processing_mode;
+                    return (
+                      <div key={tx.id} className="bg-white/5 p-4 rounded-lg">
                       <div className="flex justify-between items-start">
                         <div>
                           <p className="text-white font-semibold">
@@ -708,7 +745,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                           {tx.status}
                         </span>
                       </div>
-                      {tx.status === 'pending' && (
+                      {tx.status === 'pending' && requiresProof && (
                         <div className="mt-3">
                           <Button
                             variant="outline"
@@ -720,7 +757,8 @@ const CryptoPage = ({ user, logout, settings }) => {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </CardContent>
             </Card>
