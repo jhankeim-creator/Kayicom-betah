@@ -2102,6 +2102,9 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     if request.amount_usd < min_usd or request.amount_usd > max_usd:
         raise HTTPException(status_code=400, detail=f"Amount must be between ${min_usd} and ${max_usd}")
     
+    if not request.payment_proof:
+        raise HTTPException(status_code=400, detail="Payment proof is required")
+
     # Get rate
     rate_key = f"buy_rate_{request.chain.lower()}"
     exchange_rate = _safe_float(

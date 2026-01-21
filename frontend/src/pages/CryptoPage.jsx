@@ -23,6 +23,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   const [receivingInfo, setReceivingInfo] = useState('');
   const [transactionId, setTransactionId] = useState('');
   const [paymentProofFile, setPaymentProofFile] = useState(null);
+  const [buyStep, setBuyStep] = useState(1);
   const [uploadingProof, setUploadingProof] = useState(false);
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
@@ -166,7 +167,7 @@ const CryptoPage = ({ user, logout, settings }) => {
     return { usd, fee, total: usd - fee };
   };
 
-  const handleBuy = async () => {
+  const handleBuyContinue = () => {
     if (!user) {
       toast.error('Please login to buy crypto');
       return;
@@ -182,26 +183,42 @@ const CryptoPage = ({ user, logout, settings }) => {
       return;
     }
 
+    setBuyStep(2);
+  };
+
+  const handleBuySubmit = async () => {
+    if (!paymentProofFile) {
+      toast.error('Please upload your payment proof');
+      return;
+    }
     setLoading(true);
 
     try {
+      const proofUrl = await handleFileUpload(paymentProofFile);
+      if (!proofUrl) {
+        toast.error('Failed to upload payment proof');
+        setLoading(false);
+        return;
+      }
       const response = await axiosInstance.post(`/crypto/buy?user_id=${user.user_id || user.id}&user_email=${user.email}`, {
         chain,
         amount_usd: parseFloat(amountUsd),
         wallet_address: walletAddress,
         payment_method: paymentMethod,
         transaction_id: transactionId || '',
-        payment_proof: ''
+        payment_proof: proofUrl
       });
       
       setBuyPaymentInfo(response.data);
-      // For BUY, show success with payment instructions
-      toast.success('✅ Order created! Use the payment instructions shown above.');
+      // For BUY, show success summary
+      toast.success('✅ Order submitted! We will verify your payment.');
       
       // Clear form
       setAmountUsd('');
       setWalletAddress('');
       setTransactionId('');
+      setPaymentProofFile(null);
+      setBuyStep(1);
       
       loadTransactions();
     } catch (error) {
@@ -261,6 +278,11 @@ const CryptoPage = ({ user, logout, settings }) => {
   const buyCalculation = amountUsd ? calculateBuy(amountUsd) : null;
   const sellCalculation = amountCrypto ? calculateSell(amountCrypto) : null;
 
+  const selectedGateway = settings?.payment_gateways?.[paymentMethod];
+  const buyPaymentDetails = selectedGateway?.enabled
+    ? selectedGateway
+    : null;
+
   const getAdminWallet = () => {
     if (!config?.crypto_settings?.wallets) return null;
     return config.crypto_settings.wallets[chain];
@@ -318,17 +340,6 @@ const CryptoPage = ({ user, logout, settings }) => {
                     </div>
                   )}
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                    <Button
-                      variant="outline"
-                      className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
-                      onClick={() => openProofDialog({
-                        id: buyPaymentInfo.transaction_id,
-                        invoice_id: buyPaymentInfo.invoice_id,
-                        transaction_id: ''
-                      })}
-                    >
-                      Submit Payment Proof
-                    </Button>
                     <Button
                       variant="outline"
                       className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
@@ -414,83 +425,154 @@ const CryptoPage = ({ user, logout, settings }) => {
                 </TabsList>
 
                 <TabsContent value="buy" className="space-y-4">
-                  <div>
-                    <Label className="text-white">Select Chain</Label>
-                    <Select value={chain} onValueChange={setChain}>
-                      <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="BEP20">BEP20 (Binance Smart Chain)</SelectItem>
-                        <SelectItem value="TRC20">TRC20 (Tron)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label className="text-white">Amount (USD)</Label>
-                    <Input
-                      type="number"
-                      placeholder={`Min $${config?.min_transaction_usd || 10}`}
-                      value={amountUsd}
-                      onChange={(e) => setAmountUsd(e.target.value)}
-                      className="bg-white/10 border-white/20 text-white mt-1"
-                    />
-                  </div>
-
-                  {buyCalculation && (
-                    <div className="bg-white/5 p-4 rounded-lg space-y-2">
-                      <div className="flex justify-between text-white/70">
-                        <span>You will receive:</span>
-                        <span className="text-white font-bold">{buyCalculation.crypto.toFixed(2)} USDT</span>
+                  {buyStep === 1 ? (
+                    <>
+                      <div>
+                        <Label className="text-white">Select Chain</Label>
+                        <Select value={chain} onValueChange={setChain}>
+                          <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="BEP20">BEP20 (Binance Smart Chain)</SelectItem>
+                            <SelectItem value="TRC20">TRC20 (Tron)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <div className="flex justify-between text-white/70">
-                        <span>Fee ({config?.transaction_fee_percent || 2}%):</span>
-                        <span>${buyCalculation.fee.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">
-                        <span>Total to Pay:</span>
-                        <span>${buyCalculation.total.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  )}
 
-                  <div>
-                    <Label className="text-white">Your {chain} Wallet Address (to receive USDT)</Label>
-                    <Input
-                      placeholder="Enter your wallet address to receive USDT"
-                      value={walletAddress}
-                      onChange={(e) => setWalletAddress(e.target.value)}
-                      className="bg-white/10 border-white/20 text-white mt-1"
-                    />
-                    <p className="text-white/50 text-xs mt-1">⚠️ Make sure this is YOUR {chain} wallet address</p>
-                  </div>
+                      <div>
+                        <Label className="text-white">Amount (USD)</Label>
+                        <Input
+                          type="number"
+                          placeholder={`Min $${config?.min_transaction_usd || 10}`}
+                          value={amountUsd}
+                          onChange={(e) => setAmountUsd(e.target.value)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                        />
+                      </div>
 
-                  <div>
-                    <Label className="text-white">Payment Method</Label>
-                    <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="mt-2 space-y-2">
-                      {paymentMethods.map((method) => (
-                        <div key={method.value} className="flex items-center space-x-2 bg-white/5 p-3 rounded-lg">
-                          <RadioGroupItem value={method.value} id={`buy-${method.value}`} />
-                          <label htmlFor={`buy-${method.value}`} className="text-white cursor-pointer flex-1">
-                            {method.emoji} {method.label}
-                          </label>
+                      {buyCalculation && (
+                        <div className="bg-white/5 p-4 rounded-lg space-y-2">
+                          <div className="flex justify-between text-white/70">
+                            <span>You will receive:</span>
+                            <span className="text-white font-bold">{buyCalculation.crypto.toFixed(2)} USDT</span>
+                          </div>
+                          <div className="flex justify-between text-white/70">
+                            <span>Fee ({config?.transaction_fee_percent || 2}%):</span>
+                            <span>${buyCalculation.fee.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">
+                            <span>Total to Pay:</span>
+                            <span>${buyCalculation.total.toFixed(2)}</span>
+                          </div>
                         </div>
-                      ))}
-                    </RadioGroup>
-                  </div>
+                      )}
 
-                  <Button
-                    onClick={handleBuy}
-                    disabled={loading}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    {loading ? 'Processing...' : 'Continue to Payment'}
-                  </Button>
+                      <div>
+                        <Label className="text-white">Your {chain} Wallet Address (to receive USDT)</Label>
+                        <Input
+                          placeholder="Enter your wallet address to receive USDT"
+                          value={walletAddress}
+                          onChange={(e) => setWalletAddress(e.target.value)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                        />
+                        <p className="text-white/50 text-xs mt-1">⚠️ Make sure this is YOUR {chain} wallet address</p>
+                      </div>
 
-                  <p className="text-white/60 text-sm text-center">
-                    ℹ️ You'll receive payment instructions after clicking Continue
-                  </p>
+                      <div>
+                        <Label className="text-white">Payment Method</Label>
+                        <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="mt-2 space-y-2">
+                          {paymentMethods.map((method) => (
+                            <div key={method.value} className="flex items-center space-x-2 bg-white/5 p-3 rounded-lg">
+                              <RadioGroupItem value={method.value} id={`buy-${method.value}`} />
+                              <label htmlFor={`buy-${method.value}`} className="text-white cursor-pointer flex-1">
+                                {method.emoji} {method.label}
+                              </label>
+                            </div>
+                          ))}
+                        </RadioGroup>
+                      </div>
+
+                      <Button
+                        onClick={handleBuyContinue}
+                        disabled={loading}
+                        className="w-full bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Continue
+                      </Button>
+
+                      <p className="text-white/60 text-sm text-center">
+                        Step 1 of 2 — Continue to submit payment proof.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-white/5 p-4 rounded-lg space-y-2">
+                        <p className="text-white/80 text-sm">Payment Instructions</p>
+                        {buyPaymentDetails?.email ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <code className="text-cyan-200 text-sm break-all bg-black/30 px-3 py-2 rounded">
+                              {buyPaymentDetails.email}
+                            </code>
+                            <Button
+                              size="sm"
+                              className="bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30"
+                              onClick={() => copyToClipboard(buyPaymentDetails.email, 'Payment address')}
+                            >
+                              <Copy size={14} />
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-amber-200 text-sm">Payment method details are not configured.</p>
+                        )}
+                        {buyPaymentDetails?.instructions && (
+                          <p className="text-white/70 text-sm">{buyPaymentDetails.instructions}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Payment Reference (optional)</Label>
+                        <Input
+                          placeholder="Enter transaction ID or reference"
+                          value={transactionId}
+                          onChange={(e) => setTransactionId(e.target.value)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="text-white">Upload Payment Proof</Label>
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => setPaymentProofFile(e.target.files?.[0] || null)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                        />
+                        <p className="text-white/50 text-xs mt-1">Required before submitting your order.</p>
+                      </div>
+
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => setBuyStep(1)}
+                          variant="outline"
+                          className="border-white/20 text-white"
+                        >
+                          Back
+                        </Button>
+                        <Button
+                          onClick={handleBuySubmit}
+                          disabled={loading || uploadingProof}
+                          className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {loading || uploadingProof ? 'Submitting...' : 'Submit Order'}
+                        </Button>
+                      </div>
+
+                      <p className="text-white/60 text-sm text-center">
+                        Step 2 of 2 — Submit payment proof to create your order.
+                      </p>
+                    </>
+                  )}
                 </TabsContent>
 
                 <TabsContent value="sell" className="space-y-4">
