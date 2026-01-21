@@ -159,6 +159,30 @@ const AdminCrypto = () => {
                       <p className="text-white/70 text-sm">{tx.user_email}</p>
                       <p className="text-white/70 text-sm">{tx.chain} - ${tx.total_usd.toFixed(2)}</p>
                       <p className="text-white/60 text-xs">{new Date(tx.created_at).toLocaleString()}</p>
+                      {tx.transaction_id && (
+                        <p className="text-white/70 text-xs mt-2 break-all">
+                          Reference: {tx.transaction_id}
+                        </p>
+                      )}
+                      {tx.payment_proof && (
+                        <div className="mt-2">
+                          <a
+                            href={tx.payment_proof}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-cyan-300 text-xs underline"
+                          >
+                            View payment proof
+                          </a>
+                          {tx.payment_proof.startsWith('data:image') && (
+                            <img
+                              src={tx.payment_proof}
+                              alt="Payment proof"
+                              className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
+                            />
+                          )}
+                        </div>
+                      )}
                     </div>
                     
                     <div className="flex flex-col gap-2 items-end">
