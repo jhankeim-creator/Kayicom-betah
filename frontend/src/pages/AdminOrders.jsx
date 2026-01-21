@@ -26,6 +26,28 @@ import {
 import { Eye, CheckCircle, XCircle, Send, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
+const formatSubscriptionDurationLabel = (months) => {
+  const value = Number(months);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value === 12) return '1 Year';
+  return `${value} ${value === 1 ? 'Month' : 'Months'}`;
+};
+
+const getSubscriptionMeta = (order) => {
+  if (!order?.subscription_end_date) return null;
+  const end = new Date(order.subscription_end_date);
+  const start = order.subscription_start_date ? new Date(order.subscription_start_date) : null;
+  let durationLabel = '';
+  if (start && !Number.isNaN(start.getTime())) {
+    const durationMs = end.getTime() - start.getTime();
+    if (durationMs > 0) {
+      const months = Math.round(durationMs / (30 * 24 * 3600 * 1000));
+      durationLabel = formatSubscriptionDurationLabel(months);
+    }
+  }
+  return { start, end, durationLabel };
+};
+
 const AdminOrders = ({ user, logout, settings }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -244,10 +266,12 @@ const AdminOrders = ({ user, logout, settings }) => {
             <div className="text-center text-white text-xl py-12">Loading...</div>
           ) : filteredOrders.length > 0 ? (
             <div className="space-y-4" data-testid="orders-list">
-              {filteredOrders.map((order) => (
-                <Card key={order.id} className="glass-effect border-white/20" data-testid={`order-${order.id}`}>
-                  <CardContent className="p-6">
-                    <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+              {filteredOrders.map((order) => {
+                const subscriptionMeta = getSubscriptionMeta(order);
+                return (
+                  <Card key={order.id} className="glass-effect border-white/20" data-testid={`order-${order.id}`}>
+                    <CardContent className="p-6">
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-6">
                       {/* Order Info */}
                       <div className="flex-1">
                         <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -335,6 +359,25 @@ const AdminOrders = ({ user, logout, settings }) => {
                             </div>
                           ))}
                         </div>
+
+                        {subscriptionMeta && (
+                          <div className="mt-3 p-3 bg-cyan-500/10 border border-cyan-500/30 rounded">
+                            <p className="text-cyan-300 text-sm font-semibold mb-1">Subscription</p>
+                            <p className="text-white/70 text-xs">
+                              Ends: {subscriptionMeta.end.toLocaleString('en-US')}
+                            </p>
+                            {subscriptionMeta.start && (
+                              <p className="text-white/70 text-xs">
+                                Started: {subscriptionMeta.start.toLocaleString('en-US')}
+                              </p>
+                            )}
+                            {subscriptionMeta.durationLabel && (
+                              <p className="text-white/70 text-xs">
+                                Duration: {subscriptionMeta.durationLabel}
+                              </p>
+                            )}
+                          </div>
+                        )}
 
                         {/* Delivery Information */}
                         {order.delivery_info && (
@@ -433,7 +476,8 @@ const AdminOrders = ({ user, logout, settings }) => {
                     </div>
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="text-center text-white/70 py-12" data-testid="no-orders">

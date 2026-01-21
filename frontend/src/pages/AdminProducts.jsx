@@ -13,6 +13,21 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Package, Plus, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+
+const formatSubscriptionDurationLabel = (months) => {
+  const value = Number(months);
+  if (!Number.isFinite(value) || value <= 0) return '';
+  if (value === 12) return '1 Year';
+  return `${value} ${value === 1 ? 'Month' : 'Months'}`;
+};
+
+const normalizeSubscriptionDuration = (value) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
 const AdminProducts = ({ user, logout, settings }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -34,6 +49,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     region: '',
     giftcard_category: '',
     is_subscription: false,
+    subscription_duration_months: '',
     variant_name: '',
     parent_product_id: null,
     is_variant: false
@@ -76,6 +92,22 @@ const AdminProducts = ({ user, logout, settings }) => {
         updated.player_id_label = requirements.playerIdLabel || 'Player ID';
         updated.credential_fields = requirements.credentialFields || ['email', 'password'];
       }
+
+      if (field === 'category' && value !== 'subscription' && !prev.is_subscription) {
+        updated.subscription_duration_months = '';
+      }
+
+      if (field === 'is_subscription' && !value && updated.category !== 'subscription') {
+        updated.subscription_duration_months = '';
+      }
+
+      if (field === 'subscription_duration_months') {
+        const autoLabel = formatSubscriptionDurationLabel(value);
+        const previousAutoLabel = formatSubscriptionDurationLabel(prev.subscription_duration_months);
+        if (!prev.variant_name || prev.variant_name === previousAutoLabel) {
+          updated.variant_name = autoLabel;
+        }
+      }
       
       return updated;
     });
@@ -113,9 +145,12 @@ const AdminProducts = ({ user, logout, settings }) => {
     }
 
     try {
+      const durationMonths = normalizeSubscriptionDuration(formData.subscription_duration_months);
       const payload = {
         ...formData,
-        price: parseFloat(formData.price)
+        price: parseFloat(formData.price),
+        subscription_duration_months: durationMonths,
+        variant_name: formData.variant_name || (durationMonths ? formatSubscriptionDurationLabel(durationMonths) : '')
       };
 
       if (editingProduct) {
@@ -155,6 +190,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       region: product.region || '',
       giftcard_category: product.giftcard_category || '',
       is_subscription: product.is_subscription || false,
+      subscription_duration_months: product.subscription_duration_months ? String(product.subscription_duration_months) : '',
       variant_name: product.variant_name || '',
       parent_product_id: product.parent_product_id || null,
       is_variant: !!product.parent_product_id
@@ -191,6 +227,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       region: '',
       giftcard_category: '',
       is_subscription: false,
+      subscription_duration_months: '',
       variant_name: '',
       parent_product_id: null,
       is_variant: false
@@ -199,6 +236,8 @@ const AdminProducts = ({ user, logout, settings }) => {
     setShowVariantMode(false);
     setParentProduct(null);
   };
+
+  const showSubscriptionDuration = formData.category === 'subscription' || formData.is_subscription;
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -263,7 +302,9 @@ const AdminProducts = ({ user, logout, settings }) => {
                         category: parent?.category || 'topup',
                         image_url: parent?.image_url || '',
                         requires_player_id: parent?.requires_player_id || false,
-                        requires_credentials: parent?.requires_credentials || false
+                        requires_credentials: parent?.requires_credentials || false,
+                        is_subscription: parent?.is_subscription || false,
+                        subscription_duration_months: ''
                       }));
                     }}>
                       <SelectTrigger className="bg-white/10 border-white/20 text-white">
@@ -349,6 +390,28 @@ const AdminProducts = ({ user, logout, settings }) => {
                     placeholder="Optional"
                   />
                 </div>
+
+                {showSubscriptionDuration && (
+                  <div>
+                    <Label htmlFor="subscription_duration_months" className="text-white">Subscription Duration</Label>
+                    <Select
+                      value={formData.subscription_duration_months || ''}
+                      onValueChange={(value) => handleChange('subscription_duration_months', value)}
+                    >
+                      <SelectTrigger className="bg-white/10 border-white/20 text-white">
+                        <SelectValue placeholder="Select duration..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SUBSCRIPTION_DURATION_OPTIONS.map((months) => (
+                          <SelectItem key={months} value={String(months)}>
+                            {formatSubscriptionDurationLabel(months)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-white/60 text-xs mt-2">Supports 1-12 months (12 months = 1 year).</p>
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="region" className="text-white">Region (for Gift Cards)</Label>
@@ -599,6 +662,11 @@ const AdminProducts = ({ user, logout, settings }) => {
                         <p className="text-white/60">Category: <span className="text-white font-medium">{product.category}</span></p>
                         <p className="text-white/60">Price: <span className="text-white font-bold text-base">${Number(product.price).toFixed(2)}</span></p>
                         {product.variant_name && <p className="text-cyan-400 text-xs">Variant: {product.variant_name}</p>}
+                        {product.subscription_duration_months && (
+                          <p className="text-cyan-300 text-xs">
+                            Duration: {formatSubscriptionDurationLabel(product.subscription_duration_months)}
+                          </p>
+                        )}
                         {product.region && <p className="text-pink-400 text-xs">Region: {product.region}</p>}
                         <div className="flex flex-wrap gap-2 mt-2">
                           {product.requires_player_id && <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">✓ Player ID</span>}

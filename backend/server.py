@@ -118,7 +118,7 @@ class Product(BaseModel):
     image_url: Optional[str] = None
     stock_available: bool = True
     delivery_type: str = "automatic"  # automatic or manual
-    subscription_duration_months: Optional[int] = None  # For subscriptions: 2, 6, 12, 24 months
+    subscription_duration_months: Optional[int] = None  # For subscriptions: 1-12 months
     subscription_auto_check: bool = False  # Auto-check if subscription is still valid
     variant_name: Optional[str] = None  # For variants like "100 Diamonds", "500 UC", etc
     parent_product_id: Optional[str] = None  # Link to parent product for variants
@@ -439,6 +439,12 @@ def _send_resend_email(settings: dict, to_email: str, subject: str, html: str):
 
 # ==================== SUBSCRIPTION HELPERS ====================
 
+def _is_subscription_product(product: Optional[dict]) -> bool:
+    """Treat subscription category or flag as subscription."""
+    if not product:
+        return False
+    return bool(product.get("is_subscription") or product.get("category") == "subscription")
+
 def _parse_subscription_duration(product: dict) -> timedelta:
     """
     Return subscription duration as timedelta.
@@ -493,7 +499,7 @@ async def _set_subscription_dates_if_needed(order_id: str) -> Optional[Dict[str,
 
     for item in order.get("items", []):
         product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
-        if product and product.get("is_subscription"):
+        if _is_subscription_product(product):
             duration = _parse_subscription_duration(product)
             end = start + duration
             if (max_end is None) or (end > max_end):
@@ -3350,8 +3356,10 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                 "is_subscription": True,
                 "variants": [
                     {"duration": "1 Month", "price": 9.99},
+                    {"duration": "2 Months", "price": 16.99},
                     {"duration": "3 Months", "price": 24.99},
                     {"duration": "6 Months", "price": 44.99},
+                    {"duration": "12 Months", "price": 79.99},
                 ]
             },
         ]
@@ -3388,10 +3396,10 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                     if "duration" in variant:
                         duration_map = {
                             "1 Month": 1,
+                            "2 Months": 2,
                             "3 Months": 3,
                             "6 Months": 6,
                             "12 Months": 12,
-                            "24 Months": 24
                         }
                         variant_product["subscription_duration_months"] = duration_map.get(variant["duration"])
 

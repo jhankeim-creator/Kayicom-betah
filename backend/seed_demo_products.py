@@ -11,6 +11,15 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+DURATION_MONTHS_MAP = {
+    "1 Month": 1,
+    "2 Months": 2,
+    "3 Months": 3,
+    "6 Months": 6,
+    "12 Months": 12,
+    "1 Year": 12,
+}
+
 DEMO_PRODUCTS = [
     # GIFT CARDS
     {
@@ -113,10 +122,12 @@ async def seed_demo():
                 # Gift card
                 variant_name = f"{variant['region']} - {variant['value']}"
                 region = variant['region']
+                duration_months = None
             else:
                 # Subscription
                 variant_name = variant['duration']
                 region = None
+                duration_months = DURATION_MONTHS_MAP.get(variant_name)
             
             product = {
                 "id": str(uuid.uuid4()),
@@ -128,7 +139,7 @@ async def seed_demo():
                 "image_url": product_group["image_url"],
                 "stock_available": True,
                 "delivery_type": product_group["delivery_type"],
-                "subscription_duration_months": None,
+                "subscription_duration_months": duration_months,
                 "subscription_auto_check": False,
                 "variant_name": variant_name,
                 "parent_product_id": parent_id,
