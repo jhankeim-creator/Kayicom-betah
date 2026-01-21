@@ -25,6 +25,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState([]);
+  const [buyPaymentInfo, setBuyPaymentInfo] = useState(null);
   const [sellPaymentInfo, setSellPaymentInfo] = useState(null);
 
   useEffect(() => {
@@ -151,8 +152,9 @@ const CryptoPage = ({ user, logout, settings }) => {
         payment_proof: ''
       });
       
+      setBuyPaymentInfo(response.data);
       // For BUY, show success with payment instructions
-      toast.success('✅ Order created! Check your email for payment instructions or view in Your Transactions below.');
+      toast.success('✅ Order created! Use the payment instructions shown above.');
       
       // Clear form
       setAmountUsd('');
@@ -235,12 +237,58 @@ const CryptoPage = ({ user, logout, settings }) => {
             Trade USDT on BEP20, TRC20, and MATIC networks. No KYC required.
           </p>
 
+          {/* BUY USDT - Internal invoice */}
+          {buyPaymentInfo?.transaction_id && (
+            <Card className="glass-effect border-cyan-500/40 mb-8">
+              <CardContent className="p-6">
+                <div className="text-center">
+                  <h2 className="text-2xl font-bold text-cyan-400 mb-4">✅ Buy Invoice Created</h2>
+                  <p className="text-white/80 mb-2 text-sm">Invoice ID: {buyPaymentInfo.invoice_id || buyPaymentInfo.transaction_id}</p>
+                  <p className="text-white/90 mb-4 text-lg">
+                    Pay <span className="text-cyan-300 font-bold">${Number(buyPaymentInfo.total_usd || 0).toFixed(2)}</span> to receive{' '}
+                    <span className="text-cyan-300 font-bold">{Number(buyPaymentInfo.amount_crypto || 0).toFixed(2)} USDT</span>
+                  </p>
+                  {buyPaymentInfo.payment_info?.email && (
+                    <div className="bg-cyan-500/10 border border-cyan-500/30 p-6 rounded-lg mb-4">
+                      <p className="text-white/70 text-sm mb-2 font-semibold">Send payment to:</p>
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <code className="text-cyan-200 text-base break-all font-mono bg-black/30 px-3 py-2 rounded">
+                          {buyPaymentInfo.payment_info.email}
+                        </code>
+                        <Button
+                          size="sm"
+                          className="bg-cyan-500/20 text-cyan-200 hover:bg-cyan-500/30"
+                          onClick={() => copyToClipboard(buyPaymentInfo.payment_info.email, 'Payment address')}
+                        >
+                          <Copy size={14} />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  {buyPaymentInfo.payment_info?.instructions && (
+                    <div className="text-white/80 text-sm bg-white/5 border border-white/10 p-4 rounded-lg mb-4">
+                      {buyPaymentInfo.payment_info.instructions}
+                    </div>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
+                    onClick={() => setBuyPaymentInfo(null)}
+                  >
+                    Create Another Buy Order
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* SELL USDT - Internal wallet */}
           {sellPaymentInfo?.wallet_address && (
             <Card className="glass-effect border-emerald-500/40 mb-8">
               <CardContent className="p-6">
                 <div className="text-center">
                   <h2 className="text-2xl font-bold text-emerald-400 mb-4">✅ Send USDT to this wallet</h2>
+                  <p className="text-white/80 mb-2 text-sm">Invoice ID: {sellPaymentInfo.invoice_id || sellPaymentInfo.transaction_id}</p>
                   <p className="text-white/90 mb-4 text-lg">
                     Send <span className="text-emerald-300 font-bold">{sellPaymentInfo.amount_crypto} USDT</span> on <span className="font-semibold">{chain}</span>
                   </p>

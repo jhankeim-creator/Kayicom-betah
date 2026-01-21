@@ -2113,9 +2113,24 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     fee = request.amount_usd * (fee_percent / 100)
     total_usd = request.amount_usd + fee
     
-    # Create transaction
+    # Get admin payment information based on selected method
+    payment_info = {}
+    if settings and settings.get('payment_gateways'):
+        gateway = settings['payment_gateways'].get(request.payment_method, {})
+        if gateway.get('enabled'):
+            payment_info = {
+                'method': request.payment_method,
+                'email': gateway.get('email', ''),
+                'instructions': gateway.get('instructions', '')
+            }
+
+    transaction_id = str(uuid.uuid4())
+    invoice_id = f"INV-{transaction_id[:8].upper()}"
+
+    # Create transaction (internal invoice)
     transaction = {
-        "id": str(uuid.uuid4()),
+        "id": transaction_id,
+        "invoice_id": invoice_id,
         "user_id": user_id,
         "user_email": user_email,
         "transaction_type": "buy",
@@ -2127,6 +2142,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
         "fee": fee,
         "total_usd": total_usd,
         "payment_method": request.payment_method,
+        "payment_info": payment_info,
         "wallet_address": request.wallet_address,
         "transaction_id": request.transaction_id,
         "payment_proof": request.payment_proof,
@@ -2137,22 +2153,13 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     
     await db.crypto_transactions.insert_one(transaction)
     
-    # Get admin payment information based on selected method
-    payment_info = {}
-    if settings and settings.get('payment_gateways'):
-        gateway = settings['payment_gateways'].get(request.payment_method, {})
-        if gateway.get('enabled'):
-            payment_info = {
-                'method': request.payment_method,
-                'email': gateway.get('email', ''),
-                'instructions': gateway.get('instructions', '')
-            }
-    
     return {
-        "message": "Buy crypto order created. Please send payment and submit proof.",
+        "message": "Buy crypto order created. Use the instructions below to complete payment.",
         "transaction_id": transaction['id'],
+        "invoice_id": invoice_id,
         "amount_crypto": amount_crypto,
         "total_usd": total_usd,
+        "payment_method": request.payment_method,
         "payment_info": payment_info
     }
 
@@ -2189,6 +2196,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     total_usd = amount_usd - fee
     
     transaction_id = str(uuid.uuid4())
+    invoice_id = f"INV-{transaction_id[:8].upper()}"
 
     # Internal-only flow: always use admin wallets (no external invoices)
     admin_wallets = (crypto_settings.get("wallets") or {})
@@ -2199,6 +2207,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     # Create transaction
     transaction = {
         "id": transaction_id,
+        "invoice_id": invoice_id,
         "user_id": user_id,
         "user_email": user_email,
         "transaction_type": "sell",
@@ -2225,6 +2234,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     response = {
         "message": "Crypto sell order created. Send USDT to the address below",
         "transaction_id": transaction['id'],
+        "invoice_id": invoice_id,
         "total_usd_to_receive": total_usd,
         "amount_crypto": request.amount_crypto,
         "payment_method": request.payment_method,
