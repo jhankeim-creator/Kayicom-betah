@@ -145,7 +145,7 @@ def app_module(monkeypatch):
     sys.path.insert(0, "/workspace/backend")
 
     # Provide required env vars
-    monkeypatch.setenv("MONGO_URL", os.environ.get("MONGO_URL", "mongodb://localhost:27017"))
+    monkeypatch.setenv("MONGO_URL", os.environ.get("MONGO_URL", "mongodb://mongo:27017"))
     monkeypatch.setenv("DB_NAME", os.environ.get("DB_NAME", "test"))
 
     import importlib

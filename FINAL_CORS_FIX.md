@@ -23,7 +23,7 @@ Your seeding was successful:
 ```
 MONGO_URL=mongodb://mongo:FWpxsduISMAnPGgoeFhJBJAzLaqYUKHG@shortline.proxy.rlwy.net:40254
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 SEED_SECRET=kayi-seed-2025-secure-key-12345
@@ -86,7 +86,7 @@ Look for error details in the response.
 **Backend Variables (api.kayicom.com):**
 - ✅ MONGO_URL: Should be your MongoDB connection
 - ✅ DB_NAME: `kayicom`
-- ✅ CORS_ORIGINS: `https://kayicom.com,https://www.kayicom.com,http://localhost:3000`
+- ✅ CORS_ORIGINS: `https://kayicom.com,https://www.kayicom.com`
 - ✅ FRONTEND_URL: `https://kayicom.com`
 
 **Frontend Variables (kayicom.com):**

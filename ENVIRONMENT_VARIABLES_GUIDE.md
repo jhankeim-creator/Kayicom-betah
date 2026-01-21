@@ -39,7 +39,7 @@ Go to: **Backend Service** → **Variables** tab
 ```
 MONGO_URL=mongodb://mongo:password@containers-us-west-xxx.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://your-frontend-name.up.railway.app,http://localhost:3000
+CORS_ORIGINS=https://your-frontend-name.up.railway.app
 FRONTEND_URL=https://your-frontend-name.up.railway.app
 PORT=8000
 ```
@@ -48,7 +48,7 @@ PORT=8000
 ```
 MONGO_URL=mongodb://mongo:abc123@containers-us-west-123.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom-frontend.up.railway.app,http://localhost:3000
+CORS_ORIGINS=https://kayicom-frontend.up.railway.app
 FRONTEND_URL=https://kayicom-frontend.up.railway.app
 PORT=8000
 ```
@@ -62,7 +62,7 @@ PORT=8000
 ```
 MONGO_URL=mongodb://mongo:password@containers-us-west-xxx.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```
@@ -75,7 +75,7 @@ Then use:
 ```
 MONGO_URL=mongodb://mongo:password@containers-us-west-xxx.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```
@@ -192,7 +192,7 @@ mongodb://mongo:randompassword@containers-us-west-123.railway.app:27017/railway
   ```
   MONGO_URL=mongodb://mongo:xyz123@containers-us-west-123.railway.app:27017/railway
   DB_NAME=kayicom
-  CORS_ORIGINS=https://kayicom-app.up.railway.app,http://localhost:3000
+  CORS_ORIGINS=https://kayicom-app.up.railway.app
   FRONTEND_URL=https://kayicom-app.up.railway.app
   ```
 
@@ -215,7 +215,7 @@ mongodb://mongo:randompassword@containers-us-west-123.railway.app:27017/railway
 ```
 MONGO_URL=mongodb://mongo:xyz123@containers-us-west-123.railway.app:27017/railway
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```
@@ -233,18 +233,18 @@ NODE_ENV=production
 
 ### 1. CORS_ORIGINS Format
 - Use comma-separated list (no spaces around commas)
-- Include `http://localhost:3000` for local development
+- Use only production domains in CORS_ORIGINS
 - Use `https://` (not `http://`) for production
 - **NO trailing slashes** (use `https://kayicom.com` not `https://kayicom.com/`)
 
 **✅ CORRECT:**
 ```
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 ```
 
 **❌ WRONG:**
 ```
-CORS_ORIGINS=https://kayicom.com/, https://www.kayicom.com/, http://localhost:3000
+CORS_ORIGINS=https://kayicom.com/, https://www.kayicom.com/
 ```
 
 ---

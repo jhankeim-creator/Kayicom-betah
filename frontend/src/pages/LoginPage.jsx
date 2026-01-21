@@ -111,6 +111,11 @@ const LoginPage = ({ login, settings }) => {
                   {t('rememberMe')}
                 </Label>
               </div>
+              <div className="text-right">
+                <Link to="/forgot-password" className="text-sm text-cyan-400 hover:underline" data-testid="forgot-password-link">
+                  {t('forgotPassword')}
+                </Link>
+              </div>
 
               <Button
                 type="submit"

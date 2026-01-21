@@ -142,7 +142,7 @@ Go to **Backend Service** → **Variables** tab:
 
 **Update these variables:**
 ```
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 ```
 

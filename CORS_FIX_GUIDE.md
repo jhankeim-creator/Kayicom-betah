@@ -22,7 +22,7 @@ This causes CORS errors because the backend doesn't allow requests from `kayicom
 ```
 MONGO_URL=mongodb://mongo:FWpxsduISMAnPGgoeFhJBJAzLaqYUKHG@shortline.proxy.rlwy.net:40254
 DB_NAME=kayicom
-CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000
+CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com
 FRONTEND_URL=https://kayicom.com
 PORT=8000
 ```
@@ -45,7 +45,7 @@ NODE_ENV=production
 - Frontend: `REACT_APP_BACKEND_URL=https://kayicom-beta-production.up.railway.app`
 
 ### After (Fixed):
-- Backend: `CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com,http://localhost:3000`
+- Backend: `CORS_ORIGINS=https://kayicom.com,https://www.kayicom.com`
 - Frontend: `REACT_APP_BACKEND_URL=https://api.kayicom.com`
 
 ## 🚀 After Updating Variables

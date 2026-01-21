@@ -34,7 +34,7 @@ mongodb://mongo:FWpxsduISMAnPGgoeFhJBJAzLaqYUKHG@shortline.proxy.rlwy.net:40254
 ```
 MONGO_URL=<paste the MONGO_URL from MongoDB service>
 DB_NAME=kayicom
-CORS_ORIGINS=https://your-frontend.railway.app,http://localhost:3000
+CORS_ORIGINS=https://your-frontend.railway.app
 FRONTEND_URL=https://your-frontend.railway.app
 PORT=8000
 ```
@@ -76,7 +76,7 @@ NODE_ENV=production
 1. Go back to your **Backend** service → **Variables**
 2. Update `CORS_ORIGINS` to include your frontend URL:
    ```
-   CORS_ORIGINS=https://your-frontend.up.railway.app,http://localhost:3000
+   CORS_ORIGINS=https://your-frontend.up.railway.app
    ```
 3. Update `FRONTEND_URL`:
    ```
