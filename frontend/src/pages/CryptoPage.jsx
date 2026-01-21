@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,6 +28,11 @@ const CryptoPage = ({ user, logout, settings }) => {
   const [transactions, setTransactions] = useState([]);
   const [buyPaymentInfo, setBuyPaymentInfo] = useState(null);
   const [sellPaymentInfo, setSellPaymentInfo] = useState(null);
+  const [proofDialogOpen, setProofDialogOpen] = useState(false);
+  const [selectedProofTx, setSelectedProofTx] = useState(null);
+  const [proofTxId, setProofTxId] = useState('');
+  const [proofFile, setProofFile] = useState(null);
+  const [submittingProof, setSubmittingProof] = useState(false);
 
   useEffect(() => {
     loadConfig();
@@ -106,6 +112,42 @@ const CryptoPage = ({ user, logout, settings }) => {
   const copyToClipboard = (text, label) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
+  };
+
+  const openProofDialog = (tx) => {
+    setSelectedProofTx(tx);
+    setProofTxId(tx?.transaction_id || '');
+    setProofFile(null);
+    setProofDialogOpen(true);
+  };
+
+  const submitPaymentProof = async () => {
+    if (!selectedProofTx?.id) return;
+    if (!proofTxId && !proofFile) {
+      toast.error('Provide a transaction ID or payment proof');
+      return;
+    }
+    setSubmittingProof(true);
+    try {
+      let proofUrl = null;
+      if (proofFile) {
+        proofUrl = await handleFileUpload(proofFile);
+      }
+      await axiosInstance.post(`/crypto/transactions/${selectedProofTx.id}/proof`, {
+        transaction_id: proofTxId || undefined,
+        payment_proof: proofUrl || undefined,
+      });
+      toast.success('Payment proof submitted');
+      setProofDialogOpen(false);
+      setSelectedProofTx(null);
+      setProofTxId('');
+      setProofFile(null);
+      loadTransactions();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to submit payment proof');
+    } finally {
+      setSubmittingProof(false);
+    }
   };
 
   const calculateBuy = (usd) => {
@@ -270,13 +312,31 @@ const CryptoPage = ({ user, logout, settings }) => {
                       {buyPaymentInfo.payment_info.instructions}
                     </div>
                   )}
-                  <Button
-                    variant="outline"
-                    className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
-                    onClick={() => setBuyPaymentInfo(null)}
-                  >
-                    Create Another Buy Order
-                  </Button>
+                  {!buyPaymentInfo.payment_info?.email && !buyPaymentInfo.payment_info?.instructions && (
+                    <div className="text-amber-200 text-sm bg-amber-500/10 border border-amber-500/20 p-4 rounded-lg mb-4">
+                      Payment method details are not configured yet. Please contact support.
+                    </div>
+                  )}
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                    <Button
+                      variant="outline"
+                      className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
+                      onClick={() => openProofDialog({
+                        id: buyPaymentInfo.transaction_id,
+                        invoice_id: buyPaymentInfo.invoice_id,
+                        transaction_id: ''
+                      })}
+                    >
+                      Submit Payment Proof
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10"
+                      onClick={() => setBuyPaymentInfo(null)}
+                    >
+                      Create Another Buy Order
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -321,6 +381,19 @@ const CryptoPage = ({ user, logout, settings }) => {
                       {sellPaymentInfo.instructions}
                     </div>
                   )}
+                  <div className="mt-4">
+                    <Button
+                      variant="outline"
+                      className="border-emerald-400 text-emerald-200 hover:bg-emerald-400/10"
+                      onClick={() => openProofDialog({
+                        id: sellPaymentInfo.transaction_id,
+                        invoice_id: sellPaymentInfo.invoice_id,
+                        transaction_id: ''
+                      })}
+                    >
+                      Submit Payment Proof
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -518,6 +591,9 @@ const CryptoPage = ({ user, logout, settings }) => {
                           <p className="text-white/70 text-sm">
                             ${tx.amount_usd} → {tx.amount_crypto} USDT
                           </p>
+                          {tx.invoice_id && (
+                            <p className="text-white/60 text-xs mt-1">Invoice: {tx.invoice_id}</p>
+                          )}
                           {tx.transaction_id && (
                             <p className="text-white/50 text-xs mt-1">TX: {tx.transaction_id}</p>
                           )}
@@ -530,6 +606,17 @@ const CryptoPage = ({ user, logout, settings }) => {
                           {tx.status}
                         </span>
                       </div>
+                      {tx.status === 'pending' && (
+                        <div className="mt-3">
+                          <Button
+                            variant="outline"
+                            className="border-white/20 text-white hover:bg-white/10"
+                            onClick={() => openProofDialog(tx)}
+                          >
+                            Submit Payment Proof
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -540,6 +627,53 @@ const CryptoPage = ({ user, logout, settings }) => {
       </div>
 
       <Footer settings={settings} />
+
+      <Dialog open={proofDialogOpen} onOpenChange={setProofDialogOpen}>
+        <DialogContent className="bg-gray-900 border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-white">Submit Payment Proof</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-white/70 text-sm">
+              Transaction: <span className="text-white">{selectedProofTx?.invoice_id || selectedProofTx?.id}</span>
+            </div>
+            <div>
+              <Label className="text-white">Transaction ID / Reference</Label>
+              <Input
+                value={proofTxId}
+                onChange={(e) => setProofTxId(e.target.value)}
+                className="bg-white/10 border-white/20 text-white mt-1"
+                placeholder="Enter payment reference or hash"
+              />
+            </div>
+            <div>
+              <Label className="text-white">Upload Payment Proof</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setProofFile(e.target.files?.[0] || null)}
+                className="bg-white/10 border-white/20 text-white mt-1"
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={submitPaymentProof}
+                disabled={submittingProof || uploadingProof}
+                className="flex-1 gradient-button text-white"
+              >
+                {submittingProof || uploadingProof ? 'Submitting...' : 'Submit Proof'}
+              </Button>
+              <Button
+                variant="outline"
+                className="border-white/20 text-white"
+                onClick={() => setProofDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
