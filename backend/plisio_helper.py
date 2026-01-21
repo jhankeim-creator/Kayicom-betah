@@ -14,7 +14,9 @@ class PlisioHelper:
                             order_name: str = "Crypto Purchase",
                             order_number: str = None,
                             callback_url: str = None,
-                            email: str = None) -> Dict:
+                            email: str = None,
+                            source_currency: str = "USD",
+                            source_amount: Optional[float] = None) -> Dict:
         """
         Create a Plisio invoice for crypto payment
         
@@ -36,8 +38,8 @@ class PlisioHelper:
             "amount": amount,
             "currency": currency,
             "order_name": order_name,
-            "source_currency": "USD",
-            "source_amount": amount,
+            "source_currency": source_currency,
+            "source_amount": source_amount if source_amount is not None else amount,
         }
         
         if order_number:

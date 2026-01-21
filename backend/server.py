@@ -376,6 +376,24 @@ def _build_reset_link(token: str) -> str:
 def _hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
+
+def _backend_base_url() -> str:
+    return (
+        os.environ.get("BACKEND_URL")
+        or os.environ.get("RENDER_EXTERNAL_URL")
+        or ""
+    ).rstrip("/")
+
+
+def _plisio_callback_url() -> Optional[str]:
+    explicit = os.environ.get("PLISIO_CALLBACK_URL")
+    if explicit:
+        return explicit
+    base = _backend_base_url()
+    if not base:
+        return None
+    return f"{base}/api/payments/plisio-callback"
+
 def _format_dt(dt: datetime) -> str:
     try:
         return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
@@ -1574,6 +1592,37 @@ async def plisio_callback(data: Dict[str, Any]):
                             "updated_at": datetime.now(timezone.utc).isoformat()
                         }}
                     )
+                else:
+                    # Then try crypto transactions (USDT sell)
+                    tx = await db.crypto_transactions.find_one({"id": order_id})
+                    if tx and tx.get("transaction_type") == "sell":
+                        if tx.get("status") != "completed":
+                            await db.crypto_transactions.update_one(
+                                {"id": order_id},
+                                {"$set": {
+                                    "status": "completed",
+                                    "updated_at": datetime.now(timezone.utc).isoformat()
+                                }}
+                            )
+                            try:
+                                settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+                                admin_user = await db.users.find_one({"role": "admin"}, {"email": 1, "_id": 0})
+                                admin_email = (admin_user or {}).get("email") or settings.get("support_email")
+                                if admin_email:
+                                    html = (
+                                        "<div style='font-family:Arial,sans-serif'>"
+                                        "<h2>USDT Sell Deposit Confirmed</h2>"
+                                        f"<p><b>Transaction:</b> {order_id}</p>"
+                                        f"<p><b>User:</b> {tx.get('user_email') or tx.get('user_id')}</p>"
+                                        f"<p><b>Amount:</b> {tx.get('amount_crypto')} USDT</p>"
+                                        f"<p><b>Network:</b> {tx.get('chain')}</p>"
+                                        f"<p><b>Pay customer via:</b> {tx.get('payment_method')}</p>"
+                                        f"<p><b>Receiving info:</b> {tx.get('receiving_info')}</p>"
+                                        "</div>"
+                                    )
+                                    _send_resend_email(settings, admin_email, "USDT Sell Deposit Confirmed", html)
+                            except Exception as e:
+                                logger.error(f"Failed to send admin sell notification: {e}")
     
     return {"status": "ok"}
 
@@ -2093,6 +2142,11 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     # For BUY USDT, customer pays with FIAT (PayPal, AirTM, Skrill)
     # No need for Plisio - just show admin payment info
     
+    allowed_chains = {"BEP20", "TRC20"}
+    chain = request.chain.upper().strip()
+    if chain not in allowed_chains:
+        raise HTTPException(status_code=400, detail="Unsupported network. Use BEP20 or TRC20.")
+
     # Check limits (prefer site_settings.crypto_settings)
     min_usd = _safe_float(
         crypto_settings.get('min_transaction_usd', config.get('min_buy_usd', config.get('min_transaction_usd', 10.0))),
@@ -2106,7 +2160,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
         raise HTTPException(status_code=400, detail="Payment proof is required")
 
     # Get rate
-    rate_key = f"buy_rate_{request.chain.lower()}"
+    rate_key = f"buy_rate_{chain.lower()}"
     exchange_rate = _safe_float(
         crypto_settings.get("buy_rate_usdt", config.get(rate_key, config.get("buy_rate_usdt", 1.02))),
         1.02
@@ -2143,7 +2197,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
         "user_email": user_email,
         "transaction_type": "buy",
         "crypto_type": "USDT",
-        "chain": request.chain,
+        "chain": chain,
         "amount_crypto": amount_crypto,
         "amount_usd": request.amount_usd,
         "exchange_rate": exchange_rate,
@@ -2180,6 +2234,10 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0})
     crypto_settings = (settings or {}).get("crypto_settings") or {}
+    allowed_chains = {"BEP20", "TRC20"}
+    chain = request.chain.upper().strip()
+    if chain not in allowed_chains:
+        raise HTTPException(status_code=400, detail="Unsupported network. Use BEP20 or TRC20.")
     
     # Check limits
     min_sell = _safe_float(config.get('min_sell_usdt', 10.0), 10.0)
@@ -2188,7 +2246,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         raise HTTPException(status_code=400, detail=f"Amount must be between {min_sell} and {max_sell} USDT")
     
     # Get rate
-    rate_key = f"sell_rate_{request.chain.lower()}"
+    rate_key = f"sell_rate_{chain.lower()}"
     exchange_rate = _safe_float(
         crypto_settings.get("sell_rate_usdt", config.get(rate_key, config.get("sell_rate_usdt", 0.98))),
         0.98
@@ -2206,11 +2264,29 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     transaction_id = str(uuid.uuid4())
     invoice_id = f"INV-{transaction_id[:8].upper()}"
 
-    # Internal-only flow: always use admin wallets (no external invoices)
-    admin_wallets = (crypto_settings.get("wallets") or {})
-    wallet_address = admin_wallets.get(request.chain) or config.get(f"wallet_{request.chain.lower()}")
-    if not wallet_address:
-        raise HTTPException(status_code=400, detail=f"Admin wallet not configured for {request.chain}")
+    if not settings or not settings.get('plisio_api_key'):
+        raise HTTPException(status_code=400, detail="Plisio not configured for automatic processing")
+
+    callback_url = _plisio_callback_url()
+    if not callback_url:
+        raise HTTPException(status_code=400, detail="BACKEND_URL not configured for Plisio callback")
+
+    plisio_helper = PlisioHelper(settings['plisio_api_key'])
+    plisio_result = await plisio_helper.create_invoice(
+        amount=request.amount_crypto,
+        currency="USDT",
+        order_name="Sell USDT Order",
+        order_number=transaction_id,
+        callback_url=callback_url,
+        email=user_email,
+        source_currency="USDT",
+        source_amount=request.amount_crypto
+    )
+
+    if not plisio_result.get("success"):
+        raise HTTPException(status_code=502, detail=f"Plisio invoice failed: {plisio_result.get('error')}")
+
+    wallet_address = plisio_result.get("wallet_address")
 
     # Create transaction
     transaction = {
@@ -2220,7 +2296,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "user_email": user_email,
         "transaction_type": "sell",
         "crypto_type": "USDT",
-        "chain": request.chain,
+        "chain": chain,
         "amount_crypto": request.amount_crypto,
         "amount_usd": amount_usd,
         "exchange_rate": exchange_rate,
@@ -2232,6 +2308,9 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "transaction_id": request.transaction_id,
         "payment_proof": request.payment_proof,
         "wallet_address": wallet_address,
+        "plisio_invoice_id": plisio_result.get("invoice_id"),
+        "plisio_invoice_url": plisio_result.get("invoice_url"),
+        "qr_code": plisio_result.get("qr_code"),
         "status": "pending",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat()
@@ -2240,14 +2319,16 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     await db.crypto_transactions.insert_one(transaction)
     
     response = {
-        "message": "Crypto sell order created. Send USDT to the address below",
+        "message": "Crypto sell order created. Send USDT to the unique address below. Payment will be auto-detected.",
         "transaction_id": transaction['id'],
         "invoice_id": invoice_id,
         "total_usd_to_receive": total_usd,
         "amount_crypto": request.amount_crypto,
         "payment_method": request.payment_method,
         "wallet_address": wallet_address,
-        "instructions": (crypto_settings.get("sell_instructions") or "").strip()
+        "instructions": (crypto_settings.get("sell_instructions") or "").strip(),
+        "invoice_url": plisio_result.get("invoice_url"),
+        "qr_code": plisio_result.get("qr_code")
     }
 
     return response

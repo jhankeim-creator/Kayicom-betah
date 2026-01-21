@@ -298,7 +298,7 @@ const CryptoPage = ({ user, logout, settings }) => {
             Buy & Sell USDT
           </h1>
           <p className="text-white/80 text-center mb-12">
-            Trade USDT on BEP20, TRC20, and MATIC networks. No KYC required.
+            Trade USDT on BEP20 and TRC20 networks. No KYC required.
           </p>
 
           {/* BUY USDT - Internal invoice */}
@@ -392,18 +392,22 @@ const CryptoPage = ({ user, logout, settings }) => {
                       {sellPaymentInfo.instructions}
                     </div>
                   )}
-                  <div className="mt-4">
-                    <Button
-                      variant="outline"
-                      className="border-emerald-400 text-emerald-200 hover:bg-emerald-400/10"
-                      onClick={() => openProofDialog({
-                        id: sellPaymentInfo.transaction_id,
-                        invoice_id: sellPaymentInfo.invoice_id,
-                        transaction_id: ''
-                      })}
+                  {sellPaymentInfo.invoice_url && (
+                    <a
+                      href={sellPaymentInfo.invoice_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block w-full mt-4"
                     >
-                      Submit Payment Proof
-                    </Button>
+                      <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold">
+                        Open Payment Invoice
+                      </Button>
+                    </a>
+                  )}
+                  <div className="mt-4 text-left bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-lg">
+                    <p className="text-emerald-200 text-sm">
+                      ✅ <strong>Automatic processing:</strong> Your deposit will be confirmed automatically after it is received on-chain.
+                    </p>
                   </div>
                 </div>
               </CardContent>

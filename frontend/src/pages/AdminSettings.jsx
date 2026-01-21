@@ -53,7 +53,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
       transaction_fee_percent: 2.0,
       min_transaction_usd: 10.0,
       sell_instructions: '',
-      wallets: { BEP20: '', TRC20: '', MATIC: '' }
+      wallets: { BEP20: '', TRC20: '' }
     },
     minutes_transfer_enabled: false,
     minutes_transfer_fee_type: 'percent',
@@ -116,7 +116,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
             transaction_fee_percent: 2.0,
             min_transaction_usd: 10.0,
             sell_instructions: '',
-            wallets: { BEP20: '', TRC20: '', MATIC: '' }
+            wallets: { BEP20: '', TRC20: '' }
           },
           minutes_transfer_enabled: currentSettings.minutes_transfer_enabled || false,
           minutes_transfer_fee_type: currentSettings.minutes_transfer_fee_type || 'percent',
@@ -990,15 +990,6 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               className="bg-white/10 border-white/20 text-white mt-1"
                               value={formData.crypto_settings?.wallets?.TRC20 || ''}
                               onChange={(e) => handleCryptoWalletChange('TRC20', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-white/70 text-sm">MATIC Wallet (Polygon)</Label>
-                            <Input
-                              placeholder="0x..."
-                              className="bg-white/10 border-white/20 text-white mt-1"
-                              value={formData.crypto_settings?.wallets?.MATIC || ''}
-                              onChange={(e) => handleCryptoWalletChange('MATIC', e.target.value)}
                             />
                           </div>
                         </div>
