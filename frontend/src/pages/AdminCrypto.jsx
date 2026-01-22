@@ -6,7 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { canPreviewInlineImage, formatBytes, getInlineImageBytes, isInlineImage } from '../utils/paymentProof';
+import {
+  canPreviewInlineImage,
+  formatBytes,
+  getInlineImageBytes,
+  isInlineImage,
+  openPaymentProof
+} from '../utils/paymentProof';
 
 const AdminCrypto = () => {
   const [config, setConfig] = useState(null);
@@ -213,7 +219,7 @@ const AdminCrypto = () => {
                                 alt="Payment proof"
                                 className="mt-2 h-20 w-auto rounded border border-cyan-500/30 cursor-zoom-in"
                                 onClick={() => {
-                                  window.open(proofUrl, '_blank', 'noopener,noreferrer');
+                                  openPaymentProof(proofUrl, { filename: 'payment-proof.png', action: 'open' });
                                 }}
                                 title="Click to enlarge"
                               />

@@ -15,7 +15,13 @@ import {
   SelectValue 
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { canPreviewInlineImage, formatBytes, getInlineImageBytes, isInlineImage } from '../utils/paymentProof';
+import {
+  canPreviewInlineImage,
+  formatBytes,
+  getInlineImageBytes,
+  isInlineImage,
+  openPaymentProof
+} from '../utils/paymentProof';
 
 const AdminCryptoTransactions = ({ user, logout, settings }) => {
   const [transactions, setTransactions] = useState([]);
@@ -197,7 +203,7 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                           alt="Payment proof"
                           className="h-24 w-auto rounded border border-green-500/30 cursor-zoom-in"
                           onClick={() => {
-                            window.open(proofUrl, '_blank', 'noopener,noreferrer');
+                            openPaymentProof(proofUrl, { filename: 'payment-proof.png', action: 'open' });
                           }}
                           title="Click to enlarge"
                         />
