@@ -16,10 +16,11 @@ const formatSubscriptionDurationLabel = (months) => {
   return `${value} ${value === 1 ? 'Month' : 'Months'}`;
 };
 
-const CustomerDashboard = ({ user, logout, settings }) => {
+const CustomerDashboard = ({ user, logout, settings, cart }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     if (user) {
@@ -28,9 +29,11 @@ const CustomerDashboard = ({ user, logout, settings }) => {
   }, [user]);
 
   useEffect(() => {
+    const hasSubscriptions = orders.some((order) => order.subscription_end_date);
+    if (!hasSubscriptions) return undefined;
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [orders]);
 
   const loadOrders = async () => {
     try {
@@ -54,12 +57,43 @@ const CustomerDashboard = ({ user, logout, settings }) => {
     return variants[status] || 'secondary';
   };
 
+  const getPaymentBadgeClass = (status) => {
+    const variants = {
+      pending: 'bg-yellow-500/20 text-yellow-400',
+      pending_verification: 'bg-blue-500/20 text-blue-400',
+      paid: 'bg-green-500/20 text-green-400',
+      failed: 'bg-red-500/20 text-red-400',
+      rejected: 'bg-red-500/20 text-red-400'
+    };
+    return variants[status] || 'bg-gray-500/20 text-gray-400';
+  };
+
+  const parseDate = (value) => {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const dateA = parseDate(a.created_at);
+      const dateB = parseDate(b.created_at);
+      return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+    });
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (statusFilter === 'all') return sortedOrders;
+    return sortedOrders.filter((order) => order.order_status === statusFilter);
+  }, [sortedOrders, statusFilter]);
+
   const subscriptionOrders = useMemo(() => {
     return orders
       .filter(o => o.subscription_end_date)
       .map(o => {
-        const end = new Date(o.subscription_end_date);
-        const start = o.subscription_start_date ? new Date(o.subscription_start_date) : null;
+        const end = parseDate(o.subscription_end_date);
+        if (!end) return null;
+        const start = parseDate(o.subscription_start_date);
         const diffMs = end.getTime() - now;
         const diff = Math.max(0, diffMs);
         const days = Math.floor(diff / (24 * 3600 * 1000));
@@ -67,14 +101,15 @@ const CustomerDashboard = ({ user, logout, settings }) => {
         const mins = Math.floor((diff % (3600 * 1000)) / (60 * 1000));
         const secs = Math.floor((diff % (60 * 1000)) / 1000);
         const durationLabel = (() => {
-          if (!start || Number.isNaN(start.getTime())) return '';
+          if (!start) return '';
           const durationMs = end.getTime() - start.getTime();
           if (durationMs <= 0) return '';
           const months = Math.round(durationMs / (30 * 24 * 3600 * 1000));
           return formatSubscriptionDurationLabel(months);
         })();
         return { order: o, end, diffMs, remaining: { days, hours, mins, secs }, durationLabel };
-      });
+      })
+      .filter(Boolean);
   }, [orders, now]);
 
   const copyCustomerId = async () => {
@@ -102,14 +137,41 @@ const CustomerDashboard = ({ user, logout, settings }) => {
     }
   };
 
+  const copyOrderId = async (orderId) => {
+    if (!orderId) return;
+    try {
+      await navigator.clipboard.writeText(orderId);
+      toast.success('Order ID copied');
+    } catch (e) {
+      try {
+        const el = document.createElement('textarea');
+        el.value = orderId;
+        el.style.position = 'fixed';
+        el.style.left = '-9999px';
+        document.body.appendChild(el);
+        el.focus();
+        el.select();
+        document.execCommand('copy');
+        document.body.removeChild(el);
+        toast.success('Order ID copied');
+      } catch (err) {
+        toast.error('Could not copy Order ID');
+      }
+    }
+  };
+
+  const cartItemCount = (cart || []).reduce((sum, item) => sum + item.quantity, 0);
+  const displayName = user?.full_name || user?.username || user?.email || 'Customer';
+  const processingCount = orders.filter(o => ['pending', 'processing'].includes(o.order_status)).length;
+
   return (
     <div className="min-h-screen gradient-bg">
-      <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
+      <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
       <div className="container mx-auto px-4 py-12">
         <div className="max-w-6xl mx-auto">
           <h1 className="text-4xl md:text-5xl font-bold text-white mb-4" data-testid="dashboard-title">My Account</h1>
-          <p className="text-white/80 text-lg mb-12">Welcome, {user.full_name}!</p>
+          <p className="text-white/80 text-lg mb-12">Welcome, {displayName}!</p>
           {user?.customer_id && (
             <div className="inline-flex items-center gap-2 mb-8 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
               <span className="text-white/70 text-sm">Customer ID:</span>
@@ -138,9 +200,9 @@ const CustomerDashboard = ({ user, logout, settings }) => {
             </Card>
             <Card className="glass-effect border-white/20">
               <CardContent className="p-6 text-center">
-                <p className="text-white/70 mb-2">Processing Orders</p>
+                <p className="text-white/70 mb-2">Pending/Processing Orders</p>
                 <p className="text-4xl font-bold text-white" data-testid="pending-orders">
-                  {orders.filter(o => o.order_status === 'processing').length}
+                  {processingCount}
                 </p>
               </CardContent>
             </Card>
@@ -161,9 +223,28 @@ const CustomerDashboard = ({ user, logout, settings }) => {
               
               {loading ? (
                 <div className="text-center text-white py-8">Loading...</div>
-              ) : orders.length > 0 ? (
+              ) : filteredOrders.length > 0 ? (
                 <div className="space-y-4" data-testid="orders-list">
-                  {orders.map((order) => (
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    {['all', 'pending', 'processing', 'completed', 'cancelled'].map((status) => (
+                      <Button
+                        key={status}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={statusFilter === status
+                          ? 'border-cyan-400 text-cyan-200 bg-cyan-400/10'
+                          : 'border-white/20 text-white hover:bg-white/10'}
+                        onClick={() => setStatusFilter(status)}
+                      >
+                        {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Button>
+                    ))}
+                  </div>
+                  {filteredOrders.map((order) => {
+                    const createdDate = parseDate(order.created_at);
+                    const createdLabel = createdDate ? createdDate.toLocaleDateString('en-US') : 'Unknown date';
+                    return (
                     <div key={order.id} className="glass-effect p-4 rounded-lg" data-testid={`order-${order.id}`}>
                       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                         <div className="flex-1">
@@ -175,20 +256,40 @@ const CustomerDashboard = ({ user, logout, settings }) => {
                             </Badge>
                           </div>
                           <p className="text-white/70 text-sm">
-                            {order.items.length} items - {new Date(order.created_at).toLocaleDateString('en-US')}
+                            {order.items.length} items - {createdLabel}
                           </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getPaymentBadgeClass(order.payment_status)}`}>
+                              {order.payment_status}
+                            </span>
+                            <span className="px-2 py-1 rounded text-xs font-semibold bg-white/10 text-white/80">
+                              {order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' : order.payment_method}
+                            </span>
+                          </div>
                           <p className="text-white font-bold mt-1">${order.total_amount.toFixed(2)}</p>
                         </div>
                         
-                        <Link to={`/track/${order.id}`}>
-                          <Button variant="outline" className="border-white text-white hover:bg-white/10" data-testid={`view-order-${order.id}`}>
-                            <Eye size={16} className="mr-2" />
-                            View Details
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="border-white/20 text-white hover:bg-white/10"
+                            onClick={() => copyOrderId(order.id)}
+                          >
+                            <Copy size={16} className="mr-2" />
+                            Copy ID
                           </Button>
-                        </Link>
+                          <Link to={`/track/${order.id}`}>
+                            <Button variant="outline" className="border-white text-white hover:bg-white/10" data-testid={`view-order-${order.id}`}>
+                              <Eye size={16} className="mr-2" />
+                              View Details
+                            </Button>
+                          </Link>
+                        </div>
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               ) : (
                 <div className="text-center text-white/70 py-8" data-testid="no-orders">

@@ -241,7 +241,7 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <CustomerDashboard user={user} logout={logout} settings={settings} />
+                <CustomerDashboard user={user} logout={logout} settings={settings} cart={cart} />
               </ProtectedRoute>
             }
           />
