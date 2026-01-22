@@ -33,6 +33,7 @@ const Footer = ({ settings }) => {
               <li><a href="/products" className="hover:text-pink-400 transition">{t('products')}</a></li>
               <li><a href="/dashboard" className="hover:text-pink-400 transition">{t('myAccount')}</a></li>
               <li><a href="/" className="hover:text-pink-400 transition">{t('support')}</a></li>
+              <li><a href="/refund-policy" className="hover:text-pink-400 transition">{t('refundPolicy')}</a></li>
             </ul>
           </div>
           

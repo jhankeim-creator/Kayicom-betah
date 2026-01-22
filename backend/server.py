@@ -282,6 +282,14 @@ class SiteSettings(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = ["giftcard", "topup", "subscription", "service"]
     category_images: Optional[Dict[str, str]] = {}
+    refund_policy: Optional[str] = (
+        "Refund Policy\n"
+        "\n"
+        "Digital goods are non-refundable once delivered or redeemed.\n"
+        "If you do not receive your order or receive the wrong item, contact support within 24 hours.\n"
+        "Approved refunds are issued as wallet credit unless required otherwise by law.\n"
+        "Chargebacks or fraudulent activity may result in account restrictions."
+    )
     giftcard_taxonomy: Optional[List[Dict[str, Any]]] = [
         {"name": "Shopping", "subcategories": []},
         {"name": "Gaming", "subcategories": []},
@@ -351,6 +359,7 @@ class SettingsUpdate(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = None
     category_images: Optional[Dict[str, str]] = None
+    refund_policy: Optional[str] = None
     giftcard_taxonomy: Optional[List[Dict[str, Any]]] = None
     payment_gateways: Optional[dict] = None
     crypto_settings: Optional[dict] = None
