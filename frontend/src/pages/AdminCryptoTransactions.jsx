@@ -195,7 +195,11 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                         <img
                           src={proofUrl}
                           alt="Payment proof"
-                          className="h-24 w-auto rounded border border-green-500/30"
+                          className="h-24 w-auto rounded border border-green-500/30 cursor-zoom-in"
+                          onClick={() => {
+                            window.open(proofUrl, '_blank', 'noopener,noreferrer');
+                          }}
+                          title="Click to enlarge"
                         />
                       </div>
                     )}
