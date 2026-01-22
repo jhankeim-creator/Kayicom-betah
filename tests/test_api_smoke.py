@@ -327,7 +327,7 @@ def test_order_success_awards_credits_and_convert(app_module):
             "role": "customer",
             "password": app_module.pwd_context.hash("x"),
             "wallet_balance": 0.0,
-            "credits_balance": 95,
+            "credits_balance": 995,
             "customer_id": "KC-33334444",
         }
     )
@@ -350,12 +350,12 @@ def test_order_success_awards_credits_and_convert(app_module):
     # completing should award credits idempotently
     r = client.put("/api/orders/o-1/complete")
     assert r.status_code == 200, r.text
-    # user should now have 100 credits
+    # user should now have 1000 credits
     user = next(u for u in app_module.db.users._docs if u["id"] == "u-c1")
-    assert int(user.get("credits_balance", 0)) == 100
+    assert int(user.get("credits_balance", 0)) == 1000
 
-    # convert 100 credits to $1
-    r2 = client.post("/api/credits/convert?user_id=u-c1&user_email=c1@example.com", json={"credits": 100})
+    # convert 1000 credits to $1
+    r2 = client.post("/api/credits/convert?user_id=u-c1&user_email=c1@example.com", json={"credits": 1000})
     assert r2.status_code == 200, r2.text
     user2 = next(u for u in app_module.db.users._docs if u["id"] == "u-c1")
     assert int(user2.get("credits_balance", 0)) == 0
