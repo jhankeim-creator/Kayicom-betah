@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { canPreviewInlineImage, formatBytes, getInlineImageBytes, isInlineImage } from '../utils/paymentProof';
 
 const AdminCrypto = () => {
   const [config, setConfig] = useState(null);
@@ -152,6 +153,9 @@ const AdminCrypto = () => {
               const receivingInfo = tx.receiving_info || tx.metadata?.receiving_info;
               const walletLabel = tx.transaction_type === 'buy' ? 'Customer Wallet' : 'Deposit Wallet';
               const proofUrl = tx.payment_proof || tx.payment_proof_url;
+              const proofIsInline = isInlineImage(proofUrl);
+              const canPreviewProof = proofIsInline && canPreviewInlineImage(proofUrl);
+              const proofSizeLabel = proofIsInline ? formatBytes(getInlineImageBytes(proofUrl)) : null;
               return (
                 <Card key={tx.id} className="glass-effect border-white/20">
                   <CardContent className="p-4">
@@ -196,15 +200,23 @@ const AdminCrypto = () => {
                           <div className="mt-2">
                             <a
                               href={proofUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                              {...(proofIsInline && !canPreviewProof
+                                ? { download: 'payment-proof.png' }
+                                : { target: '_blank', rel: 'noopener noreferrer' })}
                               className="text-cyan-300 text-xs underline"
                             >
-                              View payment proof
+                              {proofIsInline && !canPreviewProof ? 'Download payment proof' : 'View payment proof'}
                             </a>
-                            {proofUrl.startsWith('data:image') && (
+                            {canPreviewProof && (
+                              <img
+                                src={proofUrl}
+                                alt="Payment proof"
+                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
+                              />
+                            )}
+                            {proofIsInline && !canPreviewProof && (
                               <p className="text-white/60 text-xs mt-1">
-                                Inline preview disabled for inline images.
+                                Large inline proof ({proofSizeLabel}). Download to view.
                               </p>
                             )}
                           </div>

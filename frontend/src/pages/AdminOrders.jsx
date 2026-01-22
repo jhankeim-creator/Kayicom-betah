@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import { Eye, CheckCircle, XCircle, Send, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import { canPreviewInlineImage, formatBytes, getInlineImageBytes, isInlineImage } from '../utils/paymentProof';
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -61,6 +62,10 @@ const AdminOrders = ({ user, logout, settings }) => {
   const [refundReason, setRefundReason] = useState('');
   const [proofViewerOpen, setProofViewerOpen] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
+  const selectedProofIsInline = isInlineImage(selectedProofUrl);
+  const selectedProofSize = selectedProofIsInline ? getInlineImageBytes(selectedProofUrl) : 0;
+  const canPreviewSelectedProof = selectedProofIsInline && canPreviewInlineImage(selectedProofUrl);
+  const selectedProofSizeLabel = selectedProofIsInline ? formatBytes(selectedProofSize) : null;
 
   useEffect(() => {
     loadOrders();
@@ -268,6 +273,10 @@ const AdminOrders = ({ user, logout, settings }) => {
             <div className="space-y-4" data-testid="orders-list">
               {filteredOrders.map((order) => {
                 const subscriptionMeta = getSubscriptionMeta(order);
+                const proofUrl = order.payment_proof_url;
+                const proofIsInline = isInlineImage(proofUrl);
+                const canPreviewProof = proofIsInline && canPreviewInlineImage(proofUrl);
+                const proofSizeLabel = proofIsInline ? formatBytes(getInlineImageBytes(proofUrl)) : null;
                 return (
                   <Card key={order.id} className="glass-effect border-white/20" data-testid={`order-${order.id}`}>
                     <CardContent className="p-6">
@@ -310,9 +319,21 @@ const AdminOrders = ({ user, logout, settings }) => {
                               >
                                 📸 View Payment Proof
                               </Button>
-                              {order.payment_proof_url.startsWith('data:image') && (
+                              {canPreviewProof && (
+                                <img 
+                                  src={order.payment_proof_url} 
+                                  alt="Payment proof thumbnail" 
+                                  className="h-12 w-12 object-cover rounded border border-pink-400/30 cursor-pointer hover:border-pink-400/60 transition"
+                                  onClick={() => {
+                                    setSelectedProofUrl(order.payment_proof_url);
+                                    setProofViewerOpen(true);
+                                  }}
+                                  title="Click to view full size"
+                                />
+                              )}
+                              {proofIsInline && !canPreviewProof && (
                                 <span className="text-xs text-white/50">
-                                  Preview disabled for inline images.
+                                  Large inline proof ({proofSizeLabel}). Use View Payment Proof to download.
                                 </span>
                               )}
                             </div>
@@ -588,10 +609,18 @@ const AdminOrders = ({ user, logout, settings }) => {
           <div className="mt-4">
             {selectedProofUrl && (
               <div className="flex flex-col items-center gap-4">
-                {selectedProofUrl.startsWith('data:image') ? (
-                  <div className="text-center text-white/70 text-sm">
-                    Inline preview disabled to prevent browser crashes. Use Download below.
-                  </div>
+                {selectedProofIsInline ? (
+                  canPreviewSelectedProof ? (
+                    <img 
+                      src={selectedProofUrl} 
+                      alt="Payment proof" 
+                      className="max-w-full max-h-[70vh] object-contain rounded border border-white/20"
+                    />
+                  ) : (
+                    <div className="text-center text-white/70 text-sm">
+                      Large inline proof ({selectedProofSizeLabel}). Use Download below.
+                    </div>
+                  )
                 ) : (
                   <a 
                     href={selectedProofUrl} 
@@ -614,7 +643,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                     variant="outline"
                     className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
                     onClick={() => {
-                      if (selectedProofUrl.startsWith('data:image')) {
+                      if (selectedProofIsInline) {
                         const link = document.createElement('a');
                         link.href = selectedProofUrl;
                         link.download = 'payment-proof.png';
