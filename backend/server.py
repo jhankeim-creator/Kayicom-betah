@@ -1553,8 +1553,18 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
 
 @api_router.post("/payments/manual-proof")
 async def upload_payment_proof(proof_data: ManualPaymentProof):
+    order = await db.orders.find_one({"id": proof_data.order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if order.get("payment_proof_url"):
+        raise HTTPException(status_code=400, detail="Payment proof already submitted")
+
+    if order.get("payment_status") != "pending":
+        raise HTTPException(status_code=400, detail="Payment is already being processed")
+
     # Update order with payment proof
-    result = await db.orders.update_one(
+    await db.orders.update_one(
         {"id": proof_data.order_id},
         {"$set": {
             "payment_proof_url": proof_data.payment_proof_url,
@@ -1563,10 +1573,7 @@ async def upload_payment_proof(proof_data: ManualPaymentProof):
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Order not found")
-    
+
     return {"message": "Payment proof uploaded successfully"}
 
 @api_router.post("/payments/plisio-callback")

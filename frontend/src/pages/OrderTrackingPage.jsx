@@ -145,6 +145,11 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     ? order.delivery_info.items.filter((item) => item?.details && String(item.details).trim())
     : [];
   const hasDeliveryInfo = order.delivery_info && (deliveryDetails || deliveryItems.length > 0);
+  const manualPaymentMethods = ['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'];
+  const isManualPayment = manualPaymentMethods.includes(order.payment_method);
+  const proofSubmitted = Boolean(order.payment_proof_url);
+  const isAwaitingReview = order.payment_status === 'pending_verification' || proofSubmitted;
+  const showManualProofForm = isManualPayment && order.payment_status === 'pending' && !proofSubmitted;
   const subscriptionRemaining = (() => {
     if (!subscriptionEnd) return null;
     const diffMs = subscriptionEnd.getTime() - now;
@@ -324,8 +329,23 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </Card>
           )}
 
+          {/* Manual Payment Review Pending */}
+          {isManualPayment && isAwaitingReview && (
+            <Card className="glass-effect border-blue-500/30 border-2" data-testid="payment-review-card">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-3">
+                  <Clock className="text-blue-400" size={24} />
+                  <h3 className="text-xl font-bold text-blue-300">Payment Under Review</h3>
+                </div>
+                <p className="text-white/80 text-sm">
+                  Your payment proof has been received. Our team is reviewing it now.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Manual Payment Proof Upload */}
-          {['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'].includes(order.payment_method) && order.payment_status === 'pending' && (
+          {showManualProofForm && (
             <Card className="glass-effect border-white/20" data-testid="payment-proof-form">
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold text-white mb-4 flex items-center">
