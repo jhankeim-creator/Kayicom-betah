@@ -14,6 +14,7 @@ import { Package, Plus, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service', 'crypto'];
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -27,6 +28,14 @@ const normalizeSubscriptionDuration = (value) => {
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
 };
+
+const normalizeCategoryValue = (value) => String(value || '').trim();
+
+const formatCategoryLabel = (value) => (
+  String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+);
 
 const AdminProducts = ({ user, logout, settings }) => {
   const [products, setProducts] = useState([]);
@@ -58,6 +67,33 @@ const AdminProducts = ({ user, logout, settings }) => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showVariantMode, setShowVariantMode] = useState(false);
   const [parentProduct, setParentProduct] = useState(null);
+
+  const categoryOptions = (() => {
+    const fromSettings = (settings?.product_categories || []).map(normalizeCategoryValue);
+    const fromProducts = products.map((product) => normalizeCategoryValue(product.category));
+    const combined = [...DEFAULT_CATEGORIES, ...fromSettings, ...fromProducts].filter(Boolean);
+    const seen = new Set();
+    return combined.reduce((acc, value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return acc;
+      seen.add(key);
+      acc.push({ value, label: formatCategoryLabel(value) });
+      return acc;
+    }, []);
+  })();
+
+  const categoryLabelMap = categoryOptions.reduce((map, option) => {
+    map.set(option.value, option.label);
+    return map;
+  }, new Map());
+
+  const getCategoryLabel = (value) => (
+    categoryLabelMap.get(value) || formatCategoryLabel(value)
+  );
+
+  const defaultCategory = categoryFilter !== 'all'
+    ? categoryFilter
+    : (categoryOptions[0]?.value || 'topup');
 
   useEffect(() => {
     loadProducts();
@@ -144,14 +180,46 @@ const AdminProducts = ({ user, logout, settings }) => {
       return;
     }
 
+    const durationMonths = normalizeSubscriptionDuration(formData.subscription_duration_months);
+    const inferredVariantLabel = formData.variant_name || (durationMonths ? formatSubscriptionDurationLabel(durationMonths) : '');
+    const parent = formData.is_variant
+      ? (parentProduct || products.find((p) => p.id === formData.parent_product_id))
+      : null;
+
+    if (formData.is_variant && !formData.parent_product_id) {
+      toast.error('Select a parent product for this variant');
+      return;
+    }
+    if (formData.is_variant && !inferredVariantLabel) {
+      toast.error('Variant name is required');
+      return;
+    }
+
     try {
-      const durationMonths = normalizeSubscriptionDuration(formData.subscription_duration_months);
       const payload = {
         ...formData,
         price: parseFloat(formData.price),
         subscription_duration_months: durationMonths,
-        variant_name: formData.variant_name || (durationMonths ? formatSubscriptionDurationLabel(durationMonths) : '')
+        variant_name: inferredVariantLabel
       };
+
+      if (parent) {
+        payload.name = parent.name;
+        payload.description = parent.description;
+        payload.category = parent.category;
+        payload.image_url = parent.image_url || '';
+        payload.delivery_type = parent.delivery_type;
+        payload.stock_available = parent.stock_available;
+        payload.requires_player_id = parent.requires_player_id || false;
+        payload.player_id_label = parent.player_id_label || 'Player ID';
+        payload.requires_credentials = parent.requires_credentials || false;
+        payload.credential_fields = parent.credential_fields && parent.credential_fields.length > 0
+          ? parent.credential_fields
+          : ['email', 'password'];
+        payload.region = parent.region || '';
+        payload.giftcard_category = parent.giftcard_category || '';
+        payload.is_subscription = parent.is_subscription || false;
+      }
 
       if (editingProduct) {
         await axiosInstance.put(`/products/${editingProduct.id}`, payload);
@@ -171,25 +239,29 @@ const AdminProducts = ({ user, logout, settings }) => {
   };
 
   const handleEdit = (product) => {
+    const parent = product.parent_product_id
+      ? products.find((p) => p.id === product.parent_product_id)
+      : null;
+    setParentProduct(parent);
     setEditingProduct(product);
     setShowVariantMode(!!product.parent_product_id);
     setFormData({
-      name: product.name,
-      description: product.description,
-      category: product.category,
+      name: parent?.name || product.name,
+      description: parent?.description || product.description,
+      category: parent?.category || product.category,
       price: product.price?.toString?.() || '',
-      image_url: product.image_url || '',
-      stock_available: product.stock_available,
-      delivery_type: product.delivery_type,
-      requires_player_id: product.requires_player_id || false,
-      player_id_label: product.player_id_label || 'Player ID',
-      requires_credentials: product.requires_credentials || false,
-      credential_fields: product.credential_fields && product.credential_fields.length > 0
-        ? product.credential_fields
-        : ['email', 'password'],
-      region: product.region || '',
-      giftcard_category: product.giftcard_category || '',
-      is_subscription: product.is_subscription || false,
+      image_url: parent?.image_url || product.image_url || '',
+      stock_available: parent?.stock_available ?? product.stock_available,
+      delivery_type: parent?.delivery_type || product.delivery_type,
+      requires_player_id: parent?.requires_player_id ?? product.requires_player_id || false,
+      player_id_label: parent?.player_id_label || product.player_id_label || 'Player ID',
+      requires_credentials: parent?.requires_credentials ?? product.requires_credentials || false,
+      credential_fields: parent?.credential_fields && parent?.credential_fields.length > 0
+        ? parent.credential_fields
+        : (product.credential_fields && product.credential_fields.length > 0 ? product.credential_fields : ['email', 'password']),
+      region: parent?.region || product.region || '',
+      giftcard_category: parent?.giftcard_category || product.giftcard_category || '',
+      is_subscription: parent?.is_subscription ?? product.is_subscription || false,
       subscription_duration_months: product.subscription_duration_months ? String(product.subscription_duration_months) : '',
       variant_name: product.variant_name || '',
       parent_product_id: product.parent_product_id || null,
@@ -215,7 +287,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     setFormData({
       name: '',
       description: '',
-      category: 'topup',
+      category: defaultCategory,
       price: '',
       image_url: '',
       stock_available: true,
@@ -238,6 +310,11 @@ const AdminProducts = ({ user, logout, settings }) => {
   };
 
   const showSubscriptionDuration = formData.category === 'subscription' || formData.is_subscription;
+  const isVariantForm = formData.is_variant || showVariantMode;
+  const productById = products.reduce((map, product) => {
+    map.set(product.id, product);
+    return map;
+  }, new Map());
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -262,7 +339,13 @@ const AdminProducts = ({ user, logout, settings }) => {
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <div className="flex flex-col sm:flex-row gap-2">
               <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-pink-500 to-blue-500 text-white w-full sm:w-auto text-sm sm:text-base" data-testid="add-product-btn">
+                <Button
+                  className="bg-gradient-to-r from-pink-500 to-blue-500 text-white w-full sm:w-auto text-sm sm:text-base"
+                  data-testid="add-product-btn"
+                  onClick={() => {
+                    resetForm();
+                  }}
+                >
                   <Plus size={18} className="mr-2 sm:mr-2" />
                   <span className="hidden sm:inline">Add New Product</span>
                   <span className="sm:hidden">Add Product</span>
@@ -272,7 +355,10 @@ const AdminProducts = ({ user, logout, settings }) => {
               <DialogTrigger asChild>
                 <Button 
                   className="bg-gradient-to-r from-cyan-500 to-purple-500 text-white w-full sm:w-auto text-sm sm:text-base"
-                  onClick={() => setShowVariantMode(true)}
+                  onClick={() => {
+                    resetForm();
+                    setShowVariantMode(true);
+                  }}
                 >
                   <Plus size={18} className="mr-2 sm:mr-2" />
                   <span className="hidden sm:inline">Add Product Variant</span>
@@ -299,10 +385,19 @@ const AdminProducts = ({ user, logout, settings }) => {
                         parent_product_id: value,
                         is_variant: true,
                         name: parent?.name || '',
-                        category: parent?.category || 'topup',
+                        description: parent?.description || '',
+                        category: parent?.category || defaultCategory,
                         image_url: parent?.image_url || '',
+                        delivery_type: parent?.delivery_type || 'manual',
+                        stock_available: parent?.stock_available ?? true,
                         requires_player_id: parent?.requires_player_id || false,
+                        player_id_label: parent?.player_id_label || 'Player ID',
                         requires_credentials: parent?.requires_credentials || false,
+                        credential_fields: parent?.credential_fields && parent.credential_fields.length > 0
+                          ? parent.credential_fields
+                          : ['email', 'password'],
+                        region: parent?.region || '',
+                        giftcard_category: parent?.giftcard_category || '',
                         is_subscription: parent?.is_subscription || false,
                         subscription_duration_months: ''
                       }));
@@ -311,9 +406,16 @@ const AdminProducts = ({ user, logout, settings }) => {
                         <SelectValue placeholder="Choose parent product..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {products.filter(p => !p.is_variant && !p.parent_product_id).map(product => (
+                        {(products.filter(p => !p.is_variant && !p.parent_product_id && (
+                          categoryFilter === 'all' || p.category === categoryFilter
+                        )).length
+                          ? products.filter(p => !p.is_variant && !p.parent_product_id && (
+                              categoryFilter === 'all' || p.category === categoryFilter
+                            ))
+                          : products.filter(p => !p.is_variant && !p.parent_product_id)
+                        ).map(product => (
                           <SelectItem key={product.id} value={product.id}>
-                            {product.name} ({product.category})
+                            {product.name} ({getCategoryLabel(product.category)})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -323,6 +425,9 @@ const AdminProducts = ({ user, logout, settings }) => {
                         Creating variant for: <strong>{parentProduct.name}</strong>
                       </p>
                     )}
+                    <p className="text-white/60 text-xs mt-2">
+                      Variants inherit name, category, and delivery settings from the parent. Only variant label and price change.
+                    </p>
                   </div>
                 )}
                 
@@ -336,6 +441,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                     onChange={(e) => handleChange('name', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
                     data-testid="product-name"
+                    disabled={isVariantForm}
                   />
                 </div>
 
@@ -347,21 +453,27 @@ const AdminProducts = ({ user, logout, settings }) => {
                     onChange={(e) => handleChange('description', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
                     rows={3}
+                    disabled={isVariantForm}
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="category" className="text-white">Category</Label>
-                    <Select value={formData.category} onValueChange={(value) => handleChange('category', value)}>
+                    <Select
+                      value={formData.category}
+                      onValueChange={(value) => handleChange('category', value)}
+                      disabled={isVariantForm}
+                    >
                       <SelectTrigger className="bg-white/10 border-white/20 text-white" data-testid="product-category">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="topup">Top-Up</SelectItem>
-                        <SelectItem value="giftcard">Gift Card</SelectItem>
-                        <SelectItem value="subscription">Subscription</SelectItem>
-                        <SelectItem value="service">Service</SelectItem>
+                        {categoryOptions.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -421,13 +533,18 @@ const AdminProducts = ({ user, logout, settings }) => {
                     onChange={(e) => handleChange('region', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
                     placeholder="e.g., US, EU, ASIA"
+                    disabled={isVariantForm}
                   />
                 </div>
 
                 {formData.category === 'giftcard' && (
                   <div>
                     <Label htmlFor="giftcard_category" className="text-white">Gift Card Category (Bitrefill style)</Label>
-                    <Select value={formData.giftcard_category || ''} onValueChange={(value) => handleChange('giftcard_category', value)}>
+                    <Select
+                      value={formData.giftcard_category || ''}
+                      onValueChange={(value) => handleChange('giftcard_category', value)}
+                      disabled={isVariantForm}
+                    >
                       <SelectTrigger className="bg-white/10 border-white/20 text-white mt-2">
                         <SelectValue placeholder="Select category..." />
                       </SelectTrigger>
@@ -451,6 +568,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                     onChange={(e) => handleChange('image_url', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
                     placeholder="Or upload image below"
+                    disabled={isVariantForm}
                   />
                 </div>
 
@@ -469,7 +587,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       }
                     }}
                     className="bg-white/10 border-white/20 text-white cursor-pointer"
-                    disabled={uploadingImage}
+                    disabled={uploadingImage || isVariantForm}
                   />
                   {uploadingImage && (
                     <p className="text-white/60 text-sm mt-2">Uploading...</p>
@@ -484,7 +602,11 @@ const AdminProducts = ({ user, logout, settings }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="delivery_type" className="text-white">Delivery Type</Label>
-                    <Select value={formData.delivery_type} onValueChange={(value) => handleChange('delivery_type', value)}>
+                    <Select
+                      value={formData.delivery_type}
+                      onValueChange={(value) => handleChange('delivery_type', value)}
+                      disabled={isVariantForm}
+                    >
                       <SelectTrigger data-testid="product-delivery-select" className="bg-white/10 border-white/20 text-white">
                         <SelectValue />
                       </SelectTrigger>
@@ -500,6 +622,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       id="stock"
                       checked={formData.stock_available}
                       onCheckedChange={(checked) => handleChange('stock_available', checked)}
+                      disabled={isVariantForm}
                     />
                     <Label htmlFor="stock" className="text-white">In Stock</Label>
                   </div>
@@ -511,6 +634,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       id="requires_player_id"
                       checked={formData.requires_player_id}
                       onCheckedChange={(checked) => handleChange('requires_player_id', checked)}
+                      disabled={isVariantForm}
                     />
                     <Label htmlFor="requires_player_id" className="text-white text-sm sm:text-base">Requires Player ID</Label>
                   </div>
@@ -520,6 +644,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       id="requires_credentials"
                       checked={formData.requires_credentials}
                       onCheckedChange={(checked) => handleChange('requires_credentials', checked)}
+                      disabled={isVariantForm}
                     />
                     <Label htmlFor="requires_credentials" className="text-white text-sm sm:text-base">Requires Credentials</Label>
                   </div>
@@ -529,6 +654,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       id="is_subscription"
                       checked={formData.is_subscription}
                       onCheckedChange={(checked) => handleChange('is_subscription', checked)}
+                      disabled={isVariantForm}
                     />
                     <Label htmlFor="is_subscription" className="text-white text-sm sm:text-base">Is Subscription (for referral)</Label>
                   </div>
@@ -554,6 +680,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                               }}
                               className="bg-white/10 border-white/20 text-white text-sm"
                               placeholder="e.g., email, password"
+                              disabled={isVariantForm}
                             />
                             <Button
                               type="button"
@@ -564,6 +691,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                                 const newFields = formData.credential_fields.filter((_, i) => i !== idx);
                                 handleChange('credential_fields', newFields.length > 0 ? newFields : ['email', 'password']);
                               }}
+                              disabled={isVariantForm}
                             >
                               Remove
                             </Button>
@@ -578,6 +706,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                         onClick={() => {
                           handleChange('credential_fields', [...(formData.credential_fields || []), '']);
                         }}
+                        disabled={isVariantForm}
                       >
                         + Add Field
                       </Button>
@@ -614,15 +743,15 @@ const AdminProducts = ({ user, logout, settings }) => {
             >
               All ({products.length})
             </Button>
-            {['giftcard', 'topup', 'subscription', 'service'].map(cat => {
-              const count = products.filter(p => p.category === cat).length;
+            {categoryOptions.map((option) => {
+              const count = products.filter((p) => p.category === option.value).length;
               return (
                 <Button
-                  key={cat}
-                  onClick={() => setCategoryFilter(cat)}
-                  className={`${categoryFilter === cat ? 'bg-pink-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
+                  key={option.value}
+                  onClick={() => setCategoryFilter(option.value)}
+                  className={`${categoryFilter === option.value ? 'bg-pink-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
                 >
-                  {cat.charAt(0).toUpperCase() + cat.slice(1)} ({count})
+                  {option.label} ({count})
                 </Button>
               );
             })}
@@ -659,9 +788,14 @@ const AdminProducts = ({ user, logout, settings }) => {
                       <h3 className="text-base sm:text-lg font-bold text-white mb-2 break-words">{product.name}</h3>
                       <p className="text-white/70 text-xs sm:text-sm mb-2 line-clamp-2">{product.description}</p>
                       <div className="space-y-1 text-xs sm:text-sm">
-                        <p className="text-white/60">Category: <span className="text-white font-medium">{product.category}</span></p>
+                        <p className="text-white/60">Category: <span className="text-white font-medium">{getCategoryLabel(product.category)}</span></p>
                         <p className="text-white/60">Price: <span className="text-white font-bold text-base">${Number(product.price).toFixed(2)}</span></p>
                         {product.variant_name && <p className="text-cyan-400 text-xs">Variant: {product.variant_name}</p>}
+                        {product.parent_product_id && (
+                          <p className="text-white/60 text-xs">
+                            Parent: {productById.get(product.parent_product_id)?.name || product.parent_product_id}
+                          </p>
+                        )}
                         {product.subscription_duration_months && (
                           <p className="text-cyan-300 text-xs">
                             Duration: {formatSubscriptionDurationLabel(product.subscription_duration_months)}
