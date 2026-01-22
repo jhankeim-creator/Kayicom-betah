@@ -127,11 +127,11 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
               {selectedProduct.stock_available ? (
                 <span className="flex items-center text-green-400 bg-green-400/20 px-3 py-1 rounded" data-testid="stock-status">
                   <CheckCircle size={16} className="mr-1" />
-                  Disponib
+                  Available
                 </span>
               ) : (
                 <span className="text-red-400 bg-red-400/20 px-3 py-1 rounded" data-testid="stock-status">
-                  Epuize
+                  Out of Stock
                 </span>
               )}
             </div>
@@ -140,8 +140,8 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
               <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm" data-testid="product-category">
                 {selectedProduct.category === 'giftcard' && 'Gift Card'}
                 {selectedProduct.category === 'topup' && 'Game Topup'}
-                {selectedProduct.category === 'subscription' && 'Abònman'}
-                {selectedProduct.category === 'service' && 'Sèvis'}
+                {selectedProduct.category === 'subscription' && 'Subscription'}
+                {selectedProduct.category === 'service' && 'Service'}
               </span>
               {selectedProduct.category === 'giftcard' && selectedProduct.giftcard_category && (
                 <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
@@ -156,17 +156,17 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
             </div>
 
             <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-3">Deskripsyon</h2>
+              <h2 className="text-2xl font-bold mb-3">Description</h2>
               <p className="text-white/80 text-lg leading-relaxed" data-testid="product-description">{selectedProduct.description}</p>
             </div>
 
             {/* Variant selector */}
             {variants.length > 1 && (
               <div className="mb-6 glass-effect p-6 rounded-lg">
-                <h3 className="text-xl font-bold mb-3">Chwazi opsyon an</h3>
+                <h3 className="text-xl font-bold mb-3">Choose an option</h3>
                 <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                    <SelectValue placeholder="Chwazi..." />
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
                     {variants.map(v => (
