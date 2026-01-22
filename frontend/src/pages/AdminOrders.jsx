@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
@@ -59,6 +59,8 @@ const AdminOrders = ({ user, logout, settings }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const [deliveryDialog, setDeliveryDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [deliveryInfo, setDeliveryInfo] = useState('');
@@ -66,6 +68,10 @@ const AdminOrders = ({ user, logout, settings }) => {
   const [refundDialog, setRefundDialog] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundReason, setRefundReason] = useState('');
+  const [rejectDialog, setRejectDialog] = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [selectedRejectOrder, setSelectedRejectOrder] = useState(null);
   const [proofViewerOpen, setProofViewerOpen] = useState(false);
   const [selectedProofUrl, setSelectedProofUrl] = useState(null);
   const [proofZoom, setProofZoom] = useState(1);
@@ -77,10 +83,15 @@ const AdminOrders = ({ user, logout, settings }) => {
   const canRenderSelectedProof = selectedProofUrl && (!selectedProofIsInline || canPreviewSelectedProof) && !proofLoadError;
 
   useEffect(() => {
-    loadOrders();
+    loadOrders({ showLoader: true });
   }, []);
 
-  const loadOrders = async () => {
+  const loadOrders = async ({ showLoader = false } = {}) => {
+    if (showLoader) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     try {
       const response = await axiosInstance.get('/orders');
       setOrders(response.data);
@@ -88,13 +99,20 @@ const AdminOrders = ({ user, logout, settings }) => {
       console.error('Error loading orders:', error);
       toast.error('Error loading orders');
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
+      setRefreshing(false);
     }
   };
 
-  const handleApprovePayment = async (orderId) => {
+  const handleApprovePayment = async (order) => {
+    if (!order?.payment_proof_url) {
+      toast.error('Payment proof is required before approval');
+      return;
+    }
     try {
-      await axiosInstance.put(`/orders/${orderId}/status?payment_status=paid&order_status=processing`);
+      await axiosInstance.put(`/orders/${order.id}/status?payment_status=paid&order_status=processing`);
       toast.success('Payment approved!');
       loadOrders();
     } catch (error) {
@@ -103,17 +121,10 @@ const AdminOrders = ({ user, logout, settings }) => {
     }
   };
 
-  const handleRejectPayment = async (orderId) => {
-    if (!window.confirm('Are you sure you want to reject this payment?')) return;
-
-    try {
-      await axiosInstance.put(`/orders/${orderId}/status?payment_status=failed`);
-      toast.success('Payment rejected');
-      loadOrders();
-    } catch (error) {
-      console.error('Error rejecting payment:', error);
-      toast.error('Error rejecting payment');
-    }
+  const handleRejectPayment = (order) => {
+    setSelectedRejectOrder(order);
+    setRejectReason('');
+    setRejectDialog(true);
   };
 
   const handleCompleteOrder = async (orderId) => {
@@ -185,6 +196,34 @@ const AdminOrders = ({ user, logout, settings }) => {
     }
   };
 
+  const submitReject = async () => {
+    const reason = rejectReason.trim();
+    if (!reason) {
+      toast.error('Please provide a rejection reason');
+      return;
+    }
+
+    setRejecting(true);
+    try {
+      await axiosInstance.put(`/orders/${selectedRejectOrder.id}/status`, null, {
+        params: {
+          payment_status: 'failed',
+          order_status: 'cancelled',
+          reason
+        }
+      });
+      toast.success('Payment rejected');
+      setRejectDialog(false);
+      setSelectedRejectOrder(null);
+      loadOrders();
+    } catch (error) {
+      console.error('Error rejecting payment:', error);
+      toast.error(error.response?.data?.detail || 'Error rejecting payment');
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   const submitDelivery = async () => {
     const trimmedDetails = deliveryInfo.trim();
     const itemPayload = (deliveryItems || [])
@@ -217,13 +256,45 @@ const AdminOrders = ({ user, logout, settings }) => {
     }
   };
 
-  const filteredOrders = orders.filter(order => {
-    if (filter === 'all') return true;
-    if (filter === 'pending_payment') return order.payment_status === 'pending_verification';
-    if (filter === 'processing') return order.order_status === 'processing';
-    if (filter === 'completed') return order.order_status === 'completed';
-    return true;
-  });
+  const parseDate = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  };
+
+  const sortedOrders = useMemo(() => {
+    return [...orders].sort((a, b) => {
+      const dateA = parseDate(a.created_at);
+      const dateB = parseDate(b.created_at);
+      return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
+    });
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    return sortedOrders.filter(order => {
+      const matchesFilter = (() => {
+        if (filter === 'all') return true;
+        if (filter === 'awaiting_proof') return order.payment_status === 'pending';
+        if (filter === 'pending_verification') return order.payment_status === 'pending_verification';
+        if (filter === 'processing') return order.order_status === 'processing';
+        if (filter === 'completed') return order.order_status === 'completed';
+        if (filter === 'cancelled') return order.order_status === 'cancelled';
+        return true;
+      })();
+      if (!matchesFilter) return false;
+      if (!normalizedSearch) return true;
+      const haystack = [
+        order.id,
+        order.user_email,
+        order.transaction_id
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(normalizedSearch);
+    });
+  }, [filter, search, sortedOrders]);
 
   const getPaymentStatusBadge = (status) => {
     const badges = {
@@ -262,18 +333,37 @@ const AdminOrders = ({ user, logout, settings }) => {
                 🏠 Admin Home
               </Button>
             </div>
-            
-            <Select value={filter} onValueChange={setFilter}>
-              <SelectTrigger className="w-[200px] bg-white/10 border-white/20 text-white" data-testid="filter-select">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Orders</SelectItem>
-                <SelectItem value="pending_payment">Pending Payment</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-              </SelectContent>
-            </Select>
+
+            <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by order ID, email, or transaction ID"
+                className="bg-white/10 border-white/20 text-white placeholder:text-white/50 md:w-[320px]"
+                data-testid="orders-search"
+              />
+              <Select value={filter} onValueChange={setFilter}>
+                <SelectTrigger className="w-full md:w-[220px] bg-white/10 border-white/20 text-white" data-testid="filter-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Orders</SelectItem>
+                  <SelectItem value="awaiting_proof">Awaiting Proof</SelectItem>
+                  <SelectItem value="pending_verification">Pending Verification</SelectItem>
+                  <SelectItem value="processing">Processing</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                className="border-white/20 text-white hover:bg-white/10"
+                onClick={() => loadOrders()}
+                disabled={refreshing}
+              >
+                {refreshing ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </div>
           </div>
 
           {loading ? (
@@ -445,11 +535,13 @@ const AdminOrders = ({ user, logout, settings }) => {
                           </Button>
                         </Link>
 
-                        {(order.payment_status === 'pending_verification' || order.payment_status === 'pending') && (
+                        {['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'].includes(order.payment_method)
+                          && order.payment_status === 'pending_verification' && (
                           <>
                             <Button
                               className="w-full bg-green-500 hover:bg-green-600 text-white"
-                              onClick={() => handleApprovePayment(order.id)}
+                              onClick={() => handleApprovePayment(order)}
+                              disabled={!order.payment_proof_url}
                               data-testid={`approve-payment-${order.id}`}
                             >
                               <CheckCircle size={16} className="mr-2" />
@@ -458,7 +550,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                             <Button
                               variant="destructive"
                               className="w-full"
-                              onClick={() => handleRejectPayment(order.id)}
+                              onClick={() => handleRejectPayment(order)}
                               data-testid={`reject-payment-${order.id}`}
                             >
                               <XCircle size={16} className="mr-2" />
@@ -606,6 +698,41 @@ const AdminOrders = ({ user, logout, settings }) => {
                 Refund
               </Button>
               <Button onClick={() => setRefundDialog(false)} variant="outline" className="border-white/20 text-white">
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Payment Dialog */}
+      <Dialog open={rejectDialog} onOpenChange={setRejectDialog}>
+        <DialogContent className="bg-gray-900 border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-white">
+              Reject Payment for Order #{selectedRejectOrder?.id?.slice(0, 8)}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-white">Rejection Reason</Label>
+              <Textarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="bg-white/10 border-white/20 text-white placeholder:text-gray-500 mt-2"
+                placeholder="Explain why the payment is rejected..."
+                rows={4}
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button
+                onClick={submitReject}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                disabled={rejecting}
+              >
+                {rejecting ? 'Rejecting...' : 'Reject Payment'}
+              </Button>
+              <Button onClick={() => setRejectDialog(false)} variant="outline" className="border-white/20 text-white">
                 Cancel
               </Button>
             </div>

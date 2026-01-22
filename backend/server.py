@@ -1401,12 +1401,22 @@ async def get_order(order_id: str):
     return order
 
 @api_router.put("/orders/{order_id}/status")
-async def update_order_status(order_id: str, payment_status: Optional[str] = None, order_status: Optional[str] = None):
+async def update_order_status(
+    order_id: str,
+    payment_status: Optional[str] = None,
+    order_status: Optional[str] = None,
+    reason: Optional[str] = None,
+):
     updates = {"updated_at": datetime.now(timezone.utc).isoformat()}
     if payment_status:
         updates['payment_status'] = payment_status
     if order_status:
         updates['order_status'] = order_status
+    if reason is not None:
+        cleaned = reason.strip()
+        if cleaned:
+            updates["payment_rejection_reason"] = cleaned
+            updates["payment_rejected_at"] = datetime.now(timezone.utc).isoformat()
     
     result = await db.orders.update_one({"id": order_id}, {"$set": updates})
     if result.matched_count == 0:
