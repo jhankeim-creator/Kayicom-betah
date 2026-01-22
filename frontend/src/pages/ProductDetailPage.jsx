@@ -252,7 +252,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                     </li>
                     <li className="flex items-center">
                       <span className="mr-2">⏱️</span>
-                      Delivery time: 1-24 hours
+                      Instant delivery
                     </li>
                   </>
                 )}
