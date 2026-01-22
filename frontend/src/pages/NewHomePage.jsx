@@ -9,12 +9,6 @@ import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, Dol
 import { toast } from 'sonner';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
-const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
-const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
-  name,
-  subcategories: []
-}));
-
 const NewHomePage = ({ user, logout, cart, settings }) => {
   const { t } = useContext(LanguageContext);
   const [featuredProducts, setFeaturedProducts] = useState([]);
@@ -99,31 +93,6 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
   };
 
   const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
-  const normalizeGiftcardKey = (value = '') => String(value || '').trim().toLowerCase();
-  const hasGiftcardTaxonomy = settings && Object.prototype.hasOwnProperty.call(settings, 'giftcard_taxonomy');
-  const settingsGiftcardTaxonomy = hasGiftcardTaxonomy
-    ? (settings?.giftcard_taxonomy || [])
-    : DEFAULT_GIFTCARD_TAXONOMY;
-  const giftcardPreview = (() => {
-    const categories = [];
-    const subcategories = [];
-    if (Array.isArray(settingsGiftcardTaxonomy)) {
-      settingsGiftcardTaxonomy.forEach((entry) => {
-        const name = String(entry?.name || '').trim();
-        if (name) categories.push(name);
-        if (Array.isArray(entry?.subcategories)) {
-          entry.subcategories.forEach((sub) => {
-            const value = String(sub || '').trim();
-            if (value) subcategories.push(value);
-          });
-        }
-      });
-    }
-    return {
-      categories: categories.length ? categories : DEFAULT_GIFTCARD_CATEGORIES,
-      subcategories
-    };
-  })();
   const categoryImages = settings?.category_images || {};
   const categories = (() => {
     const raw = [...CORE_CATEGORIES, ...(settings?.product_categories || [])]
@@ -135,14 +104,12 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
       const coverImage = categoryImages[key];
       if (meta) {
         return {
-          key,
           ...meta,
           bgImage: coverImage || meta.bgImage
         };
       }
       const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
       return {
-        key,
         name: label,
         icon: Package,
         path: `/products/${key}`,
@@ -237,9 +204,6 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {categories.map((category) => {
             const Icon = category.icon;
-            const isGiftcard = category.key === 'giftcard';
-            const giftcardCategories = giftcardPreview.categories.slice(0, 4);
-            const giftcardSubcategories = giftcardPreview.subcategories.slice(0, 6);
             return (
               <Link to={category.path} key={category.name}>
                 <Card className="category-card bg-gray-900/50 backdrop-blur-lg overflow-hidden group relative h-32" data-testid={`category-${category.name.toLowerCase().replace(' ', '-')}`}>
@@ -250,30 +214,10 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
                     opacity: '0.1'
                   }} />
                   <div className={`absolute inset-0 bg-gradient-to-br ${category.gradient} opacity-20 group-hover:opacity-30 transition-opacity`} />
-                  <CardContent className="relative p-4 h-full flex flex-col items-center justify-center text-center">
+                  <CardContent className="relative p-6 h-full flex flex-col items-center justify-center text-center">
                     <Icon size={32} className="text-white mb-2" />
                     <h3 className="text-base md:text-lg font-bold text-white">{category.name}</h3>
-                    {isGiftcard && giftcardCategories.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1 justify-center text-[10px]">
-                        {giftcardCategories.map((label) => (
-                          <span key={normalizeGiftcardKey(label)} className="rounded-full bg-white/10 px-2 py-0.5 text-white/80">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                   </CardContent>
-                  {isGiftcard && giftcardSubcategories.length > 0 && (
-                    <div className="absolute inset-x-2 bottom-2 opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-300">
-                      <div className="flex flex-wrap gap-1 justify-center text-[10px]">
-                        {giftcardSubcategories.map((label) => (
-                          <span key={normalizeGiftcardKey(label)} className="rounded-full bg-white/20 px-2 py-0.5 text-white">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </Card>
               </Link>
             );
