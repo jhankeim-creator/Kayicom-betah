@@ -16,6 +16,10 @@ import { toast } from 'sonner';
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service', 'crypto'];
 const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
+const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
+  name,
+  subcategories: []
+}));
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -85,11 +89,19 @@ const AdminProducts = ({ user, logout, settings }) => {
     }, []);
   })();
 
+  const hasGiftcardTaxonomy = settings && Object.prototype.hasOwnProperty.call(settings, 'giftcard_taxonomy');
+  const settingsGiftcardTaxonomy = hasGiftcardTaxonomy
+    ? (settings?.giftcard_taxonomy || [])
+    : DEFAULT_GIFTCARD_TAXONOMY;
+
   const giftcardCategoryOptions = (() => {
+    const fromSettings = Array.isArray(settingsGiftcardTaxonomy)
+      ? settingsGiftcardTaxonomy.map((item) => normalizeGiftcardValue(item?.name)).filter(Boolean)
+      : [];
     const fromProducts = products
       .map((product) => normalizeGiftcardValue(product.giftcard_category))
       .filter(Boolean);
-    const combined = [...DEFAULT_GIFTCARD_CATEGORIES, ...fromProducts].filter(Boolean);
+    const combined = [...fromSettings, ...fromProducts].filter(Boolean);
     const seen = new Set();
     return combined.reduce((acc, value) => {
       const key = value.toLowerCase();
@@ -102,6 +114,16 @@ const AdminProducts = ({ user, logout, settings }) => {
 
   const giftcardSubcategoryOptions = (() => {
     const selectedCategory = normalizeGiftcardValue(formData.giftcard_category).toLowerCase();
+    const fromSettings = (() => {
+      if (!Array.isArray(settingsGiftcardTaxonomy)) return [];
+      if (!selectedCategory) {
+        return settingsGiftcardTaxonomy.flatMap((item) => item?.subcategories || []);
+      }
+      const match = settingsGiftcardTaxonomy.find(
+        (item) => normalizeGiftcardValue(item?.name).toLowerCase() === selectedCategory
+      );
+      return match?.subcategories || [];
+    })();
     const fromProducts = products
       .filter((product) => {
         if (!selectedCategory) return true;
@@ -110,7 +132,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       .map((product) => normalizeGiftcardValue(product.giftcard_subcategory))
       .filter(Boolean);
     const seen = new Set();
-    return fromProducts.reduce((acc, value) => {
+    return [...fromSettings, ...fromProducts].filter(Boolean).reduce((acc, value) => {
       const key = value.toLowerCase();
       if (seen.has(key)) return acc;
       seen.add(key);

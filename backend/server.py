@@ -282,6 +282,14 @@ class SiteSettings(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = ["giftcard", "topup", "subscription", "service"]
     category_images: Optional[Dict[str, str]] = {}
+    giftcard_taxonomy: Optional[List[Dict[str, Any]]] = [
+        {"name": "Shopping", "subcategories": []},
+        {"name": "Gaming", "subcategories": []},
+        {"name": "Entertainment", "subcategories": []},
+        {"name": "Food", "subcategories": []},
+        {"name": "Travel", "subcategories": []},
+        {"name": "Other", "subcategories": []},
+    ]
     # Payment Gateway Settings
     payment_gateways: Optional[dict] = {
         "paypal": {"enabled": True, "email": "", "instructions": ""},
@@ -343,6 +351,7 @@ class SettingsUpdate(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = None
     category_images: Optional[Dict[str, str]] = None
+    giftcard_taxonomy: Optional[List[Dict[str, Any]]] = None
     payment_gateways: Optional[dict] = None
     crypto_settings: Optional[dict] = None
     minutes_transfer_enabled: Optional[bool] = None

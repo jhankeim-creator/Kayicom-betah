@@ -19,6 +19,11 @@ import { Save, Settings as SettingsIcon, Key, Package, Mail, Plus, X } from 'luc
 import { toast } from 'sonner';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
+const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
+const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
+  name,
+  subcategories: []
+}));
 const normalizeCategoryKey = (value = '') => String(value || '').trim().toLowerCase();
 
 const mergeCategories = (base = [], extras = []) => {
@@ -57,6 +62,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     trustpilot_business_id: '',
     product_categories: [],
     category_images: {},
+    giftcard_taxonomy: DEFAULT_GIFTCARD_TAXONOMY,
     payment_gateways: {
       paypal: { enabled: true, email: '', instructions: '' },
       airtm: { enabled: true, email: '', instructions: '' },
@@ -91,6 +97,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     }
   });
   const [newCategory, setNewCategory] = useState('');
+  const [newGiftcardCategory, setNewGiftcardCategory] = useState('');
+  const [newGiftcardSubcategory, setNewGiftcardSubcategory] = useState({});
   const [bulkEmail, setBulkEmail] = useState({
     subject: '',
     message: '',
@@ -115,6 +123,13 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           CORE_CATEGORIES,
           currentSettings.product_categories || []
         );
+        const hasGiftcardTaxonomy = Object.prototype.hasOwnProperty.call(
+          currentSettings,
+          'giftcard_taxonomy'
+        );
+        const giftcardTaxonomy = hasGiftcardTaxonomy
+          ? (currentSettings.giftcard_taxonomy || [])
+          : DEFAULT_GIFTCARD_TAXONOMY;
         setFormData({
           site_name: currentSettings.site_name || '',
           logo_url: currentSettings.logo_url || '',
@@ -133,6 +148,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           trustpilot_business_id: currentSettings.trustpilot_business_id || '',
           product_categories: mergedCategories,
           category_images: currentSettings.category_images || {},
+          giftcard_taxonomy: giftcardTaxonomy,
           payment_gateways: currentSettings.payment_gateways || defaultPaymentGateways,
           crypto_settings: currentSettings.crypto_settings || {
             buy_rate_usdt: 1.0,
@@ -194,6 +210,77 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
         product_categories: nextCategories,
         category_images: nextImages
       };
+    });
+  }, []);
+
+  const addGiftcardCategory = useCallback(() => {
+    const trimmed = newGiftcardCategory.trim();
+    if (!trimmed) return;
+    setFormData(prev => {
+      const existingKeys = new Set((prev.giftcard_taxonomy || []).map((item) => normalizeCategoryKey(item?.name)));
+      const key = normalizeCategoryKey(trimmed);
+      if (!key || existingKeys.has(key)) {
+        setNewGiftcardCategory('');
+        return prev;
+      }
+      setNewGiftcardCategory('');
+      return {
+        ...prev,
+        giftcard_taxonomy: [
+          ...(prev.giftcard_taxonomy || []),
+          { name: trimmed, subcategories: [] }
+        ]
+      };
+    });
+  }, [newGiftcardCategory]);
+
+  const removeGiftcardCategory = useCallback((categoryName) => {
+    const key = normalizeCategoryKey(categoryName);
+    setFormData(prev => ({
+      ...prev,
+      giftcard_taxonomy: (prev.giftcard_taxonomy || []).filter(
+        (item) => normalizeCategoryKey(item?.name) !== key
+      )
+    }));
+    setNewGiftcardSubcategory(prev => {
+      const next = { ...(prev || {}) };
+      delete next[key];
+      return next;
+    });
+  }, []);
+
+  const addGiftcardSubcategory = useCallback((categoryName) => {
+    const key = normalizeCategoryKey(categoryName);
+    const raw = (newGiftcardSubcategory || {})[key] || '';
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    setFormData(prev => {
+      const nextTaxonomy = (prev.giftcard_taxonomy || []).map((item) => {
+        if (normalizeCategoryKey(item?.name) !== key) return item;
+        const existing = new Set((item?.subcategories || []).map(normalizeCategoryKey));
+        if (existing.has(normalizeCategoryKey(trimmed))) return item;
+        return {
+          ...item,
+          subcategories: [...(item?.subcategories || []), trimmed]
+        };
+      });
+      return { ...prev, giftcard_taxonomy: nextTaxonomy };
+    });
+    setNewGiftcardSubcategory(prev => ({ ...(prev || {}), [key]: '' }));
+  }, [newGiftcardSubcategory]);
+
+  const removeGiftcardSubcategory = useCallback((categoryName, subcategoryName) => {
+    const key = normalizeCategoryKey(categoryName);
+    const subKey = normalizeCategoryKey(subcategoryName);
+    setFormData(prev => {
+      const nextTaxonomy = (prev.giftcard_taxonomy || []).map((item) => {
+        if (normalizeCategoryKey(item?.name) !== key) return item;
+        const nextSubs = (item?.subcategories || []).filter(
+          (value) => normalizeCategoryKey(value) !== subKey
+        );
+        return { ...item, subcategories: nextSubs };
+      });
+      return { ...prev, giftcard_taxonomy: nextTaxonomy };
     });
   }, []);
 
@@ -704,6 +791,103 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             </div>
                           );
                         })}
+                      </div>
+
+                      <div className="mt-6 border-t border-white/10 pt-6">
+                        <Label className="text-white text-lg font-semibold mb-3 block">Giftcard Categories & Subcategories</Label>
+                        <p className="text-gray-400 text-sm mb-4">
+                          Add giftcard subcategories even before products are created.
+                        </p>
+
+                        <div className="flex gap-2 mb-4">
+                          <Input
+                            value={newGiftcardCategory}
+                            onChange={(e) => setNewGiftcardCategory(e.target.value)}
+                            className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-gray-500"
+                            placeholder="Enter giftcard category"
+                            data-testid="new-giftcard-category-input"
+                          />
+                          <Button
+                            onClick={addGiftcardCategory}
+                            type="button"
+                            className="gradient-button text-white"
+                            data-testid="add-giftcard-category-btn"
+                          >
+                            <Plus size={16} className="mr-1" />
+                            Add
+                          </Button>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(formData.giftcard_taxonomy || []).length ? (
+                            (formData.giftcard_taxonomy || []).map((item) => {
+                              const categoryKey = normalizeCategoryKey(item?.name);
+                              const subcategories = Array.isArray(item?.subcategories) ? item.subcategories : [];
+                              return (
+                                <div key={categoryKey} className="p-4 glass-effect rounded-lg space-y-3" data-testid={`giftcard-category-${categoryKey}`}>
+                                  <div className="flex items-center justify-between gap-3">
+                                    <span className="text-white font-medium capitalize">{item?.name}</span>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => removeGiftcardCategory(item?.name)}
+                                      className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+                                      data-testid={`remove-giftcard-category-${categoryKey}`}
+                                    >
+                                      <X size={16} />
+                                    </Button>
+                                  </div>
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {subcategories.length ? (
+                                      subcategories.map((sub) => {
+                                        const subKey = `${categoryKey}-${normalizeCategoryKey(sub)}`;
+                                        return (
+                                          <span key={subKey} className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs text-white">
+                                            {sub}
+                                            <button
+                                              type="button"
+                                              onClick={() => removeGiftcardSubcategory(item?.name, sub)}
+                                              className="text-red-300 hover:text-red-200"
+                                              aria-label={`Remove ${sub}`}
+                                            >
+                                              <X size={12} />
+                                            </button>
+                                          </span>
+                                        );
+                                      })
+                                    ) : (
+                                      <span className="text-white/50 text-xs">No subcategories yet.</span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex flex-col sm:flex-row gap-2">
+                                    <Input
+                                      value={(newGiftcardSubcategory || {})[categoryKey] || ''}
+                                      onChange={(e) => setNewGiftcardSubcategory(prev => ({ ...(prev || {}), [categoryKey]: e.target.value }))}
+                                      className="flex-1 bg-white/10 border-white/20 text-white placeholder:text-gray-500"
+                                      placeholder="Enter subcategory"
+                                      data-testid={`giftcard-subcategory-input-${categoryKey}`}
+                                    />
+                                    <Button
+                                      type="button"
+                                      onClick={() => addGiftcardSubcategory(item?.name)}
+                                      className="border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
+                                      variant="outline"
+                                      data-testid={`add-giftcard-subcategory-${categoryKey}`}
+                                    >
+                                      <Plus size={16} className="mr-1" />
+                                      Add
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="text-white/60 text-sm">No giftcard categories yet.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </TabsContent>

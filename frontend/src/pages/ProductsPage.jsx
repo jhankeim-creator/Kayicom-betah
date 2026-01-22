@@ -9,14 +9,25 @@ import { Input } from '@/components/ui/input';
 import { Package, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
 
+const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
+const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
+  name,
+  subcategories: []
+}));
+
 const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   const { category } = useParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
   const normalizeGiftcardValue = (value = '') => String(value || '').trim();
+  const normalizeGiftcardKey = (value = '') => normalizeGiftcardValue(value).toLowerCase();
   const [selectedCategory, setSelectedCategory] = useState(normalizeCategory(category));
   const [search, setSearch] = useState('');
+  const hasGiftcardTaxonomy = settings && Object.prototype.hasOwnProperty.call(settings, 'giftcard_taxonomy');
+  const settingsGiftcardTaxonomy = hasGiftcardTaxonomy
+    ? (settings?.giftcard_taxonomy || [])
+    : DEFAULT_GIFTCARD_TAXONOMY;
 
   useEffect(() => {
     setSelectedCategory(normalizeCategory(category));
@@ -106,49 +117,125 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
 
   const giftcardSections = (() => {
     if (selectedCategory !== 'giftcard') return [];
-    const map = new Map();
+    const catalogEntries = Array.isArray(settingsGiftcardTaxonomy)
+      ? settingsGiftcardTaxonomy
+          .map((item) => ({
+            name: String(item?.name || '').trim(),
+            subcategories: Array.isArray(item?.subcategories) ? item.subcategories.filter(Boolean) : []
+          }))
+          .filter((item) => item.name)
+      : [];
+    const catalogMap = new Map();
+    const catalogOrder = [];
+    for (const entry of catalogEntries) {
+      const key = normalizeGiftcardKey(entry.name);
+      if (!key || catalogMap.has(key)) continue;
+      catalogMap.set(key, entry);
+      catalogOrder.push(key);
+    }
+
+    const sectionMap = new Map();
+    for (const [key, entry] of catalogMap.entries()) {
+      sectionMap.set(key, {
+        name: entry.name,
+        products: [],
+        subcategoryMap: new Map(),
+        subcategoryLabels: new Map(),
+        expectedSubcategories: entry.subcategories || []
+      });
+    }
+
     for (const p of groupedProducts) {
-      const section = inferGiftcardCategory(p);
-      const entry = map.get(section) || { name: section, products: [], subcategoryMap: new Map() };
+      const categoryName = normalizeGiftcardValue(p?.giftcard_category) || inferGiftcardCategory(p);
+      const sectionKey = normalizeGiftcardKey(categoryName || 'Other');
+      if (!sectionMap.has(sectionKey)) {
+        sectionMap.set(sectionKey, {
+          name: categoryName || 'Other',
+          products: [],
+          subcategoryMap: new Map(),
+          subcategoryLabels: new Map(),
+          expectedSubcategories: []
+        });
+      }
+      const entry = sectionMap.get(sectionKey);
       entry.products.push(p);
       const subcategory = normalizeGiftcardValue(p?.giftcard_subcategory);
       if (subcategory) {
-        const list = entry.subcategoryMap.get(subcategory) || [];
-        list.push(p);
-        entry.subcategoryMap.set(subcategory, list);
+        const subKey = normalizeGiftcardKey(subcategory);
+        if (!entry.subcategoryMap.has(subKey)) {
+          entry.subcategoryMap.set(subKey, []);
+          entry.subcategoryLabels.set(subKey, subcategory);
+        }
+        entry.subcategoryMap.get(subKey).push(p);
       }
-      map.set(section, entry);
     }
-    const order = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
-    const buildSection = (entry) => {
+
+    for (const entry of sectionMap.values()) {
+      (entry.expectedSubcategories || []).forEach((sub) => {
+        const subKey = normalizeGiftcardKey(sub);
+        if (!subKey) return;
+        if (!entry.subcategoryMap.has(subKey)) {
+          entry.subcategoryMap.set(subKey, []);
+        }
+        if (!entry.subcategoryLabels.has(subKey)) {
+          entry.subcategoryLabels.set(subKey, sub);
+        }
+      });
+
       const hasSubcategories = entry.subcategoryMap.size > 0;
-      if (!hasSubcategories) {
+      if (hasSubcategories) {
+        const uncategorized = entry.products.filter((p) => !normalizeGiftcardValue(p?.giftcard_subcategory));
+        if (uncategorized.length) {
+          const otherKey = normalizeGiftcardKey('Other');
+          const existing = entry.subcategoryMap.get(otherKey) || [];
+          entry.subcategoryMap.set(otherKey, [...existing, ...uncategorized]);
+          if (!entry.subcategoryLabels.has(otherKey)) {
+            entry.subcategoryLabels.set(otherKey, 'Other');
+          }
+        }
+      }
+    }
+
+    const buildSubSections = (entry) => {
+      if (entry.subcategoryMap.size === 0) {
         return { ...entry, subSections: [] };
       }
-      const uncategorized = entry.products.filter((p) => !normalizeGiftcardValue(p?.giftcard_subcategory));
-      if (uncategorized.length) {
-        const existing = entry.subcategoryMap.get('Other') || [];
-        entry.subcategoryMap.set('Other', [...existing, ...uncategorized]);
-      }
-      const keys = Array.from(entry.subcategoryMap.keys()).sort((a, b) => {
-        if (a === 'Other') return 1;
-        if (b === 'Other') return -1;
-        return a.localeCompare(b);
+      const orderedKeys = [];
+      const expectedKeys = (entry.expectedSubcategories || []).map((sub) => normalizeGiftcardKey(sub));
+      expectedKeys.forEach((key) => {
+        if (entry.subcategoryMap.has(key) && !orderedKeys.includes(key)) {
+          orderedKeys.push(key);
+        }
       });
-      const subSections = keys.map((key) => ({
-        name: key,
+      const otherKey = normalizeGiftcardKey('Other');
+      const extras = Array.from(entry.subcategoryMap.keys()).filter((key) => !orderedKeys.includes(key));
+      extras.sort((a, b) => {
+        if (a === otherKey) return 1;
+        if (b === otherKey) return -1;
+        const nameA = entry.subcategoryLabels.get(a) || a;
+        const nameB = entry.subcategoryLabels.get(b) || b;
+        return nameA.localeCompare(nameB);
+      });
+      const subSections = [...orderedKeys, ...extras].map((key) => ({
+        name: entry.subcategoryLabels.get(key) || key,
         products: entry.subcategoryMap.get(key) || []
       }));
       return { ...entry, subSections };
     };
-    const ordered = order
-      .filter((key) => map.has(key))
-      .map((key) => buildSection(map.get(key)));
-    const extras = Array.from(map.keys())
-      .filter((key) => !order.includes(key))
-      .sort()
-      .map((key) => buildSection(map.get(key)));
-    return [...ordered, ...extras];
+
+    const defaultOrderKeys = DEFAULT_GIFTCARD_CATEGORIES.map(normalizeGiftcardKey);
+    const baseOrder = catalogOrder.length ? catalogOrder : defaultOrderKeys;
+    const orderedSections = baseOrder.filter((key) => sectionMap.has(key));
+    const remainingKeys = Array.from(sectionMap.keys()).filter((key) => !orderedSections.includes(key));
+    const otherKey = normalizeGiftcardKey('Other');
+    remainingKeys.sort((a, b) => {
+      if (a === otherKey) return 1;
+      if (b === otherKey) return -1;
+      const nameA = sectionMap.get(a)?.name || a;
+      const nameB = sectionMap.get(b)?.name || b;
+      return nameA.localeCompare(nameB);
+    });
+    return [...orderedSections, ...remainingKeys].map((key) => buildSubSections(sectionMap.get(key)));
   })();
 
   const selectedCategoryLabel = categories.find((cat) => cat.value === selectedCategory)?.label || 'All';
@@ -284,16 +371,24 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
                           <h3 className="text-xl md:text-2xl font-semibold text-white">{subSection.name}</h3>
                           <span className="text-white/60 text-sm">{subSection.products.length} items</span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                          {subSection.products.map(renderProductCard)}
-                        </div>
+                        {subSection.products.length ? (
+                          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                            {subSection.products.map(renderProductCard)}
+                          </div>
+                        ) : (
+                          <p className="text-white/50 text-sm">No products yet.</p>
+                        )}
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                    {section.products.map(renderProductCard)}
-                  </div>
+                  section.products.length ? (
+                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                      {section.products.map(renderProductCard)}
+                    </div>
+                  ) : (
+                    <p className="text-white/50 text-sm">No products yet.</p>
+                  )
                 )}
               </div>
             ))}
