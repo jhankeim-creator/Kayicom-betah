@@ -22,7 +22,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
       setFeaturedProducts(response.data.slice(0, 6));
     } catch (error) {
       console.error('Error loading products:', error);
-      toast.error('Erè nan chajman pwodwi yo');
+      toast.error('Error loading products');
     } finally {
       setLoading(false);
     }
@@ -31,8 +31,8 @@ const HomePage = ({ user, logout, cart, settings }) => {
   const categories = [
     { name: 'Gift Cards', icon: Gift, path: '/products/giftcard', color: 'from-pink-500 to-rose-500' },
     { name: 'Game Topup', icon: Gamepad2, path: '/products/topup', color: 'from-blue-500 to-cyan-500' },
-    { name: 'Abònman', icon: Tv, path: '/products/subscription', color: 'from-purple-500 to-indigo-500' },
-    { name: 'Sèvis', icon: Wrench, path: '/products/service', color: 'from-green-500 to-emerald-500' },
+    { name: 'Subscriptions', icon: Tv, path: '/products/subscription', color: 'from-purple-500 to-indigo-500' },
+    { name: 'Services', icon: Wrench, path: '/products/service', color: 'from-green-500 to-emerald-500' },
   ];
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -45,21 +45,21 @@ const HomePage = ({ user, logout, cart, settings }) => {
       <div className="container mx-auto px-4 py-20" data-testid="hero-section">
         <div className="text-center max-w-4xl mx-auto">
           <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-white mb-6">
-            Achte Pwodwi Dijital <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">Instant</span>
+            Buy Digital Products <span className="bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">Instantly</span>
           </h1>
           <p className="text-lg md:text-xl text-white/90 mb-8">
-            Gift cards, topup game, abònman ak plis ankò. Livrezon otomatik 24/7.
+            Gift cards, game top-ups, subscriptions, and more. Automatic delivery 24/7.
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link to="/products">
               <Button size="lg" className="bg-white text-purple-600 hover:bg-gray-100 px-8" data-testid="browse-products-btn">
-                Eksplore Pwodwi <ArrowRight className="ml-2" size={20} />
+                Explore Products <ArrowRight className="ml-2" size={20} />
               </Button>
             </Link>
             {!user && (
               <Link to="/register">
                 <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10 px-8" data-testid="register-btn">
-                  Kreye Kont
+                  Create Account
                 </Button>
               </Link>
             )}
@@ -69,7 +69,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
 
       {/* Categories Section */}
       <div className="container mx-auto px-4 py-12">
-        <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-12">Kategori Pwodwi</h2>
+        <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-12">Product Categories</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {categories.map((category) => {
             const Icon = category.icon;
@@ -91,9 +91,9 @@ const HomePage = ({ user, logout, cart, settings }) => {
 
       {/* Featured Products */}
       <div className="container mx-auto px-4 py-12">
-        <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-12">Pwodwi Popilè</h2>
+        <h2 className="text-3xl md:text-4xl font-bold text-white text-center mb-12">Popular Products</h2>
         {loading ? (
-          <div className="text-center text-white">Ap chaje...</div>
+          <div className="text-center text-white">Loading...</div>
         ) : featuredProducts.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {featuredProducts.map((product) => (
@@ -112,7 +112,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold text-white">${product.price}</span>
                       <Button size="sm" className="bg-white text-purple-600 hover:bg-gray-100" data-testid={`buy-btn-${product.id}`}>
-                        Achte Kounye a
+                        Buy Now
                       </Button>
                     </div>
                   </CardContent>
@@ -121,7 +121,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
             ))}
           </div>
         ) : (
-          <div className="text-center text-white">Pa gen pwodwi disponib</div>
+          <div className="text-center text-white">No products available</div>
         )}
       </div>
 
@@ -132,22 +132,22 @@ const HomePage = ({ user, logout, cart, settings }) => {
             <div className="bg-white/10 backdrop-blur-lg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">⚡</span>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Livrezon Instant</h3>
-            <p className="text-white/70">Jwenn pwodwi ou an nan kèk segonn</p>
+            <h3 className="text-xl font-bold text-white mb-2">Instant Delivery</h3>
+            <p className="text-white/70">Get your products in seconds</p>
           </div>
           <div className="text-center">
             <div className="bg-white/10 backdrop-blur-lg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">🔒</span>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Sekirite Maksimòm</h3>
-            <p className="text-white/70">Tranzaksyon ou yo an sekirite</p>
+            <h3 className="text-xl font-bold text-white mb-2">Maximum Security</h3>
+            <p className="text-white/70">Your transactions are secure</p>
           </div>
           <div className="text-center">
             <div className="bg-white/10 backdrop-blur-lg rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl">💬</span>
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Sipò 24/7</h3>
-            <p className="text-white/70">Ekip nou la pou ede w nenpòt lè</p>
+            <h3 className="text-xl font-bold text-white mb-2">24/7 Support</h3>
+            <p className="text-white/70">Our team is here to help anytime</p>
           </div>
         </div>
       </div>

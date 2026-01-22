@@ -148,42 +148,70 @@ const AdminCrypto = () => {
 
         <TabsContent value="transactions">
           <div className="space-y-4">
-            {transactions.map((tx) => (
-              <Card key={tx.id} className="glass-effect border-white/20">
-                <CardContent className="p-4">
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="text-white font-bold">
-                        {tx.transaction_type.toUpperCase()} {tx.amount_crypto.toFixed(2)} USDT
-                      </p>
-                      <p className="text-white/70 text-sm">{tx.user_email}</p>
-                      <p className="text-white/70 text-sm">{tx.chain} - ${tx.total_usd.toFixed(2)}</p>
-                      <p className="text-white/60 text-xs">{new Date(tx.created_at).toLocaleString()}</p>
-                      {tx.transaction_id && (
-                        <p className="text-white/70 text-xs mt-2 break-all">
-                          Reference: {tx.transaction_id}
+            {transactions.map((tx) => {
+              const receivingInfo = tx.receiving_info || tx.metadata?.receiving_info;
+              const walletLabel = tx.transaction_type === 'buy' ? 'Customer Wallet' : 'Deposit Wallet';
+              const proofUrl = tx.payment_proof || tx.payment_proof_url;
+              return (
+                <Card key={tx.id} className="glass-effect border-white/20">
+                  <CardContent className="p-4">
+                    <div className="flex justify-between">
+                      <div>
+                        <p className="text-white font-bold">
+                          {tx.transaction_type.toUpperCase()} {tx.amount_crypto.toFixed(2)} USDT
                         </p>
-                      )}
-                      {tx.payment_proof && (
-                        <div className="mt-2">
-                          <a
-                            href={tx.payment_proof}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-cyan-300 text-xs underline"
-                          >
-                            View payment proof
-                          </a>
-                          {tx.payment_proof.startsWith('data:image') && (
-                            <img
-                              src={tx.payment_proof}
-                              alt="Payment proof"
-                              className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
-                            />
+                        <p className="text-white/70 text-sm">{tx.user_email}</p>
+                        <p className="text-white/70 text-sm">
+                          {tx.chain} - ${Number(tx.total_usd || 0).toFixed(2)}
+                        </p>
+                        <p className="text-white/60 text-xs">{new Date(tx.created_at).toLocaleString()}</p>
+                        <div className="mt-2 space-y-1 text-white/70 text-xs">
+                          {tx.payment_method && (
+                            <p>
+                              Payment Method: <span className="text-white">{tx.payment_method}</span>
+                            </p>
+                          )}
+                          {tx.payer_info && (
+                            <p className="break-all">
+                              Payer Info: <span className="text-white">{tx.payer_info}</span>
+                            </p>
+                          )}
+                          {receivingInfo && (
+                            <p className="break-all">
+                              Payout Info: <span className="text-white">{receivingInfo}</span>
+                            </p>
+                          )}
+                          {tx.wallet_address && (
+                            <p className="break-all">
+                              {walletLabel}: <span className="text-white">{tx.wallet_address}</span>
+                            </p>
+                          )}
+                          {tx.transaction_id && (
+                            <p className="break-all">
+                              Reference: <span className="text-white">{tx.transaction_id}</span>
+                            </p>
                           )}
                         </div>
-                      )}
-                    </div>
+                        {proofUrl && (
+                          <div className="mt-2">
+                            <a
+                              href={proofUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-cyan-300 text-xs underline"
+                            >
+                              View payment proof
+                            </a>
+                            {proofUrl.startsWith('data:image') && (
+                              <img
+                                src={proofUrl}
+                                alt="Payment proof"
+                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
                     
                     <div className="flex flex-col gap-2 items-end">
                       <span className={`px-3 py-1 rounded text-sm ${
@@ -225,9 +253,10 @@ const AdminCrypto = () => {
                       )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </TabsContent>
       </Tabs>

@@ -77,6 +77,8 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
         <div className="grid gap-4">
           {transactions.map((tx) => {
             const proofUrl = tx.payment_proof || tx.payment_proof_url;
+            const receivingInfo = tx.receiving_info || tx.metadata?.receiving_info;
+            const walletLabel = tx.transaction_type === 'buy' ? 'Customer Wallet' : 'Deposit Wallet';
             return (
               <Card key={tx.id} className="glass-effect border-white/20">
                 <CardContent className="p-6">
@@ -126,6 +128,25 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                       <span className="text-white">{tx.invoice_id}</span>
                     </div>
                   )}
+                  {tx.plisio_invoice_id && (
+                    <div className="flex justify-between text-white/70">
+                      <span>Plisio Invoice:</span>
+                      <span className="text-white">{tx.plisio_invoice_id}</span>
+                    </div>
+                  )}
+                  {tx.plisio_invoice_url && (
+                    <div className="flex justify-between text-white/70">
+                      <span>Plisio Link:</span>
+                      <a
+                        href={tx.plisio_invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-cyan-300 text-sm underline"
+                      >
+                        View invoice
+                      </a>
+                    </div>
+                  )}
                   {tx.payer_info && (
                     <div className="flex justify-between text-white/70">
                       <span>Payer Info:</span>
@@ -134,14 +155,14 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                   )}
                   {tx.wallet_address && (
                     <div className="flex justify-between text-white/70">
-                      <span>Wallet:</span>
+                      <span>{walletLabel}:</span>
                       <span className="text-white text-xs break-all">{tx.wallet_address}</span>
                     </div>
                   )}
-                  {tx.receiving_info && (
+                  {receivingInfo && (
                     <div className="flex justify-between text-white/70">
-                      <span>Receiving Info:</span>
-                      <span className="text-white text-sm">{tx.receiving_info}</span>
+                      <span>Payout Info:</span>
+                      <span className="text-white text-sm">{receivingInfo}</span>
                     </div>
                   )}
                 </div>
