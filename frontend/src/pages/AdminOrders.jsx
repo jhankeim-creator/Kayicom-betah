@@ -25,7 +25,13 @@ import {
 } from '@/components/ui/dialog';
 import { Eye, CheckCircle, XCircle, Send, Package } from 'lucide-react';
 import { toast } from 'sonner';
-import { canPreviewInlineImage, formatBytes, getInlineImageBytes, isInlineImage } from '../utils/paymentProof';
+import {
+  canPreviewInlineImage,
+  formatBytes,
+  getInlineImageBytes,
+  isInlineImage,
+  openPaymentProof
+} from '../utils/paymentProof';
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -683,14 +689,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                     variant="outline"
                     className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
                     onClick={() => {
-                      if (selectedProofIsInline) {
-                        const link = document.createElement('a');
-                        link.href = selectedProofUrl;
-                        link.download = 'payment-proof.png';
-                        link.click();
-                      } else {
-                        window.open(selectedProofUrl, '_blank');
-                      }
+                      openPaymentProof(selectedProofUrl, { filename: 'payment-proof.png', action: 'open' });
                     }}
                   >
                     Download / Open
