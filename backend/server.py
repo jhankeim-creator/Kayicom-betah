@@ -128,6 +128,7 @@ class Product(BaseModel):
     credential_fields: Optional[List[str]] = None  # e.g. ["email","password"]
     region: Optional[str] = None  # For gift cards: US, EU, ASIA, etc.
     giftcard_category: Optional[str] = None  # For gift cards: Shopping, Gaming, Entertainment, etc.
+    giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
     is_subscription: bool = False  # Track if this triggers referral payout
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -151,6 +152,7 @@ class ProductCreate(BaseModel):
     credential_fields: Optional[List[str]] = None
     region: Optional[str] = None
     giftcard_category: Optional[str] = None
+    giftcard_subcategory: Optional[str] = None
     is_subscription: bool = False
     metadata: Optional[Dict[str, Any]] = None
 
@@ -173,6 +175,7 @@ class ProductUpdate(BaseModel):
     credential_fields: Optional[List[str]] = None
     region: Optional[str] = None
     giftcard_category: Optional[str] = None
+    giftcard_subcategory: Optional[str] = None
     is_subscription: Optional[bool] = None
     metadata: Optional[Dict[str, Any]] = None
 
@@ -914,6 +917,7 @@ async def get_products(
                     {"description": {"$regex": q, "$options": "i"}},
                     {"variant_name": {"$regex": q, "$options": "i"}},
                     {"giftcard_category": {"$regex": q, "$options": "i"}},
+                    {"giftcard_subcategory": {"$regex": q, "$options": "i"}},
                 ]
 
         products = await db.products.find(query, {"_id": 0}).to_list(1000)
@@ -945,6 +949,7 @@ async def get_products(
                     "credential_fields": product.get("credential_fields"),
                     "region": product.get("region"),
                     "giftcard_category": product.get("giftcard_category"),
+                    "giftcard_subcategory": product.get("giftcard_subcategory"),
                     "is_subscription": product.get("is_subscription", False),
                     "metadata": product.get("metadata", {}),
                     "created_at": created_at,
