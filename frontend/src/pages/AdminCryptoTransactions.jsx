@@ -186,13 +186,9 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                       View proof
                     </a>
                     {proofUrl.startsWith('data:image') && (
-                      <div className="mt-2">
-                        <img
-                          src={proofUrl}
-                          alt="Payment proof"
-                          className="h-24 w-auto rounded border border-green-500/30"
-                        />
-                      </div>
+                      <p className="text-white/60 text-xs mt-2">
+                        Inline preview disabled for inline images.
+                      </p>
                     )}
                   </div>
                 )}

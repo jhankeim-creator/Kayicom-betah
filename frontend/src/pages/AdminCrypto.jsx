@@ -203,11 +203,9 @@ const AdminCrypto = () => {
                               View payment proof
                             </a>
                             {proofUrl.startsWith('data:image') && (
-                              <img
-                                src={proofUrl}
-                                alt="Payment proof"
-                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
-                              />
+                              <p className="text-white/60 text-xs mt-1">
+                                Inline preview disabled for inline images.
+                              </p>
                             )}
                           </div>
                         )}

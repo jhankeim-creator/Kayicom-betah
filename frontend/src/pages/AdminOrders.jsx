@@ -311,16 +311,9 @@ const AdminOrders = ({ user, logout, settings }) => {
                                 📸 View Payment Proof
                               </Button>
                               {order.payment_proof_url.startsWith('data:image') && (
-                                <img 
-                                  src={order.payment_proof_url} 
-                                  alt="Payment proof thumbnail" 
-                                  className="h-12 w-12 object-cover rounded border border-pink-400/30 cursor-pointer hover:border-pink-400/60 transition"
-                                  onClick={() => {
-                                    setSelectedProofUrl(order.payment_proof_url);
-                                    setProofViewerOpen(true);
-                                  }}
-                                  title="Click to view full size"
-                                />
+                                <span className="text-xs text-white/50">
+                                  Preview disabled for inline images.
+                                </span>
                               )}
                             </div>
                           </div>
@@ -596,11 +589,9 @@ const AdminOrders = ({ user, logout, settings }) => {
             {selectedProofUrl && (
               <div className="flex flex-col items-center gap-4">
                 {selectedProofUrl.startsWith('data:image') ? (
-                  <img 
-                    src={selectedProofUrl} 
-                    alt="Payment proof" 
-                    className="max-w-full max-h-[70vh] object-contain rounded border border-white/20"
-                  />
+                  <div className="text-center text-white/70 text-sm">
+                    Inline preview disabled to prevent browser crashes. Use Download below.
+                  </div>
                 ) : (
                   <a 
                     href={selectedProofUrl} 
