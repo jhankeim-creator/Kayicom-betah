@@ -232,7 +232,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                   <>
                     <li className="flex items-center">
                       <span className="mr-2">⚡</span>
-                      Instant automatic delivery
+                      Automatic delivery
                     </li>
                     <li className="flex items-center">
                       <span className="mr-2">📬</span>
@@ -253,7 +253,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 )}
                 <li className="flex items-center">
                   <span className="mr-2">🔒</span>
-                  Tranzaksyon sekirize
+                  Secure transaction
                 </li>
               </ul>
             </div>
