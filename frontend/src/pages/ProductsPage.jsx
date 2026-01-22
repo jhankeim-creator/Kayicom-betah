@@ -14,6 +14,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
+  const normalizeGiftcardValue = (value = '') => String(value || '').trim();
   const [selectedCategory, setSelectedCategory] = useState(normalizeCategory(category));
   const [search, setSearch] = useState('');
 
@@ -94,7 +95,8 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
 
   const inferGiftcardCategory = (p) => {
     const name = (p?.name || '').toLowerCase();
-    if (p?.giftcard_category) return p.giftcard_category;
+    const category = normalizeGiftcardValue(p?.giftcard_category);
+    if (category) return category;
     if (name.includes('amazon')) return 'Shopping';
     if (name.includes('itunes') || name.includes('app store') || name.includes('netflix') || name.includes('spotify') || name.includes('disney')) return 'Entertainment';
     if (name.includes('google play') || name.includes('steam') || name.includes('playstation') || name.includes('xbox')) return 'Gaming';
@@ -106,23 +108,101 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
     const map = new Map();
     for (const p of groupedProducts) {
       const section = inferGiftcardCategory(p);
-      const list = map.get(section) || [];
-      list.push(p);
-      map.set(section, list);
+      const entry = map.get(section) || { name: section, products: [], subcategoryMap: new Map() };
+      entry.products.push(p);
+      const subcategory = normalizeGiftcardValue(p?.giftcard_subcategory);
+      if (subcategory) {
+        const list = entry.subcategoryMap.get(subcategory) || [];
+        list.push(p);
+        entry.subcategoryMap.set(subcategory, list);
+      }
+      map.set(section, entry);
     }
     const order = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
-    return order
-      .filter(k => map.has(k))
-      .map(k => ({ name: k, products: map.get(k) }))
-      .concat(
-        Array.from(map.keys())
-          .filter(k => !order.includes(k))
-          .sort()
-          .map(k => ({ name: k, products: map.get(k) }))
-      );
+    const buildSection = (entry) => {
+      const hasSubcategories = entry.subcategoryMap.size > 0;
+      if (!hasSubcategories) {
+        return { ...entry, subSections: [] };
+      }
+      const uncategorized = entry.products.filter((p) => !normalizeGiftcardValue(p?.giftcard_subcategory));
+      if (uncategorized.length) {
+        const existing = entry.subcategoryMap.get('Other') || [];
+        entry.subcategoryMap.set('Other', [...existing, ...uncategorized]);
+      }
+      const keys = Array.from(entry.subcategoryMap.keys()).sort((a, b) => {
+        if (a === 'Other') return 1;
+        if (b === 'Other') return -1;
+        return a.localeCompare(b);
+      });
+      const subSections = keys.map((key) => ({
+        name: key,
+        products: entry.subcategoryMap.get(key) || []
+      }));
+      return { ...entry, subSections };
+    };
+    const ordered = order
+      .filter((key) => map.has(key))
+      .map((key) => buildSection(map.get(key)));
+    const extras = Array.from(map.keys())
+      .filter((key) => !order.includes(key))
+      .sort()
+      .map((key) => buildSection(map.get(key)));
+    return [...ordered, ...extras];
   })();
 
   const selectedCategoryLabel = categories.find((cat) => cat.value === selectedCategory)?.label || 'All';
+
+  const renderProductCard = (product) => (
+    <Card key={product.id} className="product-card overflow-hidden bg-white/10 backdrop-blur-lg border-white/20 hover:border-white/40" data-testid={`product-card-${product.id}`}>
+      <div className="h-48 bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+        ) : (
+          <Package className="text-white" size={64} />
+        )}
+      </div>
+      <CardContent className="p-4">
+        <h3 className="text-lg font-bold text-white mb-2">{product.name}</h3>
+        <p className="text-white/70 text-sm mb-2 line-clamp-2">{product.description}</p>
+        {product.category === 'giftcard' && product.giftcard_subcategory && (
+          <p className="text-white/60 text-xs mb-2">{product.giftcard_subcategory}</p>
+        )}
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-2xl font-bold text-white">
+            {product._variant_count > 1 ? `From $${Number(product._min_price).toFixed(2)}` : `$${Number(product.price).toFixed(2)}`}
+          </span>
+          {product.stock_available ? (
+            <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">Available</span>
+          ) : (
+            <span className="text-xs text-red-400 bg-red-400/20 px-2 py-1 rounded">Out of Stock</span>
+          )}
+        </div>
+        {product._variant_count > 1 && (
+          <p className="text-white/60 text-xs mb-3">
+            {product._variant_count} options available
+          </p>
+        )}
+        <div className="flex gap-2">
+          <Link to={`/product/${product.id}`} className="flex-1">
+            <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>
+              Details
+            </Button>
+          </Link>
+          <Button 
+            size="sm" 
+            className="bg-white text-purple-600 hover:bg-gray-100"
+            onClick={() => {
+              addToCart(product);
+              toast.success('Product added to cart');
+            }}
+            data-testid={`add-to-cart-${product.id}`}
+          >
+            <ShoppingCart size={16} />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -195,109 +275,31 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
                   <h2 className="text-2xl md:text-3xl font-bold text-white">{section.name}</h2>
                   <span className="text-white/60 text-sm">{section.products.length} items</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                  {section.products.map((product) => (
-                    <Card key={product.id} className="product-card overflow-hidden bg-white/10 backdrop-blur-lg border-white/20 hover:border-white/40" data-testid={`product-card-${product.id}`}>
-                      <div className="h-48 bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
-                        {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <Package className="text-white" size={64} />
-                        )}
-                      </div>
-                      <CardContent className="p-4">
-                        <h3 className="text-lg font-bold text-white mb-2">{product.name}</h3>
-                        <p className="text-white/70 text-sm mb-4 line-clamp-2">{product.description}</p>
+                {section.subSections.length > 0 ? (
+                  <div className="space-y-6">
+                    {section.subSections.map((subSection) => (
+                      <div key={`${section.name}-${subSection.name}`}>
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-2xl font-bold text-white">
-                            {product._variant_count > 1 ? `From $${Number(product._min_price).toFixed(2)}` : `$${Number(product.price).toFixed(2)}`}
-                          </span>
-                          {product.stock_available ? (
-                            <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">Available</span>
-                          ) : (
-                            <span className="text-xs text-red-400 bg-red-400/20 px-2 py-1 rounded">Out of Stock</span>
-                          )}
+                          <h3 className="text-xl md:text-2xl font-semibold text-white">{subSection.name}</h3>
+                          <span className="text-white/60 text-sm">{subSection.products.length} items</span>
                         </div>
-                        {product._variant_count > 1 && (
-                          <p className="text-white/60 text-xs mb-3">
-                            {product._variant_count} options available
-                          </p>
-                        )}
-                        <div className="flex gap-2">
-                          <Link to={`/product/${product.id}`} className="flex-1">
-                            <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>
-                              Details
-                            </Button>
-                          </Link>
-                          <Button 
-                            size="sm" 
-                            className="bg-white text-purple-600 hover:bg-gray-100"
-                            onClick={() => {
-                              addToCart(product);
-                              toast.success('Product added to cart');
-                            }}
-                            data-testid={`add-to-cart-${product.id}`}
-                          >
-                            <ShoppingCart size={16} />
-                          </Button>
+                        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                          {subSection.products.map(renderProductCard)}
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                    {section.products.map(renderProductCard)}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         ) : groupedProducts.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6" data-testid="products-grid">
-            {groupedProducts.map((product) => (
-              <Card key={product.id} className="product-card overflow-hidden bg-white/10 backdrop-blur-lg border-white/20 hover:border-white/40" data-testid={`product-card-${product.id}`}>
-                <div className="h-48 bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
-                  {product.image_url ? (
-                    <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Package className="text-white" size={64} />
-                  )}
-                </div>
-                <CardContent className="p-4">
-                  <h3 className="text-lg font-bold text-white mb-2">{product.name}</h3>
-                  <p className="text-white/70 text-sm mb-4 line-clamp-2">{product.description}</p>
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-2xl font-bold text-white">
-                      {product._variant_count > 1 ? `From $${Number(product._min_price).toFixed(2)}` : `$${Number(product.price).toFixed(2)}`}
-                    </span>
-                    {product.stock_available ? (
-                      <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">Available</span>
-                    ) : (
-                      <span className="text-xs text-red-400 bg-red-400/20 px-2 py-1 rounded">Out of Stock</span>
-                    )}
-                  </div>
-                  {product._variant_count > 1 && (
-                    <p className="text-white/60 text-xs mb-3">
-                      {product._variant_count} options available
-                    </p>
-                  )}
-                  <div className="flex gap-2">
-                    <Link to={`/product/${product.id}`} className="flex-1">
-                      <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>
-                        Details
-                      </Button>
-                    </Link>
-                    <Button 
-                      size="sm" 
-                      className="bg-white text-purple-600 hover:bg-gray-100"
-                      onClick={() => {
-                        addToCart(product);
-                        toast.success('Product added to cart');
-                      }}
-                      data-testid={`add-to-cart-${product.id}`}
-                    >
-                      <ShoppingCart size={16} />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {groupedProducts.map(renderProductCard)}
           </div>
         ) : (
           <div className="text-center text-white/70 py-12" data-testid="no-products">

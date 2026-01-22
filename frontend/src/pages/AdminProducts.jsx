@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service', 'crypto'];
+const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -30,6 +31,7 @@ const normalizeSubscriptionDuration = (value) => {
 };
 
 const normalizeCategoryValue = (value) => String(value || '').trim();
+const normalizeGiftcardValue = (value) => String(value || '').trim();
 
 const formatCategoryLabel = (value) => (
   String(value || '')
@@ -57,6 +59,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     credential_fields: ['email', 'password'],
     region: '',
     giftcard_category: '',
+    giftcard_subcategory: '',
     is_subscription: false,
     subscription_duration_months: '',
     variant_name: '',
@@ -78,6 +81,40 @@ const AdminProducts = ({ user, logout, settings }) => {
       if (seen.has(key)) return acc;
       seen.add(key);
       acc.push({ value, label: formatCategoryLabel(value) });
+      return acc;
+    }, []);
+  })();
+
+  const giftcardCategoryOptions = (() => {
+    const fromProducts = products
+      .map((product) => normalizeGiftcardValue(product.giftcard_category))
+      .filter(Boolean);
+    const combined = [...DEFAULT_GIFTCARD_CATEGORIES, ...fromProducts].filter(Boolean);
+    const seen = new Set();
+    return combined.reduce((acc, value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return acc;
+      seen.add(key);
+      acc.push(value);
+      return acc;
+    }, []);
+  })();
+
+  const giftcardSubcategoryOptions = (() => {
+    const selectedCategory = normalizeGiftcardValue(formData.giftcard_category).toLowerCase();
+    const fromProducts = products
+      .filter((product) => {
+        if (!selectedCategory) return true;
+        return normalizeGiftcardValue(product.giftcard_category).toLowerCase() === selectedCategory;
+      })
+      .map((product) => normalizeGiftcardValue(product.giftcard_subcategory))
+      .filter(Boolean);
+    const seen = new Set();
+    return fromProducts.reduce((acc, value) => {
+      const key = value.toLowerCase();
+      if (seen.has(key)) return acc;
+      seen.add(key);
+      acc.push(value);
       return acc;
     }, []);
   })();
@@ -131,6 +168,15 @@ const AdminProducts = ({ user, logout, settings }) => {
 
       if (field === 'category' && value !== 'subscription' && !prev.is_subscription) {
         updated.subscription_duration_months = '';
+      }
+
+      if (field === 'category' && value !== 'giftcard') {
+        updated.giftcard_category = '';
+        updated.giftcard_subcategory = '';
+      }
+
+      if (field === 'giftcard_category' && !value) {
+        updated.giftcard_subcategory = '';
       }
 
       if (field === 'is_subscription' && !value && updated.category !== 'subscription') {
@@ -218,6 +264,7 @@ const AdminProducts = ({ user, logout, settings }) => {
           : ['email', 'password'];
         payload.region = parent.region || '';
         payload.giftcard_category = parent.giftcard_category || '';
+        payload.giftcard_subcategory = parent.giftcard_subcategory || '';
         payload.is_subscription = parent.is_subscription || false;
       }
 
@@ -261,6 +308,7 @@ const AdminProducts = ({ user, logout, settings }) => {
         : (product.credential_fields && product.credential_fields.length > 0 ? product.credential_fields : ['email', 'password']),
       region: parent?.region || product.region || '',
       giftcard_category: parent?.giftcard_category || product.giftcard_category || '',
+      giftcard_subcategory: parent?.giftcard_subcategory || product.giftcard_subcategory || '',
       is_subscription: parent?.is_subscription ?? product.is_subscription || false,
       subscription_duration_months: product.subscription_duration_months ? String(product.subscription_duration_months) : '',
       variant_name: product.variant_name || '',
@@ -298,6 +346,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       credential_fields: ['email', 'password'],
       region: '',
       giftcard_category: '',
+      giftcard_subcategory: '',
       is_subscription: false,
       subscription_duration_months: '',
       variant_name: '',
@@ -398,6 +447,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                           : ['email', 'password'],
                         region: parent?.region || '',
                         giftcard_category: parent?.giftcard_category || '',
+                        giftcard_subcategory: parent?.giftcard_subcategory || '',
                         is_subscription: parent?.is_subscription || false,
                         subscription_duration_months: ''
                       }));
@@ -538,25 +588,43 @@ const AdminProducts = ({ user, logout, settings }) => {
                 </div>
 
                 {formData.category === 'giftcard' && (
-                  <div>
-                    <Label htmlFor="giftcard_category" className="text-white">Gift Card Category (Bitrefill style)</Label>
-                    <Select
-                      value={formData.giftcard_category || ''}
-                      onValueChange={(value) => handleChange('giftcard_category', value)}
-                      disabled={isVariantForm}
-                    >
-                      <SelectTrigger className="bg-white/10 border-white/20 text-white mt-2">
-                        <SelectValue placeholder="Select category..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Shopping">Shopping</SelectItem>
-                        <SelectItem value="Gaming">Gaming</SelectItem>
-                        <SelectItem value="Entertainment">Entertainment</SelectItem>
-                        <SelectItem value="Food">Food</SelectItem>
-                        <SelectItem value="Travel">Travel</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-3">
+                    <div>
+                      <Label htmlFor="giftcard_category" className="text-white">Gift Card Category</Label>
+                      <Input
+                        id="giftcard_category"
+                        value={formData.giftcard_category}
+                        onChange={(e) => handleChange('giftcard_category', e.target.value)}
+                        className="bg-white/10 border-white/20 text-white mt-2"
+                        placeholder="e.g., Shopping, Gaming"
+                        list="giftcard-category-options"
+                        disabled={isVariantForm}
+                      />
+                      <datalist id="giftcard-category-options">
+                        {giftcardCategoryOptions.map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                      <p className="text-white/60 text-xs mt-2">You can select or type a new category.</p>
+                    </div>
+                    <div>
+                      <Label htmlFor="giftcard_subcategory" className="text-white">Gift Card Subcategory (optional)</Label>
+                      <Input
+                        id="giftcard_subcategory"
+                        value={formData.giftcard_subcategory}
+                        onChange={(e) => handleChange('giftcard_subcategory', e.target.value)}
+                        className="bg-white/10 border-white/20 text-white mt-2"
+                        placeholder="e.g., Amazon, Steam, Netflix"
+                        list="giftcard-subcategory-options"
+                        disabled={isVariantForm}
+                      />
+                      <datalist id="giftcard-subcategory-options">
+                        {giftcardSubcategoryOptions.map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                      <p className="text-white/60 text-xs mt-2">Use this to create subcategories under a category.</p>
+                    </div>
                   </div>
                 )}
 
@@ -773,7 +841,8 @@ const AdminProducts = ({ user, logout, settings }) => {
                   product.category,
                   product.variant_name,
                   product.region,
-                  product.giftcard_category
+                  product.giftcard_category,
+                  product.giftcard_subcategory
                 ]
                   .filter(Boolean)
                   .join(' ')
@@ -794,6 +863,16 @@ const AdminProducts = ({ user, logout, settings }) => {
                         {product.parent_product_id && (
                           <p className="text-white/60 text-xs">
                             Parent: {productById.get(product.parent_product_id)?.name || product.parent_product_id}
+                          </p>
+                        )}
+                        {product.category === 'giftcard' && product.giftcard_category && (
+                          <p className="text-white/60 text-xs">
+                            Gift Card Category: <span className="text-white">{product.giftcard_category}</span>
+                          </p>
+                        )}
+                        {product.category === 'giftcard' && product.giftcard_subcategory && (
+                          <p className="text-white/60 text-xs">
+                            Gift Card Subcategory: <span className="text-white">{product.giftcard_subcategory}</span>
                           </p>
                         )}
                         {product.subscription_duration_months && (

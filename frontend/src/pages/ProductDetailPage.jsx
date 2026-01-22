@@ -148,6 +148,11 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                   {selectedProduct.giftcard_category}
                 </span>
               )}
+              {selectedProduct.category === 'giftcard' && selectedProduct.giftcard_subcategory && (
+                <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
+                  {selectedProduct.giftcard_subcategory}
+                </span>
+              )}
               {selectedProduct.category === 'subscription' && selectedDurationLabel && (
                 <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
                   Duration: {selectedDurationLabel}
