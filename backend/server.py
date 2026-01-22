@@ -281,6 +281,7 @@ class SiteSettings(BaseModel):
     trustpilot_enabled: Optional[bool] = False
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = ["giftcard", "topup", "subscription", "service"]
+    category_images: Optional[Dict[str, str]] = {}
     # Payment Gateway Settings
     payment_gateways: Optional[dict] = {
         "paypal": {"enabled": True, "email": "", "instructions": ""},
@@ -341,6 +342,7 @@ class SettingsUpdate(BaseModel):
     trustpilot_enabled: Optional[bool] = None
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = None
+    category_images: Optional[Dict[str, str]] = None
     payment_gateways: Optional[dict] = None
     crypto_settings: Optional[dict] = None
     minutes_transfer_enabled: Optional[bool] = None

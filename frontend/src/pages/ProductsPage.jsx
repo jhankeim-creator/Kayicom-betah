@@ -52,9 +52,10 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   };
 
   const categories = (() => {
+    const baseCategories = ['giftcard', 'topup', 'subscription', 'service'];
     const fromSettings = (settings?.product_categories || []).map(normalizeCategory);
     const fromProducts = products.map((p) => normalizeCategory(p.category));
-    const unique = Array.from(new Set([...fromSettings, ...fromProducts].filter(Boolean)));
+    const unique = Array.from(new Set([...baseCategories, ...fromSettings, ...fromProducts].filter(Boolean)));
     if (selectedCategory && !unique.includes(selectedCategory)) {
       unique.push(selectedCategory);
     }
