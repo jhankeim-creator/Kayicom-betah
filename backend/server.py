@@ -68,7 +68,7 @@ class User(UserBase):
     referred_by: Optional[str] = None  # referral_code of referrer
     referral_balance: float = 0.0  # Balance from referrals
     wallet_balance: float = 0.0  # Store credit / refunds
-    credits_balance: int = 0  # Loyalty credits (100 credits = $1)
+    credits_balance: int = 0  # Loyalty credits (1000 credits = $1)
     is_blocked: bool = False
     blocked_at: Optional[datetime] = None
     blocked_reason: Optional[str] = None
@@ -1119,7 +1119,7 @@ async def _record_loyalty_credits_if_needed(order_id: str):
         "order_id": order_id,
         "type": "earn",
         "credits": int(credits),
-        "usd_equivalent": round(float(credits) / 100.0, 2),
+        "usd_equivalent": round(float(credits) / 1000.0, 2),
         "reason": "Order success reward",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -2545,7 +2545,7 @@ class AdminWalletAdjustRequest(BaseModel):
 
 
 class CreditsConvertRequest(BaseModel):
-    credits: int  # must be multiple of 100
+    credits: int  # must be multiple of 1000
     reason: Optional[str] = None
 
 
@@ -2655,7 +2655,7 @@ async def get_credits_balance(user_id: str):
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    return {"user_id": user_id, "credits_balance": int(user.get("credits_balance", 0)), "rate": "100_credits = 1_USD"}
+    return {"user_id": user_id, "credits_balance": int(user.get("credits_balance", 0)), "rate": "1000_credits = 1_USD"}
 
 
 @api_router.get("/credits/transactions")
@@ -2699,7 +2699,7 @@ async def admin_adjust_credits(req: AdminCreditsAdjustRequest):
         "order_id": None,
         "type": "admin_adjust",
         "credits": int(delta),
-        "usd_equivalent": round(float(delta) / 100.0, 2),
+        "usd_equivalent": round(float(delta) / 1000.0, 2),
         "reason": req.reason or f"Admin credits {req.action}",
         "created_at": datetime.now(timezone.utc).isoformat()
     })
@@ -2713,8 +2713,8 @@ async def convert_credits_to_wallet(req: CreditsConvertRequest, user_id: str, us
     credits = int(req.credits)
     if credits <= 0:
         raise HTTPException(status_code=400, detail="Credits must be > 0")
-    if credits % 100 != 0:
-        raise HTTPException(status_code=400, detail="Credits must be a multiple of 100")
+    if credits % 1000 != 0:
+        raise HTTPException(status_code=400, detail="Credits must be a multiple of 1000")
 
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
@@ -2724,7 +2724,7 @@ async def convert_credits_to_wallet(req: CreditsConvertRequest, user_id: str, us
     if current < credits:
         raise HTTPException(status_code=400, detail="Insufficient credits")
 
-    usd = round(float(credits) / 100.0, 2)
+    usd = round(float(credits) / 1000.0, 2)
     await db.users.update_one({"id": user_id}, {"$inc": {"credits_balance": -credits, "wallet_balance": float(usd)}})
 
     await db.wallet_transactions.insert_one({

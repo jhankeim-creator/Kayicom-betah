@@ -66,11 +66,11 @@ const WalletPage = ({ user, logout, settings }) => {
   const doConvertCredits = async () => {
     const credits = parseInt(convertCredits, 10);
     if (!Number.isFinite(credits) || credits <= 0) {
-      toast.error('Enter credits to convert (multiple of 100)');
+      toast.error('Enter credits to convert (multiple of 1000)');
       return;
     }
-    if (credits % 100 !== 0) {
-      toast.error('Credits must be a multiple of 100');
+    if (credits % 1000 !== 0) {
+      toast.error('Credits must be a multiple of 1000');
       return;
     }
     setConverting(true);
@@ -193,16 +193,16 @@ const WalletPage = ({ user, logout, settings }) => {
                     <div>
                       <p className="text-white/70 mb-1">Credits</p>
                       <p className="text-3xl font-bold text-white">{Number(creditsBalance)}</p>
-                      <p className="text-white/60 text-xs">100 credits = $1. Each successful order earns 5 credits.</p>
+                      <p className="text-white/60 text-xs">1000 credits = $1. Each successful order earns 5 credits.</p>
                     </div>
                     <div className="w-full md:w-80">
-                      <Label className="text-white">Convert credits (multiple of 100)</Label>
+                      <Label className="text-white">Convert credits (multiple of 1000)</Label>
                       <div className="flex gap-2 mt-2">
                         <Input
                           value={convertCredits}
                           onChange={(e) => setConvertCredits(e.target.value)}
                           className="bg-white/10 border-white/20 text-white"
-                          placeholder="e.g. 100"
+                          placeholder="e.g. 1000"
                         />
                         <Button
                           onClick={doConvertCredits}
