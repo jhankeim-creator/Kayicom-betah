@@ -18,9 +18,27 @@ import {
 import { Save, Settings as SettingsIcon, Key, Package, Mail, Plus, X } from 'lucide-react';
 import { toast } from 'sonner';
 
+const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
+const normalizeCategoryKey = (value = '') => String(value || '').trim().toLowerCase();
+
+const mergeCategories = (base = [], extras = []) => {
+  const combined = [...base, ...extras];
+  const seen = new Set();
+  return combined.reduce((acc, item) => {
+    const key = normalizeCategoryKey(item);
+    if (!key || seen.has(key)) return acc;
+    seen.add(key);
+    acc.push(String(item).trim());
+    return acc;
+  }, []);
+};
+
+const isCoreCategory = (value) => CORE_CATEGORIES.includes(normalizeCategoryKey(value));
+
 const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }) => {
   const [loading, setLoading] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [categoryImageUploads, setCategoryImageUploads] = useState({});
   const [formData, setFormData] = useState({
     site_name: '',
     logo_url: '',
@@ -38,6 +56,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     trustpilot_enabled: false,
     trustpilot_business_id: '',
     product_categories: [],
+    category_images: {},
     payment_gateways: {
       paypal: { enabled: true, email: '', instructions: '' },
       airtm: { enabled: true, email: '', instructions: '' },
@@ -92,6 +111,10 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
   useEffect(() => {
     if (currentSettings) {
       startTransition(() => {
+        const mergedCategories = mergeCategories(
+          CORE_CATEGORIES,
+          currentSettings.product_categories || []
+        );
         setFormData({
           site_name: currentSettings.site_name || '',
           logo_url: currentSettings.logo_url || '',
@@ -108,7 +131,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           announcement_message: currentSettings.announcement_message || '',
           trustpilot_enabled: currentSettings.trustpilot_enabled || false,
           trustpilot_business_id: currentSettings.trustpilot_business_id || '',
-          product_categories: currentSettings.product_categories || ['giftcard', 'topup', 'subscription', 'service'],
+          product_categories: mergedCategories,
+          category_images: currentSettings.category_images || {},
           payment_gateways: currentSettings.payment_gateways || defaultPaymentGateways,
           crypto_settings: currentSettings.crypto_settings || {
             buy_rate_usdt: 1.0,
@@ -139,17 +163,38 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
   }, [currentSettings, defaultPaymentGateways]);
 
   const addCategory = useCallback(() => {
+    const trimmed = newCategory.trim();
+    if (!trimmed) return;
     setFormData(prev => {
-      if (newCategory && !prev.product_categories.includes(newCategory)) {
+      const existingKeys = new Set((prev.product_categories || []).map(normalizeCategoryKey));
+      const key = normalizeCategoryKey(trimmed);
+      if (!key || existingKeys.has(key)) {
         setNewCategory('');
-        return {...prev, product_categories: [...prev.product_categories, newCategory]};
+        return prev;
       }
-      return prev;
+      setNewCategory('');
+      return {
+        ...prev,
+        product_categories: [...(prev.product_categories || []), trimmed]
+      };
     });
   }, [newCategory]);
 
   const removeCategory = useCallback((cat) => {
-    setFormData(prev => ({...prev, product_categories: prev.product_categories.filter(c => c !== cat)}));
+    if (isCoreCategory(cat)) return;
+    setFormData(prev => {
+      const key = normalizeCategoryKey(cat);
+      const nextCategories = (prev.product_categories || []).filter(
+        (value) => normalizeCategoryKey(value) !== key
+      );
+      const nextImages = { ...(prev.category_images || {}) };
+      delete nextImages[key];
+      return {
+        ...prev,
+        product_categories: nextCategories,
+        category_images: nextImages
+      };
+    });
   }, []);
 
   const handleSendBulkEmail = async () => {
@@ -194,8 +239,46 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     }
   };
 
+  const uploadCategoryImage = async (category, file) => {
+    if (!file) return null;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('File too large. Max 5MB');
+      return null;
+    }
+
+    const key = normalizeCategoryKey(category);
+    setCategoryImageUploads(prev => ({ ...prev, [key]: true }));
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const res = await axiosInstance.post('/upload/image', data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return res.data?.url || null;
+    } catch (e) {
+      console.error('Category image upload failed:', e);
+      toast.error('Error uploading category image');
+      return null;
+    } finally {
+      setCategoryImageUploads(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
   const handleChange = useCallback((field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  }, []);
+
+  const updateCategoryImage = useCallback((category, url) => {
+    const key = normalizeCategoryKey(category);
+    setFormData(prev => {
+      const nextImages = { ...(prev.category_images || {}) };
+      if (url) {
+        nextImages[key] = url;
+      } else {
+        delete nextImages[key];
+      }
+      return { ...prev, category_images: nextImages };
+    });
   }, []);
 
   const handlePaymentGatewayChange = useCallback((gateway, field, value) => {
@@ -544,7 +627,9 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                   <TabsContent value="categories" className="space-y-4">
                     <div>
                       <Label className="text-white text-lg font-semibold mb-3 block">Product Categories</Label>
-                      <p className="text-gray-400 text-sm mb-4">Manage product categories for your marketplace.</p>
+                      <p className="text-gray-400 text-sm mb-4">
+                        Manage product categories and add cover images for the homepage cards.
+                      </p>
                       
                       <div className="flex gap-2 mb-4">
                         <Input
@@ -560,22 +645,65 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         </Button>
                       </div>
 
-                      <div className="space-y-2">
-                        {formData.product_categories.map((cat, index) => (
-                          <div key={index} className="flex items-center justify-between p-3 glass-effect rounded-lg" data-testid={`category-${cat}`}>
-                            <span className="text-white font-medium capitalize">{cat}</span>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => removeCategory(cat)}
-                              className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-                              data-testid={`remove-${cat}`}
-                            >
-                              <X size={16} />
-                            </Button>
-                          </div>
-                        ))}
+                      <div className="space-y-3">
+                        {(formData.product_categories || []).map((cat) => {
+                          const categoryKey = normalizeCategoryKey(cat);
+                          const coverImage = (formData.category_images || {})[categoryKey] || '';
+                          const isCore = isCoreCategory(cat);
+                          const isUploading = categoryImageUploads[categoryKey];
+                          return (
+                            <div key={categoryKey} className="p-4 glass-effect rounded-lg space-y-3" data-testid={`category-${categoryKey}`}>
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="text-white font-medium capitalize">{cat}</span>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => removeCategory(cat)}
+                                  disabled={isCore}
+                                  className={`text-red-400 hover:text-red-300 hover:bg-red-400/10 ${isCore ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                  data-testid={`remove-${categoryKey}`}
+                                >
+                                  <X size={16} />
+                                </Button>
+                              </div>
+                              <div>
+                                <Label className="text-white/70 text-sm">Cover Image URL</Label>
+                                <Input
+                                  value={coverImage}
+                                  onChange={(e) => updateCategoryImage(cat, e.target.value)}
+                                  className="bg-white/10 border-white/20 text-white mt-1"
+                                  placeholder="https://example.com/category-cover.png"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-white/70 text-sm">Or Upload Cover Image</Label>
+                                <Input
+                                  type="file"
+                                  accept="image/*"
+                                  disabled={isUploading}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    const url = await uploadCategoryImage(cat, file);
+                                    if (url) {
+                                      updateCategoryImage(cat, url);
+                                      toast.success('Category cover uploaded');
+                                    }
+                                  }}
+                                  className="bg-white/10 border-white/20 text-white cursor-pointer mt-2"
+                                />
+                                {isUploading && (
+                                  <p className="text-white/60 text-sm mt-2">Uploading...</p>
+                                )}
+                              </div>
+                              {coverImage && (
+                                <div className="mt-2">
+                                  <img src={coverImage} alt={`${cat} cover`} className="h-24 w-full object-cover rounded" />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </TabsContent>

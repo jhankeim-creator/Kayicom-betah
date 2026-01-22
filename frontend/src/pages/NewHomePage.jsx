@@ -8,6 +8,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
+const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
+
 const NewHomePage = ({ user, logout, cart, settings }) => {
   const { t } = useContext(LanguageContext);
   const [featuredProducts, setFeaturedProducts] = useState([]);
@@ -92,21 +94,28 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
   };
 
   const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
+  const categoryImages = settings?.category_images || {};
   const categories = (() => {
-    const raw = (settings?.product_categories || ['giftcard', 'topup', 'subscription', 'service'])
+    const raw = [...CORE_CATEGORIES, ...(settings?.product_categories || [])]
       .map(normalizeCategory)
       .filter(Boolean);
-    const unique = Array.from(new Set(raw.length ? raw : ['giftcard', 'topup', 'subscription', 'service']));
+    const unique = Array.from(new Set(raw.length ? raw : CORE_CATEGORIES));
     return unique.map((key) => {
       const meta = categoryMeta[key];
-      if (meta) return meta;
+      const coverImage = categoryImages[key];
+      if (meta) {
+        return {
+          ...meta,
+          bgImage: coverImage || meta.bgImage
+        };
+      }
       const label = key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
       return {
         name: label,
         icon: Package,
         path: `/products/${key}`,
         gradient: 'from-slate-500 to-slate-700',
-        bgImage: 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?w=400'
+        bgImage: coverImage || 'https://images.unsplash.com/photo-1489515217757-5fd1be406fef?w=400'
       };
     });
   })();
