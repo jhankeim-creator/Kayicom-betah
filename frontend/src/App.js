@@ -13,6 +13,7 @@ import ProductsPage from './pages/ProductsPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
+import RefundPolicy from './pages/RefundPolicy';
 import OrderTrackingPage from './pages/OrderTrackingPage';
 import CustomerDashboard from './pages/CustomerDashboard';
 import AdminDashboard from './pages/AdminDashboard';
@@ -229,6 +230,7 @@ function App() {
           <Route path="/product/:id" element={<ProductDetailPage user={user} logout={logout} addToCart={addToCart} cart={cart} settings={settings} />} />
           <Route path="/cart" element={<CartPage user={user} logout={logout} cart={cart} removeFromCart={removeFromCart} updateCartQuantity={updateCartQuantity} settings={settings} />} />
           <Route path="/checkout" element={<CheckoutPage user={user} logout={logout} cart={cart} clearCart={clearCart} settings={settings} />} />
+          <Route path="/refund-policy" element={<RefundPolicy user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />
           <Route path="/login" element={<LoginPage login={login} settings={settings} />} />
           <Route path="/register" element={<RegisterPage login={login} settings={settings} />} />

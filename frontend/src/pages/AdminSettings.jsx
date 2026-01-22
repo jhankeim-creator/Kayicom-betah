@@ -24,6 +24,14 @@ const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
   name,
   subcategories: []
 }));
+const DEFAULT_REFUND_POLICY = [
+  'Refund Policy',
+  '',
+  'Digital goods are non-refundable once delivered or redeemed.',
+  'If you do not receive your order or receive the wrong item, contact support within 24 hours.',
+  'Approved refunds are issued as wallet credit unless required otherwise by law.',
+  'Chargebacks or fraudulent activity may result in account restrictions.'
+].join('\n');
 const normalizeCategoryKey = (value = '') => String(value || '').trim().toLowerCase();
 
 const mergeCategories = (base = [], extras = []) => {
@@ -62,6 +70,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     trustpilot_business_id: '',
     product_categories: [],
     category_images: {},
+    refund_policy: DEFAULT_REFUND_POLICY,
     giftcard_taxonomy: DEFAULT_GIFTCARD_TAXONOMY,
     payment_gateways: {
       paypal: { enabled: true, email: '', instructions: '' },
@@ -148,6 +157,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           trustpilot_business_id: currentSettings.trustpilot_business_id || '',
           product_categories: mergedCategories,
           category_images: currentSettings.category_images || {},
+          refund_policy: currentSettings.refund_policy || DEFAULT_REFUND_POLICY,
           giftcard_taxonomy: giftcardTaxonomy,
           payment_gateways: currentSettings.payment_gateways || defaultPaymentGateways,
           crypto_settings: currentSettings.crypto_settings || {
@@ -608,6 +618,18 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                           </div>
                         ))}
                       </div>
+                    </div>
+
+                    <div className="bg-white/5 p-4 rounded-lg border border-white/10">
+                      <Label className="text-white">Refund Policy</Label>
+                      <p className="text-white/60 text-sm mt-1">Displayed on the Refund Policy page.</p>
+                      <Textarea
+                        value={formData.refund_policy}
+                        onChange={(e) => handleChange('refund_policy', e.target.value)}
+                        className="bg-white/10 border-white/20 text-white mt-3"
+                        rows={6}
+                        placeholder="Enter your refund policy..."
+                      />
                     </div>
                   </TabsContent>
 

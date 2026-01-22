@@ -149,6 +149,7 @@ export const translations = {
     contact: 'Contact',
     quickLinks: 'Quick Links',
     support: 'Support',
+    refundPolicy: 'Refund Policy',
     allRightsReserved: 'All rights reserved',
     
     // Messages
@@ -312,6 +313,7 @@ export const translations = {
     contact: 'Contact',
     quickLinks: 'Liens Rapides',
     support: 'Support',
+    refundPolicy: 'Politique de remboursement',
     allRightsReserved: 'Tous droits réservés',
     
     // Messages
