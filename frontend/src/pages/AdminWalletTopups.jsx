@@ -28,6 +28,9 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
   const selectedProofSize = selectedProofIsInline ? getInlineImageBytes(selectedProofUrl) : 0;
   const canPreviewSelectedProof = selectedProofIsInline && canPreviewInlineImage(selectedProofUrl);
   const selectedProofSizeLabel = selectedProofIsInline ? formatBytes(selectedProofSize) : null;
+  const [proofZoom, setProofZoom] = useState(1);
+  const [proofLoadError, setProofLoadError] = useState(false);
+  const canRenderSelectedProof = selectedProofUrl && (!selectedProofIsInline || canPreviewSelectedProof) && !proofLoadError;
 
   useEffect(() => {
     loadTopups();
@@ -183,6 +186,8 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                                 className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
                                 onClick={() => {
                                   setSelectedProofUrl(t.payment_proof_url);
+                                  setProofZoom(1);
+                                  setProofLoadError(false);
                                   setProofViewerOpen(true);
                                 }}
                               >
@@ -195,6 +200,8 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                                   className="h-12 w-12 object-cover rounded border border-pink-400/30 cursor-pointer hover:border-pink-400/60 transition"
                                   onClick={() => {
                                     setSelectedProofUrl(t.payment_proof_url);
+                                    setProofZoom(1);
+                                    setProofLoadError(false);
                                     setProofViewerOpen(true);
                                   }}
                                   title="Click to view full size"
@@ -252,18 +259,22 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
           <div className="mt-4">
             {selectedProofUrl && (
               <div className="flex flex-col items-center gap-4">
-                {selectedProofIsInline ? (
-                  canPreviewSelectedProof ? (
+                {canRenderSelectedProof ? (
+                  <div className="w-full max-h-[70vh] overflow-auto rounded border border-white/20">
                     <img 
                       src={selectedProofUrl} 
                       alt="Payment proof" 
-                      className="max-w-full max-h-[70vh] object-contain rounded border border-white/20"
+                      className="block h-auto max-w-full origin-top-left transition-transform"
+                      style={{ transform: `scale(${proofZoom})` }}
+                      onError={() => setProofLoadError(true)}
                     />
-                  ) : (
-                    <div className="text-center text-white/70 text-sm">
-                      Large inline proof ({selectedProofSizeLabel}). Use Download below.
-                    </div>
-                  )
+                  </div>
+                ) : selectedProofIsInline ? (
+                  <div className="text-center text-white/70 text-sm">
+                    {proofLoadError
+                      ? 'Preview failed to load. Use Download below.'
+                      : `Large inline proof (${selectedProofSizeLabel}). Use Download below.`}
+                  </div>
                 ) : (
                   <a 
                     href={selectedProofUrl} 
@@ -273,6 +284,35 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                   >
                     Open proof in new tab
                   </a>
+                )}
+                {canRenderSelectedProof && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-xs text-white/70">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      onClick={() => setProofZoom((z) => Math.max(1, Number((z - 0.25).toFixed(2))))}
+                    >
+                      Zoom -
+                    </Button>
+                    <span>{Math.round(proofZoom * 100)}%</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      onClick={() => setProofZoom((z) => Math.min(3, Number((z + 0.25).toFixed(2))))}
+                    >
+                      Zoom +
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      onClick={() => setProofZoom(1)}
+                    >
+                      Reset
+                    </Button>
+                  </div>
                 )}
                 <div className="flex gap-2">
                   <Button

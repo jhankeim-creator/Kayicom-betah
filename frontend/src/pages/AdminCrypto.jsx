@@ -211,7 +211,11 @@ const AdminCrypto = () => {
                               <img
                                 src={proofUrl}
                                 alt="Payment proof"
-                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30"
+                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30 cursor-zoom-in"
+                                onClick={() => {
+                                  window.open(proofUrl, '_blank', 'noopener,noreferrer');
+                                }}
+                                title="Click to enlarge"
                               />
                             )}
                             {proofIsInline && !canPreviewProof && (

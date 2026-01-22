@@ -1,4 +1,4 @@
-export const MAX_INLINE_PROOF_BYTES = 1500000;
+export const MAX_INLINE_PROOF_BYTES = 4000000;
 
 export const isInlineImage = (url) => typeof url === 'string' && url.startsWith('data:image');
 
