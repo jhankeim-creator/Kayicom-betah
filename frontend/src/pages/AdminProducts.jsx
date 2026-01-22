@@ -197,8 +197,10 @@ const AdminProducts = ({ user, logout, settings }) => {
         updated.giftcard_subcategory = '';
       }
 
-      if (field === 'giftcard_category' && !value) {
-        updated.giftcard_subcategory = '';
+      if (field === 'giftcard_category') {
+        if (!value || value !== prev.giftcard_category) {
+          updated.giftcard_subcategory = '';
+        }
       }
 
       if (field === 'is_subscription' && !value && updated.category !== 'subscription') {
@@ -628,6 +630,23 @@ const AdminProducts = ({ user, logout, settings }) => {
                         ))}
                       </datalist>
                       <p className="text-white/60 text-xs mt-2">You can select or type a new category.</p>
+                      {giftcardCategoryOptions.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {giftcardCategoryOptions.map((option) => (
+                            <Button
+                              key={`giftcard-category-${option}`}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-pink-400 text-pink-200 hover:bg-pink-400/10 text-xs"
+                              onClick={() => handleChange('giftcard_category', option)}
+                              disabled={isVariantForm}
+                            >
+                              {option}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div>
                       <Label htmlFor="giftcard_subcategory" className="text-white">Gift Card Subcategory (optional)</Label>
@@ -646,6 +665,23 @@ const AdminProducts = ({ user, logout, settings }) => {
                         ))}
                       </datalist>
                       <p className="text-white/60 text-xs mt-2">Use this to create subcategories under a category.</p>
+                      {giftcardSubcategoryOptions.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {giftcardSubcategoryOptions.map((option) => (
+                            <Button
+                              key={`giftcard-subcategory-${option}`}
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="border-cyan-400 text-cyan-200 hover:bg-cyan-400/10 text-xs"
+                              onClick={() => handleChange('giftcard_subcategory', option)}
+                              disabled={isVariantForm}
+                            >
+                              {option}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
