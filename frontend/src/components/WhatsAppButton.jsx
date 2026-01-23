@@ -1,8 +1,19 @@
 import { MessageCircle } from 'lucide-react';
 
-const WhatsAppButton = () => {
-  const phoneNumber = '50939308318'; // WhatsApp number
-  const message = 'Hello! I need support with KayiCom.';
+const DEFAULT_WHATSAPP_NUMBER = '50939308318';
+const DEFAULT_WHATSAPP_MESSAGE = 'Hello! I need support with KayiCom.';
+
+const normalizeWhatsappNumber = (value) => String(value || '').replace(/[^\d]/g, '');
+
+const WhatsAppButton = ({ settings }) => {
+  const enabled = settings?.whatsapp_support_enabled ?? true;
+  if (!enabled) return null;
+
+  const rawNumber = settings?.whatsapp_support_number || DEFAULT_WHATSAPP_NUMBER;
+  const phoneNumber = normalizeWhatsappNumber(rawNumber);
+  if (!phoneNumber) return null;
+
+  const message = settings?.whatsapp_support_message || DEFAULT_WHATSAPP_MESSAGE;
   const whatsappUrl = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
 
   return (

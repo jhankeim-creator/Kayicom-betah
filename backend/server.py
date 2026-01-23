@@ -282,6 +282,11 @@ class SiteSettings(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = ["giftcard", "topup", "subscription", "service"]
     category_images: Optional[Dict[str, str]] = {}
+    whatsapp_support_enabled: Optional[bool] = True
+    whatsapp_support_number: Optional[str] = "50939308318"
+    whatsapp_support_message: Optional[str] = "Hello! I need support with KayiCom."
+    crisp_enabled: Optional[bool] = False
+    crisp_website_id: Optional[str] = None
     refund_policy: Optional[str] = (
         "Refund Policy\n"
         "\n"
@@ -359,6 +364,11 @@ class SettingsUpdate(BaseModel):
     trustpilot_business_id: Optional[str] = None
     product_categories: Optional[List[str]] = None
     category_images: Optional[Dict[str, str]] = None
+    whatsapp_support_enabled: Optional[bool] = None
+    whatsapp_support_number: Optional[str] = None
+    whatsapp_support_message: Optional[str] = None
+    crisp_enabled: Optional[bool] = None
+    crisp_website_id: Optional[str] = None
     refund_policy: Optional[str] = None
     giftcard_taxonomy: Optional[List[Dict[str, Any]]] = None
     payment_gateways: Optional[dict] = None
