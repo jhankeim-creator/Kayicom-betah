@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -74,6 +74,7 @@ const AdminProducts = ({ user, logout, settings }) => {
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [showVariantMode, setShowVariantMode] = useState(false);
   const [parentProduct, setParentProduct] = useState(null);
+  const [expandedGroups, setExpandedGroups] = useState({});
 
   const categoryOptions = (() => {
     const fromSettings = (settings?.product_categories || []).map(normalizeCategoryValue);
@@ -388,6 +389,68 @@ const AdminProducts = ({ user, logout, settings }) => {
     map.set(product.id, product);
     return map;
   }, new Map());
+
+  const groupedProducts = useMemo(() => {
+    const groups = new Map();
+    for (const product of products) {
+      const groupId = product.parent_product_id || product.id;
+      const group = groups.get(groupId) || { groupId, parent: null, variants: [] };
+      group.variants.push(product);
+      if (!product.parent_product_id && !product.is_variant) {
+        group.parent = product;
+      }
+      groups.set(groupId, group);
+    }
+    return Array.from(groups.values()).map((group) => {
+      const sorted = [...group.variants].sort((a, b) => (a.price || 0) - (b.price || 0));
+      const parent = group.parent || sorted[0];
+      return {
+        ...group,
+        parent,
+        variants: sorted
+      };
+    });
+  }, [products]);
+
+  const filteredGroups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return groupedProducts
+      .filter((group) => {
+        if (categoryFilter === 'all') return true;
+        return group.parent?.category === categoryFilter;
+      })
+      .filter((group) => {
+        if (!q) return true;
+        const hay = group.variants
+          .map((product) => [
+            product.name,
+            product.description,
+            product.category,
+            product.variant_name,
+            product.region,
+            product.giftcard_category,
+            product.giftcard_subcategory
+          ]
+            .filter(Boolean)
+            .join(' '))
+          .join(' ')
+          .toLowerCase();
+        return hay.includes(q);
+      });
+  }, [groupedProducts, categoryFilter, search]);
+
+  const toggleGroup = (groupId) => {
+    setExpandedGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+  };
+
+  const getVariantLabel = (variant) => {
+    if (!variant) return '';
+    if (variant.variant_name) return variant.variant_name;
+    if (variant.subscription_duration_months) {
+      return formatSubscriptionDurationLabel(variant.subscription_duration_months);
+    }
+    return 'Variant';
+  };
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -867,10 +930,10 @@ const AdminProducts = ({ user, logout, settings }) => {
               onClick={() => setCategoryFilter('all')}
               className={`${categoryFilter === 'all' ? 'bg-pink-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
             >
-              All ({products.length})
+              All ({groupedProducts.length})
             </Button>
             {categoryOptions.map((option) => {
-              const count = products.filter((p) => p.category === option.value).length;
+              const count = groupedProducts.filter((group) => group.parent?.category === option.value).length;
               return (
                 <Button
                   key={option.value}
@@ -888,93 +951,125 @@ const AdminProducts = ({ user, logout, settings }) => {
           <div className="text-center text-white text-lg sm:text-xl py-12">Loading...</div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6" data-testid="products-list">
-            {products
-              .filter(product => categoryFilter === 'all' || product.category === categoryFilter)
-              .filter(product => {
-                const q = search.trim().toLowerCase();
-                if (!q) return true;
-                const hay = [
-                  product.name,
-                  product.description,
-                  product.category,
-                  product.variant_name,
-                  product.region,
-                  product.giftcard_category,
-                  product.giftcard_subcategory
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-                  .toLowerCase();
-                return hay.includes(q);
-              })
-              .map((product) => (
-              <Card key={product.id} className="glass-effect border-white/20 hover:border-white/40 transition" data-testid={`product-${product.id}`}>
-                <CardContent className="p-4 sm:p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-base sm:text-lg font-bold text-white mb-2 break-words">{product.name}</h3>
-                      <p className="text-white/70 text-xs sm:text-sm mb-2 line-clamp-2">{product.description}</p>
-                      <div className="space-y-1 text-xs sm:text-sm">
-                        <p className="text-white/60">Category: <span className="text-white font-medium">{getCategoryLabel(product.category)}</span></p>
-                        <p className="text-white/60">Price: <span className="text-white font-bold text-base">${Number(product.price).toFixed(2)}</span></p>
-                        {product.variant_name && <p className="text-cyan-400 text-xs">Variant: {product.variant_name}</p>}
-                        {product.parent_product_id && (
-                          <p className="text-white/60 text-xs">
-                            Parent: {productById.get(product.parent_product_id)?.name || product.parent_product_id}
-                          </p>
-                        )}
-                        {product.category === 'giftcard' && product.giftcard_category && (
-                          <p className="text-white/60 text-xs">
-                            Gift Card Category: <span className="text-white">{product.giftcard_category}</span>
-                          </p>
-                        )}
-                        {product.category === 'giftcard' && product.giftcard_subcategory && (
-                          <p className="text-white/60 text-xs">
-                            Gift Card Subcategory: <span className="text-white">{product.giftcard_subcategory}</span>
-                          </p>
-                        )}
-                        {product.subscription_duration_months && (
-                          <p className="text-cyan-300 text-xs">
-                            Duration: {formatSubscriptionDurationLabel(product.subscription_duration_months)}
-                          </p>
-                        )}
-                        {product.region && <p className="text-pink-400 text-xs">Region: {product.region}</p>}
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {product.requires_player_id && <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">✓ Player ID</span>}
-                          {product.is_subscription && <span className="text-yellow-400 text-xs bg-yellow-400/10 px-2 py-0.5 rounded">✓ Subscription</span>}
+            {filteredGroups.map((group) => {
+              const product = group.parent;
+              const variantEntries = group.variants.filter((item) => item.parent_product_id || item.is_variant);
+              const minPrice = group.variants[0]?.price ?? product.price ?? 0;
+              const maxPrice = group.variants[group.variants.length - 1]?.price ?? product.price ?? 0;
+              const priceLabel = group.variants.length > 1
+                ? `$${Number(minPrice).toFixed(2)} - $${Number(maxPrice).toFixed(2)}`
+                : `$${Number(product.price).toFixed(2)}`;
+              const isExpanded = !!expandedGroups[group.groupId];
+              return (
+                <Card key={group.groupId} className="glass-effect border-white/20 hover:border-white/40 transition" data-testid={`product-${group.groupId}`}>
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base sm:text-lg font-bold text-white mb-2 break-words">{product.name}</h3>
+                        <p className="text-white/70 text-xs sm:text-sm mb-2 line-clamp-2">{product.description}</p>
+                        <div className="space-y-1 text-xs sm:text-sm">
+                          <p className="text-white/60">Category: <span className="text-white font-medium">{getCategoryLabel(product.category)}</span></p>
+                          <p className="text-white/60">Price: <span className="text-white font-bold text-base">{priceLabel}</span></p>
+                          {product.category === 'giftcard' && product.giftcard_category && (
+                            <p className="text-white/60 text-xs">
+                              Gift Card Category: <span className="text-white">{product.giftcard_category}</span>
+                            </p>
+                          )}
+                          {product.category === 'giftcard' && product.giftcard_subcategory && (
+                            <p className="text-white/60 text-xs">
+                              Gift Card Subcategory: <span className="text-white">{product.giftcard_subcategory}</span>
+                            </p>
+                          )}
+                          {product.subscription_duration_months && (
+                            <p className="text-cyan-300 text-xs">
+                              Duration: {formatSubscriptionDurationLabel(product.subscription_duration_months)}
+                            </p>
+                          )}
+                          {product.region && <p className="text-pink-400 text-xs">Region: {product.region}</p>}
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {product.requires_player_id && <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">✓ Player ID</span>}
+                            {product.is_subscription && <span className="text-yellow-400 text-xs bg-yellow-400/10 px-2 py-0.5 rounded">✓ Subscription</span>}
+                          </div>
                         </div>
                       </div>
+                      {product.image_url && (
+                        <img src={product.image_url} alt={product.name} className="w-20 h-20 sm:w-16 sm:h-16 object-cover rounded flex-shrink-0 mx-auto sm:mx-0 sm:ml-4" />
+                      )}
                     </div>
-                    {product.image_url && (
-                      <img src={product.image_url} alt={product.name} className="w-20 h-20 sm:w-16 sm:h-16 object-cover rounded flex-shrink-0 mx-auto sm:mx-0 sm:ml-4" />
-                    )}
-                  </div>
 
-                  <div className="flex gap-2 mt-4">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleEdit(product)}
-                      className="flex-1 border-white text-white hover:bg-white/10 text-xs sm:text-sm py-2 sm:py-1.5"
-                      data-testid={`edit-${product.id}`}
-                    >
-                      <Edit2 size={14} className="mr-1 sm:mr-1" />
-                      <span className="hidden sm:inline">Edit</span>
-                      <span className="sm:hidden">Edit</span>
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => handleDelete(product.id)}
-                      className="border-red-400 text-red-400 hover:bg-red-400/10 px-3 sm:px-2 py-2 sm:py-1.5"
-                      data-testid={`delete-${product.id}`}
-                    >
-                      <Trash2 size={14} />
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEdit(product)}
+                          className="flex-1 border-white text-white hover:bg-white/10 text-xs sm:text-sm py-2 sm:py-1.5"
+                          data-testid={`edit-${product.id}`}
+                        >
+                          <Edit2 size={14} className="mr-1 sm:mr-1" />
+                          <span className="hidden sm:inline">Edit</span>
+                          <span className="sm:hidden">Edit</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDelete(product.id)}
+                          className="border-red-400 text-red-400 hover:bg-red-400/10 px-3 sm:px-2 py-2 sm:py-1.5"
+                          data-testid={`delete-${product.id}`}
+                        >
+                          <Trash2 size={14} />
+                        </Button>
+                      </div>
+
+                      {variantEntries.length > 0 && (
+                        <div className="mt-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => toggleGroup(group.groupId)}
+                            className="w-full border-cyan-400 text-cyan-200 hover:bg-cyan-400/10 text-xs sm:text-sm"
+                          >
+                            {isExpanded ? 'Hide Variants' : `View Variants (${variantEntries.length})`}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {variantEntries.length > 0 && isExpanded && (
+                      <div className="mt-4 space-y-2">
+                        {variantEntries.map((variant) => (
+                          <div key={variant.id} className="flex items-center justify-between gap-3 p-3 bg-white/5 border border-white/10 rounded-lg">
+                            <div className="min-w-0">
+                              <p className="text-white text-sm font-semibold truncate">{getVariantLabel(variant)}</p>
+                              <p className="text-white/60 text-xs">${Number(variant.price).toFixed(2)}</p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleEdit(variant)}
+                                className="border-white/20 text-white hover:bg-white/10 text-xs"
+                              >
+                                <Edit2 size={14} className="mr-1" />
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDelete(variant.id)}
+                                className="border-red-400 text-red-400 hover:bg-red-400/10 text-xs"
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>
