@@ -94,3 +94,34 @@ code {
     margin-left: auto !important;
     margin-right: auto !important;
 }
+
+/* Announcement marquee */
+.announcement-marquee {
+    position: relative;
+    overflow: hidden;
+}
+
+.announcement-marquee__content {
+    display: inline-block;
+    white-space: nowrap;
+    padding-left: 100%;
+    will-change: transform;
+    animation: announcement-marquee 18s linear infinite;
+}
+
+@keyframes announcement-marquee {
+    0% {
+        transform: translateX(0);
+    }
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .announcement-marquee__content {
+        animation: none;
+        padding-left: 0;
+        transform: none;
+    }
+}
