@@ -54,7 +54,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   };
 
   const paymentMethods = useMemo(() => {
-    const gateways = settings?.payment_gateways || {};
+    const gateways = settings?.crypto_payment_gateways || {};
     const enabled = Object.entries(gateways)
       .filter(([, cfg]) => cfg?.enabled)
       .map(([value]) => value);
@@ -307,7 +307,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   const buyCalculation = amountUsd ? calculateBuy(amountUsd) : null;
   const sellCalculation = amountCrypto ? calculateSell(amountCrypto) : null;
 
-  const selectedGateway = settings?.payment_gateways?.[paymentMethod];
+  const selectedGateway = settings?.crypto_payment_gateways?.[paymentMethod];
   const buyPaymentDetails = selectedGateway?.enabled
     ? selectedGateway
     : null;

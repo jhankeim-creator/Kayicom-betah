@@ -138,7 +138,7 @@ const AdminCrypto = () => {
 
               <div className="p-4 bg-blue-400/10 border border-blue-400/30 rounded-lg mt-6">
                 <p className="text-blue-200 text-sm">
-                  <strong>Note:</strong> Sell USDT uses Plisio automatic wallet generation. Buy USDT is manual payment verification.
+                  <strong>Note:</strong> Sell USDT uses Plisio automatic wallet generation. Buy USDT uses manual payment methods configured in Site Settings &gt; Payments.
                 </p>
               </div>
 

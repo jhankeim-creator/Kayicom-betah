@@ -315,6 +315,15 @@ class SiteSettings(BaseModel):
         # Legacy key kept for backwards compatibility
         "crypto_usdt": {"enabled": True, "wallet": "", "instructions": ""}
     }
+    crypto_payment_gateways: Optional[dict] = {
+        "paypal": {"enabled": False, "email": "", "instructions": ""},
+        "airtm": {"enabled": False, "email": "", "instructions": ""},
+        "skrill": {"enabled": False, "email": "", "instructions": ""},
+        "moncash": {"enabled": False, "email": "", "instructions": ""},
+        "binance_pay": {"enabled": False, "email": "", "instructions": ""},
+        "zelle": {"enabled": False, "email": "", "instructions": ""},
+        "cashapp": {"enabled": False, "email": "", "instructions": ""},
+    }
     # Crypto Exchange Settings
     crypto_settings: Optional[dict] = {
         "buy_rate_usdt": 1.0,
@@ -372,6 +381,7 @@ class SettingsUpdate(BaseModel):
     refund_policy: Optional[str] = None
     giftcard_taxonomy: Optional[List[Dict[str, Any]]] = None
     payment_gateways: Optional[dict] = None
+    crypto_payment_gateways: Optional[dict] = None
     crypto_settings: Optional[dict] = None
     minutes_transfer_enabled: Optional[bool] = None
     minutes_transfer_fee_type: Optional[str] = None
@@ -2238,8 +2248,8 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     
     # Get admin payment information based on selected method
     payment_info = {}
-    if settings and settings.get('payment_gateways'):
-        gateway = settings['payment_gateways'].get(request.payment_method, {})
+    if settings and settings.get('crypto_payment_gateways'):
+        gateway = settings['crypto_payment_gateways'].get(request.payment_method, {})
         if gateway.get('enabled'):
             payment_info = {
                 'method': request.payment_method,
