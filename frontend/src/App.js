@@ -106,6 +106,42 @@ function App() {
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    const crispId = (settings?.crisp_website_id || '').trim();
+    const enabled = Boolean(settings?.crisp_enabled && crispId);
+    const existingScript = document.getElementById('crisp-chat-script');
+    const currentId = window.CRISP_WEBSITE_ID;
+
+    if (enabled) {
+      if (existingScript && currentId === crispId) {
+        return;
+      }
+      if (existingScript) {
+        existingScript.remove();
+      }
+      window.$crisp = window.$crisp || [];
+      window.CRISP_WEBSITE_ID = crispId;
+      const script = document.createElement('script');
+      script.id = 'crisp-chat-script';
+      script.src = 'https://client.crisp.chat/l.js';
+      script.async = true;
+      document.body.appendChild(script);
+    } else {
+      if (existingScript) {
+        existingScript.remove();
+      }
+      if (window.$crisp) {
+        try {
+          window.$crisp.push(['do', 'chat:hide']);
+        } catch (e) {
+          // no-op
+        }
+      }
+      if (window.$crisp) delete window.$crisp;
+      if (window.CRISP_WEBSITE_ID) delete window.CRISP_WEBSITE_ID;
+    }
+  }, [settings?.crisp_enabled, settings?.crisp_website_id]);
+
   const loadSettings = async () => {
     try {
       const response = await axiosInstance.get('/settings');
@@ -414,7 +450,7 @@ function App() {
           />
         </Routes>
         <Toaster position="top-right" richColors />
-          <WhatsAppButton />
+          <WhatsAppButton settings={settings} />
         </div>
       </BrowserRouter>
     </LanguageContext.Provider>

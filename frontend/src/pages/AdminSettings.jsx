@@ -58,6 +58,11 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     primary_color: '',
     secondary_color: '',
     support_email: '',
+    whatsapp_support_enabled: true,
+    whatsapp_support_number: '',
+    whatsapp_support_message: '',
+    crisp_enabled: false,
+    crisp_website_id: '',
     plisio_api_key: '',
     mtcgame_api_key: '',
     gosplit_api_key: '',
@@ -145,6 +150,11 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           primary_color: currentSettings.primary_color || '',
           secondary_color: currentSettings.secondary_color || '',
           support_email: currentSettings.support_email || '',
+          whatsapp_support_enabled: currentSettings.whatsapp_support_enabled ?? true,
+          whatsapp_support_number: currentSettings.whatsapp_support_number || '',
+          whatsapp_support_message: currentSettings.whatsapp_support_message || '',
+          crisp_enabled: currentSettings.crisp_enabled ?? false,
+          crisp_website_id: currentSettings.crisp_website_id || '',
           plisio_api_key: currentSettings.plisio_api_key || '',
           mtcgame_api_key: currentSettings.mtcgame_api_key || '',
           gosplit_api_key: currentSettings.gosplit_api_key || '',
@@ -522,6 +532,78 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
                         data-testid="support-email-input"
                       />
+                    </div>
+
+                    <div className="bg-white/5 p-4 rounded-lg border border-white/10">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <Label className="text-white">WhatsApp Support</Label>
+                          <p className="text-white/60 text-sm mt-1">
+                            Configure the WhatsApp support button.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.whatsapp_support_enabled}
+                            onChange={(e) => handleChange('whatsapp_support_enabled', e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-white text-sm">Enabled</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <Label className="text-white/70 text-sm">WhatsApp Number</Label>
+                          <Input
+                            value={formData.whatsapp_support_number}
+                            onChange={(e) => handleChange('whatsapp_support_number', e.target.value)}
+                            className="bg-white/10 border-white/20 text-white mt-1"
+                            placeholder="50939308318"
+                          />
+                          <p className="text-white/50 text-xs mt-1">
+                            Use international format without "+" or spaces.
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-white/70 text-sm">Default Message</Label>
+                          <Input
+                            value={formData.whatsapp_support_message}
+                            onChange={(e) => handleChange('whatsapp_support_message', e.target.value)}
+                            className="bg-white/10 border-white/20 text-white mt-1"
+                            placeholder="Hello! I need support."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/5 p-4 rounded-lg border border-white/10">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <Label className="text-white">Crisp Live Chat</Label>
+                          <p className="text-white/60 text-sm mt-1">
+                            Enable Crisp chat by adding your Website ID.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.crisp_enabled}
+                            onChange={(e) => handleChange('crisp_enabled', e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-white text-sm">Enabled</span>
+                        </label>
+                      </div>
+                      <div className="mt-4">
+                        <Label className="text-white/70 text-sm">Crisp Website ID</Label>
+                        <Input
+                          value={formData.crisp_website_id}
+                          onChange={(e) => handleChange('crisp_website_id', e.target.value)}
+                          className="bg-white/10 border-white/20 text-white mt-1"
+                          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                        />
+                      </div>
                     </div>
 
                     <div>
