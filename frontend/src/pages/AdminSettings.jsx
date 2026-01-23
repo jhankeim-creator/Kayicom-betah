@@ -77,6 +77,15 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     category_images: {},
     refund_policy: DEFAULT_REFUND_POLICY,
     giftcard_taxonomy: DEFAULT_GIFTCARD_TAXONOMY,
+    crypto_payment_gateways: {
+      paypal: { enabled: false, email: '', instructions: '' },
+      airtm: { enabled: false, email: '', instructions: '' },
+      skrill: { enabled: false, email: '', instructions: '' },
+      moncash: { enabled: false, email: '', instructions: '' },
+      binance_pay: { enabled: false, email: '', instructions: '' },
+      zelle: { enabled: false, email: '', instructions: '' },
+      cashapp: { enabled: false, email: '', instructions: '' }
+    },
     payment_gateways: {
       paypal: { enabled: true, email: '', instructions: '' },
       airtm: { enabled: true, email: '', instructions: '' },
@@ -130,6 +139,16 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     cashapp: { enabled: true, email: '', instructions: '' }
   }), []);
 
+  const defaultCryptoPaymentGateways = useMemo(() => ({
+    paypal: { enabled: false, email: '', instructions: '' },
+    airtm: { enabled: false, email: '', instructions: '' },
+    skrill: { enabled: false, email: '', instructions: '' },
+    moncash: { enabled: false, email: '', instructions: '' },
+    binance_pay: { enabled: false, email: '', instructions: '' },
+    zelle: { enabled: false, email: '', instructions: '' },
+    cashapp: { enabled: false, email: '', instructions: '' }
+  }), []);
+
   useEffect(() => {
     if (currentSettings) {
       startTransition(() => {
@@ -169,6 +188,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           category_images: currentSettings.category_images || {},
           refund_policy: currentSettings.refund_policy || DEFAULT_REFUND_POLICY,
           giftcard_taxonomy: giftcardTaxonomy,
+          crypto_payment_gateways: currentSettings.crypto_payment_gateways || defaultCryptoPaymentGateways,
           payment_gateways: currentSettings.payment_gateways || defaultPaymentGateways,
           crypto_settings: currentSettings.crypto_settings || {
             buy_rate_usdt: 1.0,
@@ -196,7 +216,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
         });
       });
     }
-  }, [currentSettings, defaultPaymentGateways]);
+  }, [currentSettings, defaultPaymentGateways, defaultCryptoPaymentGateways]);
 
   const addCategory = useCallback(() => {
     const trimmed = newCategory.trim();
@@ -399,6 +419,22 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           ...prev.payment_gateways,
           [gateway]: {
             ...(prev.payment_gateways[gateway] || {}),
+            [field]: value
+          }
+        }
+      };
+    });
+  }, []);
+
+  const handleCryptoGatewayChange = useCallback((gateway, field, value) => {
+    setFormData(prev => {
+      if (!prev.crypto_payment_gateways) return prev;
+      return {
+        ...prev,
+        crypto_payment_gateways: {
+          ...prev.crypto_payment_gateways,
+          [gateway]: {
+            ...(prev.crypto_payment_gateways[gateway] || {}),
             [field]: value
           }
         }
@@ -1350,6 +1386,62 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             />
                           </div>
                         </div>
+                      </div>
+
+                      {/* Crypto Exchange Manual Payments */}
+                      <div className="bg-white/5 p-4 rounded-lg mb-4 border border-cyan-500/20">
+                        <h4 className="text-white font-semibold flex items-center gap-2 mb-3">
+                          <span>🔄</span> Crypto Exchange Manual Payments
+                        </h4>
+                        <p className="text-white/60 text-sm mb-4">
+                          These methods are used only for crypto exchange (buy/sell) and are separate from store payments.
+                        </p>
+
+                        {[
+                          { key: 'paypal', label: 'PayPal', placeholder: 'your@paypal.com' },
+                          { key: 'airtm', label: 'AirTM', placeholder: 'your@email.com' },
+                          { key: 'skrill', label: 'Skrill', placeholder: 'your@skrill.com' },
+                          { key: 'moncash', label: 'MonCash', placeholder: '+509XXXXXXXX' },
+                          { key: 'binance_pay', label: 'Binance Pay', placeholder: 'Your Binance Pay ID' },
+                          { key: 'zelle', label: 'Zelle', placeholder: 'your@email.com or phone' },
+                          { key: 'cashapp', label: 'CashApp', placeholder: '$YourCashtag' }
+                        ].map((method) => (
+                          <div key={method.key} className="bg-white/5 p-4 rounded-lg mb-3">
+                            <div className="flex justify-between items-center mb-3">
+                              <h5 className="text-white font-semibold">{method.label}</h5>
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={formData.crypto_payment_gateways?.[method.key]?.enabled || false}
+                                  onChange={(e) => handleCryptoGatewayChange(method.key, 'enabled', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-white text-sm">Enabled</span>
+                              </label>
+                            </div>
+                            <div className="space-y-2">
+                              <div>
+                                <Label className="text-white/70 text-sm">{method.label} Identifier</Label>
+                                <Input
+                                  placeholder={method.placeholder}
+                                  value={formData.crypto_payment_gateways?.[method.key]?.email || ''}
+                                  onChange={(e) => handleCryptoGatewayChange(method.key, 'email', e.target.value)}
+                                  className="bg-white/10 border-white/20 text-white mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-white/70 text-sm">Instructions</Label>
+                                <Textarea
+                                  placeholder={`Send via ${method.label}`}
+                                  value={formData.crypto_payment_gateways?.[method.key]?.instructions || ''}
+                                  onChange={(e) => handleCryptoGatewayChange(method.key, 'instructions', e.target.value)}
+                                  className="bg-white/10 border-white/20 text-white mt-1"
+                                  rows={2}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
 
                       {/* BTC */}
