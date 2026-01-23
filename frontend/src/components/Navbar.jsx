@@ -18,8 +18,12 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
     <nav className="sticky top-0 z-50 shadow-lg border-b border-purple-500/20" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
       {settings?.announcement_enabled && settings?.announcement_message && (
         <div className="w-full bg-black/30 border-b border-white/10">
-          <div className="w-full max-w-[1400px] mx-auto px-3 py-2 text-center text-white/90 text-sm">
-            {settings.announcement_message}
+          <div className="w-full max-w-[1400px] mx-auto px-3 py-2 text-white/90 text-sm">
+            <div className="announcement-marquee">
+              <div className="announcement-marquee__content">
+                {settings.announcement_message}
+              </div>
+            </div>
           </div>
         </div>
       )}
