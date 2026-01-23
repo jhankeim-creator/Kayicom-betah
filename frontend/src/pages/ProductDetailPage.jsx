@@ -187,7 +187,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
             {/* Quantity & Add to Cart */}
             <div className="glass-effect p-6 rounded-lg">
               <div className="flex items-center gap-4 mb-6">
-                <label className="text-lg font-semibold">Kantite:</label>
+                <label className="text-lg font-semibold">Quantity:</label>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
