@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const CryptoPage = ({ user, logout, settings }) => {
   const [config, setConfig] = useState(null);
@@ -42,6 +43,13 @@ const CryptoPage = ({ user, logout, settings }) => {
       loadTransactions();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!sellPaymentInfo?.invoice_url) return;
+    if (sellPaymentInfo?.processing_mode !== 'automatic') return;
+    const invoiceUrl = buildPlisioInvoiceUrl(sellPaymentInfo.invoice_url);
+    openPlisioInvoice(invoiceUrl, sellPaymentInfo.transaction_id || sellPaymentInfo.invoice_id || 'crypto-sell');
+  }, [sellPaymentInfo]);
 
   const paymentMethodMeta = {
     paypal: { label: 'PayPal', emoji: '💳' },
@@ -422,16 +430,18 @@ const CryptoPage = ({ user, logout, settings }) => {
                     </div>
                   )}
                   {sellPaymentInfo.invoice_url && (
-                    <a
-                      href={sellPaymentInfo.invoice_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block w-full mt-4"
-                    >
-                      <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold">
-                        Continue to Pay
-                      </Button>
-                    </a>
+                    <p className="text-white/70 text-sm mt-4">
+                      Invoice opened automatically. If it did not open,{" "}
+                      <a
+                        href={sellPaymentInfo.invoice_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-emerald-200 underline"
+                      >
+                        open it here
+                      </a>
+                      .
+                    </p>
                   )}
                   {sellPaymentInfo.warning && (
                     <div className="mt-4 text-left bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg">

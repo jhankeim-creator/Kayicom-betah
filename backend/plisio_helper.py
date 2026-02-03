@@ -16,7 +16,9 @@ class PlisioHelper:
                             callback_url: str = None,
                             email: str = None,
                             source_currency: str = "USD",
-                            source_amount: Optional[float] = None) -> Dict:
+                            source_amount: Optional[float] = None,
+                            success_url: Optional[str] = None,
+                            cancel_url: Optional[str] = None) -> Dict:
         """
         Create a Plisio invoice for crypto payment
         
@@ -48,6 +50,10 @@ class PlisioHelper:
             params["callback_url"] = callback_url
         if email:
             params["email"] = email
+        if success_url:
+            params["success_url"] = success_url
+        if cancel_url:
+            params["cancel_url"] = cancel_url
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url, params=params) as response:

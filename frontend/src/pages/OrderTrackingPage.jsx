@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -10,9 +10,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Package, Clock, CheckCircle, AlertCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
+import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const OrderTrackingPage = ({ user, logout, settings }) => {
   const { orderId } = useParams();
+  const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [proofUrl, setProofUrl] = useState('');
@@ -26,6 +28,22 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
       loadOrder();
     }
   }, [orderId]);
+
+  useEffect(() => {
+    if (!order) return;
+    if (order.payment_method === 'crypto_plisio' && order.payment_status === 'paid') {
+      navigate(`/payment-success?type=order&id=${order.id}`, { replace: true });
+      return;
+    }
+    if (
+      order.payment_method === 'crypto_plisio' &&
+      order.payment_status === 'pending' &&
+      (order.plisio_invoice_url || order.plisio_invoice_id)
+    ) {
+      const invoiceUrl = buildPlisioInvoiceUrl(order.plisio_invoice_url, order.plisio_invoice_id);
+      openPlisioInvoice(invoiceUrl, order.plisio_invoice_id || order.id);
+    }
+  }, [order, navigate]);
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
@@ -140,6 +158,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
   }
 
   const subscriptionEnd = order.subscription_end_date ? new Date(order.subscription_end_date) : null;
+  const invoiceUrl = buildPlisioInvoiceUrl(order.plisio_invoice_url, order.plisio_invoice_id);
   const deliveryDetails = (order.delivery_info?.details || '').trim();
   const deliveryItems = Array.isArray(order.delivery_info?.items)
     ? order.delivery_info.items.filter((item) => item?.details && String(item.details).trim())
@@ -302,18 +321,22 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                   
                   <div className="space-y-2">
                     <p className="text-white/80 text-sm">
-                      Click the button below to complete your payment via Plisio:
+                      Your Plisio invoice is opening automatically.
                     </p>
-                    <a 
-                      href={`https://plisio.net/invoice/${order.plisio_invoice_id}`}
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="block"
-                    >
-                      <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white font-bold py-4 text-lg">
-                        🔗 Continue to Pay
-                      </Button>
-                    </a>
+                    {invoiceUrl && (
+                      <p className="text-white/70 text-sm">
+                        If it did not open,{" "}
+                        <a
+                          href={invoiceUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-cyan-200 underline"
+                        >
+                          open the invoice here
+                        </a>
+                        .
+                      </p>
+                    )}
                   </div>
                   
                   <div className="border-t border-cyan-500/30 pt-4 mt-4">
