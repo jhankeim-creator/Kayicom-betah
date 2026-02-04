@@ -694,6 +694,7 @@ class CryptoSellRequest(BaseModel):
 
 class CryptoProofRequest(BaseModel):
     transaction_id: Optional[str] = None
+    tx_hash: Optional[str] = None
     payment_proof: Optional[str] = None
 
 # Crypto Config Model
@@ -2363,8 +2364,8 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
                 order_number=transaction_id,
                 callback_url=callback_url,
                 email=user_email,
-                source_currency="USDT",
-                source_amount=request.amount_crypto
+                source_currency=None,
+                source_amount=None
             )
 
             if plisio_result.get("success"):
@@ -2457,8 +2458,10 @@ async def submit_crypto_payment_proof(transaction_id: str, payload: CryptoProofR
         raise HTTPException(status_code=400, detail="Transaction is not pending")
 
     updates = {}
-    if payload.transaction_id:
-        updates["transaction_id"] = payload.transaction_id
+    if payload.transaction_id and str(payload.transaction_id).strip():
+        updates["transaction_id"] = str(payload.transaction_id).strip()
+    if payload.tx_hash and str(payload.tx_hash).strip():
+        updates["tx_hash"] = str(payload.tx_hash).strip()
     if payload.payment_proof:
         updates["payment_proof"] = payload.payment_proof
     if not updates:
