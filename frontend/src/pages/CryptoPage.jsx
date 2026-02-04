@@ -349,6 +349,8 @@ const CryptoPage = ({ user, logout, settings }) => {
     if (!config?.crypto_settings?.wallets) return null;
     return config.crypto_settings.wallets[chain];
   };
+  const adminWallet = getAdminWallet();
+  const hasAdminWallet = Boolean(adminWallet && String(adminWallet).trim());
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -671,6 +673,13 @@ const CryptoPage = ({ user, logout, settings }) => {
                       </SelectContent>
                     </Select>
                   </div>
+                  {!hasAdminWallet && (
+                    <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-lg">
+                      <p className="text-red-200 text-sm">
+                        Admin wallet not configured for {chain}. Please select another network or contact support.
+                      </p>
+                    </div>
+                  )}
 
 
                   <div>
@@ -737,7 +746,7 @@ const CryptoPage = ({ user, logout, settings }) => {
 
                   <Button
                     onClick={handleSell}
-                    disabled={loading || uploadingProof}
+                    disabled={loading || uploadingProof || !hasAdminWallet}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {loading || uploadingProof ? 'Processing...' : 'Submit Sell Order'}
