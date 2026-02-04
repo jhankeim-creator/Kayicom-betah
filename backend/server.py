@@ -2427,41 +2427,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     invoice_url = None
     qr_code = None
     plisio_invoice_id = None
-    processing_warning = None
-
-    plisio_currency = "USDT_TRC20" if chain == "TRC20" else "USDT"
-
-    if settings and settings.get('plisio_api_key'):
-        callback_url = _plisio_callback_url()
-        if not callback_url:
-            processing_warning = "Automatic processing unavailable: BACKEND_URL not configured"
-        else:
-            plisio_helper = PlisioHelper(settings['plisio_api_key'])
-            plisio_result = await plisio_helper.create_invoice(
-                amount=request.amount_crypto,
-                currency=plisio_currency,
-                order_name="Sell USDT Order",
-                order_number=transaction_id,
-                callback_url=callback_url,
-                email=user_email,
-                source_currency=None,
-                source_amount=None
-            )
-
-            if plisio_result.get("success"):
-                candidate_wallet = plisio_result.get("wallet_address")
-                if _address_matches_chain(chain, candidate_wallet):
-                    processing_mode = "automatic"
-                    wallet_address = candidate_wallet
-                    invoice_url = plisio_result.get("invoice_url")
-                    qr_code = plisio_result.get("qr_code")
-                    plisio_invoice_id = plisio_result.get("invoice_id")
-                else:
-                    processing_warning = f"Automatic processing unavailable: {chain} wallet mismatch"
-            else:
-                processing_warning = f"Automatic processing unavailable: {plisio_result.get('error')}"
-    else:
-        processing_warning = "Automatic processing unavailable: Plisio not configured"
+    processing_warning = "Automatic processing disabled"
 
     if not wallet_address:
         wallet_address = manual_wallet
