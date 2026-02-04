@@ -488,6 +488,16 @@ def _apply_crypto_config_to_settings(settings: Optional[dict], config: Optional[
     settings["crypto_settings"] = crypto_settings
     return settings
 
+def _address_matches_chain(chain: str, wallet_address: Optional[str]) -> bool:
+    if not wallet_address:
+        return False
+    addr = wallet_address.strip()
+    if chain == "TRC20":
+        return addr.startswith("T")
+    if chain == "BEP20":
+        return addr.startswith("0x")
+    return True
+
 def _send_resend_email(settings: dict, to_email: str, subject: str, html: str):
     """Send one email via Resend. Raises HTTPException on misconfig."""
     if not settings or not settings.get("resend_api_key"):
@@ -2439,11 +2449,15 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
             )
 
             if plisio_result.get("success"):
-                processing_mode = "automatic"
-                wallet_address = plisio_result.get("wallet_address")
-                invoice_url = plisio_result.get("invoice_url")
-                qr_code = plisio_result.get("qr_code")
-                plisio_invoice_id = plisio_result.get("invoice_id")
+                candidate_wallet = plisio_result.get("wallet_address")
+                if _address_matches_chain(chain, candidate_wallet):
+                    processing_mode = "automatic"
+                    wallet_address = candidate_wallet
+                    invoice_url = plisio_result.get("invoice_url")
+                    qr_code = plisio_result.get("qr_code")
+                    plisio_invoice_id = plisio_result.get("invoice_id")
+                else:
+                    processing_warning = f"Automatic processing unavailable: {chain} wallet mismatch"
             else:
                 processing_warning = f"Automatic processing unavailable: {plisio_result.get('error')}"
     else:
