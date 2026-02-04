@@ -117,6 +117,20 @@ const CryptoPage = ({ user, logout, settings }) => {
     toast.success(`${label} copied!`);
   };
 
+  const toNumber = (value, fallback) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const getRateForChain = (prefix, fallback) => {
+    if (!config) return fallback;
+    const key = `${prefix}_${chain.toLowerCase()}`;
+    return toNumber(config?.[key] ?? config?.[`${prefix}_usdt`], fallback);
+  };
+
+  const getBuyFeePercent = () => toNumber(config?.buy_fee_percent ?? config?.transaction_fee_percent, 2);
+  const getSellFeePercent = () => toNumber(config?.sell_fee_percent ?? config?.transaction_fee_percent, 2);
+
   const openProofDialog = (tx) => {
     setSelectedProofTx(tx);
     setProofTxId(tx?.transaction_id || '');
@@ -158,17 +172,19 @@ const CryptoPage = ({ user, logout, settings }) => {
 
   const calculateBuy = (usd) => {
     if (!config) return 0;
-    const rate = config.buy_rate_usdt || 1.02;
+    const rate = getRateForChain('buy_rate', 1.02);
+    const feePercent = getBuyFeePercent();
     const crypto = parseFloat(usd) / rate;
-    const fee = parseFloat(usd) * ((config.transaction_fee_percent || 2) / 100);
+    const fee = parseFloat(usd) * (feePercent / 100);
     return { crypto, fee, total: parseFloat(usd) + fee };
   };
 
   const calculateSell = (crypto) => {
     if (!config) return 0;
-    const rate = config.sell_rate_usdt || 0.98;
+    const rate = getRateForChain('sell_rate', 0.98);
+    const feePercent = getSellFeePercent();
     const usd = parseFloat(crypto) * rate;
-    const fee = usd * ((config.transaction_fee_percent || 2) / 100);
+    const fee = usd * (feePercent / 100);
     return { usd, fee, total: usd - fee };
   };
 
@@ -310,6 +326,8 @@ const CryptoPage = ({ user, logout, settings }) => {
 
   const buyCalculation = amountUsd ? calculateBuy(amountUsd) : null;
   const sellCalculation = amountCrypto ? calculateSell(amountCrypto) : null;
+  const buyFeePercent = getBuyFeePercent();
+  const sellFeePercent = getSellFeePercent();
 
   const selectedGateway = settings?.crypto_payment_gateways?.[paymentMethod];
   const buyPaymentDetails = selectedGateway?.enabled
@@ -508,7 +526,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                             <span className="text-white font-bold">{buyCalculation.crypto.toFixed(2)} USDT</span>
                           </div>
                           <div className="flex justify-between text-white/70">
-                            <span>Fee ({config?.transaction_fee_percent || 2}%):</span>
+                            <span>Fee ({buyFeePercent}%):</span>
                             <span>${buyCalculation.fee.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">
@@ -667,7 +685,7 @@ const CryptoPage = ({ user, logout, settings }) => {
                         <span className="text-white font-bold">${sellCalculation.usd.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-white/70">
-                        <span>Fee ({config?.transaction_fee_percent || 2}%):</span>
+                        <span>Fee ({sellFeePercent}%):</span>
                         <span>-${sellCalculation.fee.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">

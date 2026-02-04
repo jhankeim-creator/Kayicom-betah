@@ -457,6 +457,37 @@ def _safe_float(val: Any, default: float) -> float:
     except Exception:
         return default
 
+def _optional_float(val: Any) -> Optional[float]:
+    """Return float value or None when invalid."""
+    try:
+        if val is None:
+            return None
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except Exception:
+        return None
+
+def _apply_crypto_config_to_settings(settings: Optional[dict], config: Optional[dict]) -> Optional[dict]:
+    if not settings or not config:
+        return settings
+    crypto_settings = dict(settings.get("crypto_settings") or {})
+    buy_rate = _optional_float(config.get("buy_rate_bep20"))
+    if buy_rate is not None:
+        crypto_settings["buy_rate_usdt"] = buy_rate
+    sell_rate = _optional_float(config.get("sell_rate_bep20"))
+    if sell_rate is not None:
+        crypto_settings["sell_rate_usdt"] = sell_rate
+    fee_percent = _optional_float(config.get("buy_fee_percent", config.get("transaction_fee_percent")))
+    if fee_percent is not None:
+        crypto_settings["transaction_fee_percent"] = fee_percent
+    min_usd = _optional_float(config.get("min_buy_usd", config.get("min_transaction_usd")))
+    if min_usd is not None:
+        crypto_settings["min_transaction_usd"] = min_usd
+    settings["crypto_settings"] = crypto_settings
+    return settings
+
 def _send_resend_email(settings: dict, to_email: str, subject: str, html: str):
     """Send one email via Resend. Raises HTTPException on misconfig."""
     if not settings or not settings.get("resend_api_key"):
@@ -1727,6 +1758,9 @@ async def get_settings():
     if isinstance(settings.get('updated_at'), str):
         settings['updated_at'] = datetime.fromisoformat(settings['updated_at'])
 
+    crypto_config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
+    settings = _apply_crypto_config_to_settings(settings, crypto_config)
+
     # Never expose secret keys to clients
     for secret_field in ["plisio_api_key", "mtcgame_api_key", "gosplit_api_key", "z2u_api_key", "resend_api_key"]:
         if secret_field in settings:
@@ -1743,10 +1777,44 @@ async def update_settings(updates: SettingsUpdate):
         {"$set": update_data},
         upsert=True
     )
+
+    crypto_settings = update_data.get("crypto_settings")
+    if isinstance(crypto_settings, dict):
+        config_updates: Dict[str, Any] = {}
+        buy_rate = _optional_float(crypto_settings.get("buy_rate_usdt"))
+        if buy_rate is not None:
+            config_updates["buy_rate_bep20"] = buy_rate
+            config_updates["buy_rate_trc20"] = buy_rate
+            config_updates["buy_rate_matic"] = buy_rate
+            config_updates["buy_rate_usdt"] = buy_rate
+        sell_rate = _optional_float(crypto_settings.get("sell_rate_usdt"))
+        if sell_rate is not None:
+            config_updates["sell_rate_bep20"] = sell_rate
+            config_updates["sell_rate_trc20"] = sell_rate
+            config_updates["sell_rate_matic"] = sell_rate
+            config_updates["sell_rate_usdt"] = sell_rate
+        fee_percent = _optional_float(crypto_settings.get("transaction_fee_percent"))
+        if fee_percent is not None:
+            config_updates["buy_fee_percent"] = fee_percent
+            config_updates["sell_fee_percent"] = fee_percent
+            config_updates["transaction_fee_percent"] = fee_percent
+        min_usd = _optional_float(crypto_settings.get("min_transaction_usd"))
+        if min_usd is not None:
+            config_updates["min_buy_usd"] = min_usd
+            config_updates["min_transaction_usd"] = min_usd
+        if config_updates:
+            config_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await db.crypto_config.update_one(
+                {"id": "crypto_config"},
+                {"$set": config_updates},
+                upsert=True
+            )
     
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0})
     if isinstance(settings.get('updated_at'), str):
         settings['updated_at'] = datetime.fromisoformat(settings['updated_at'])
+    crypto_config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
+    settings = _apply_crypto_config_to_settings(settings, crypto_config)
     return settings
 
 
@@ -2161,19 +2229,19 @@ async def get_crypto_config():
     # Compatibility fields expected by frontend (CryptoPage)
     # Prefer site_settings.crypto_settings, fallback to crypto_config defaults.
     config['buy_rate_usdt'] = _safe_float(
-        crypto_settings.get('buy_rate_usdt', config.get('buy_rate_bep20', 1.02)),
+        config.get('buy_rate_bep20', config.get('buy_rate_usdt', crypto_settings.get('buy_rate_usdt'))),
         1.02
     )
     config['sell_rate_usdt'] = _safe_float(
-        crypto_settings.get('sell_rate_usdt', config.get('sell_rate_bep20', 0.98)),
+        config.get('sell_rate_bep20', config.get('sell_rate_usdt', crypto_settings.get('sell_rate_usdt'))),
         0.98
     )
     config['transaction_fee_percent'] = _safe_float(
-        crypto_settings.get('transaction_fee_percent', config.get('buy_fee_percent', 2.0)),
+        config.get('buy_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
         2.0
     )
     config['min_transaction_usd'] = _safe_float(
-        crypto_settings.get('min_transaction_usd', config.get('min_buy_usd', 10.0)),
+        config.get('min_buy_usd', config.get('min_transaction_usd', crypto_settings.get('min_transaction_usd'))),
         10.0
     )
     
@@ -2219,7 +2287,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
 
     # Check limits (prefer site_settings.crypto_settings)
     min_usd = _safe_float(
-        crypto_settings.get('min_transaction_usd', config.get('min_buy_usd', config.get('min_transaction_usd', 10.0))),
+        config.get('min_buy_usd', config.get('min_transaction_usd', crypto_settings.get('min_transaction_usd'))),
         10.0
     )
     max_usd = _safe_float(config.get('max_buy_usd', 10000.0), 10000.0)
@@ -2234,14 +2302,14 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
     # Get rate
     rate_key = f"buy_rate_{chain.lower()}"
     exchange_rate = _safe_float(
-        crypto_settings.get("buy_rate_usdt", config.get(rate_key, config.get("buy_rate_usdt", 1.02))),
+        config.get(rate_key, config.get("buy_rate_usdt", crypto_settings.get("buy_rate_usdt"))),
         1.02
     )
     
     # Calculate
     amount_crypto = request.amount_usd / exchange_rate
     fee_percent = _safe_float(
-        crypto_settings.get('transaction_fee_percent', config.get('buy_fee_percent', config.get('transaction_fee_percent', 2.0))),
+        config.get('buy_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
         2.0
     )
     fee = request.amount_usd * (fee_percent / 100)
@@ -2321,14 +2389,14 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     # Get rate
     rate_key = f"sell_rate_{chain.lower()}"
     exchange_rate = _safe_float(
-        crypto_settings.get("sell_rate_usdt", config.get(rate_key, config.get("sell_rate_usdt", 0.98))),
+        config.get(rate_key, config.get("sell_rate_usdt", crypto_settings.get("sell_rate_usdt"))),
         0.98
     )
     
     # Calculate
     amount_usd = request.amount_crypto * exchange_rate
     fee_percent = _safe_float(
-        crypto_settings.get('transaction_fee_percent', config.get('sell_fee_percent', config.get('transaction_fee_percent', 2.0))),
+        config.get('sell_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
         2.0
     )
     fee = amount_usd * (fee_percent / 100)
