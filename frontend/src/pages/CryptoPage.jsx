@@ -455,11 +455,6 @@ const CryptoPage = ({ user, logout, settings }) => {
                       </Button>
                     </a>
                   )}
-                  {sellPaymentInfo.warning && (
-                    <div className="mt-4 text-left bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg">
-                      <p className="text-amber-200 text-sm">{sellPaymentInfo.warning}</p>
-                    </div>
-                  )}
                   {sellPaymentInfo.processing_mode === 'automatic' ? (
                     <div className="mt-4 text-left bg-emerald-500/10 border border-emerald-500/30 p-4 rounded-lg">
                       <p className="text-emerald-200 text-sm">
