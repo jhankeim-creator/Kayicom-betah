@@ -2407,7 +2407,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
 
     # Determine fallback wallet from settings/config
     wallets = (crypto_settings.get("wallets") or {}) if isinstance(crypto_settings, dict) else {}
-    manual_wallet = wallets.get(chain)
+    manual_wallet = wallets.get(chain) or wallets.get(chain.lower())
     if not manual_wallet:
         fallback_key = f"wallet_{chain.lower()}"
         manual_wallet = config.get(fallback_key)
@@ -2419,6 +2419,8 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     plisio_invoice_id = None
     processing_warning = None
 
+    plisio_currency = "USDT_TRC20" if chain == "TRC20" else "USDT"
+
     if settings and settings.get('plisio_api_key'):
         callback_url = _plisio_callback_url()
         if not callback_url:
@@ -2427,7 +2429,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
             plisio_helper = PlisioHelper(settings['plisio_api_key'])
             plisio_result = await plisio_helper.create_invoice(
                 amount=request.amount_crypto,
-                currency="USDT",
+                currency=plisio_currency,
                 order_name="Sell USDT Order",
                 order_number=transaction_id,
                 callback_url=callback_url,
