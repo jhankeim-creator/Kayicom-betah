@@ -2539,38 +2539,6 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     plisio_invoice_id = None
     processing_warning = None
 
-    if settings and settings.get('plisio_api_key'):
-        callback_url = _plisio_callback_url()
-        if not callback_url:
-            processing_warning = "Automatic processing unavailable: BACKEND_URL not configured"
-        else:
-            success_url = _plisio_success_url("crypto_sell", transaction_id)
-            cancel_url = _plisio_cancel_url("crypto_sell", transaction_id)
-            plisio_helper = PlisioHelper(settings['plisio_api_key'])
-            plisio_result = await plisio_helper.create_invoice(
-                amount=request.amount_crypto,
-                currency="USDT",
-                order_name="Sell USDT Order",
-                order_number=transaction_id,
-                callback_url=callback_url,
-                email=user_email,
-                source_currency="USDT",
-                source_amount=request.amount_crypto,
-                success_url=success_url,
-                cancel_url=cancel_url
-            )
-
-            if plisio_result.get("success"):
-                processing_mode = "automatic"
-                wallet_address = plisio_result.get("wallet_address")
-                invoice_url = plisio_result.get("invoice_url")
-                qr_code = plisio_result.get("qr_code")
-                plisio_invoice_id = plisio_result.get("invoice_id")
-            else:
-                processing_warning = f"Automatic processing unavailable: {plisio_result.get('error')}"
-    else:
-        processing_warning = "Automatic processing unavailable: Plisio not configured"
-
     if not wallet_address:
         wallet_address = manual_wallet
         if not wallet_address:

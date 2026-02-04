@@ -12,7 +12,6 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Copy, TrendingUp, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
-import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const CryptoPage = ({ user, logout, settings }) => {
   const [config, setConfig] = useState(null);
@@ -43,16 +42,6 @@ const CryptoPage = ({ user, logout, settings }) => {
       loadTransactions();
     }
   }, [user]);
-
-  useEffect(() => {
-    if (sellPaymentInfo?.processing_mode !== 'automatic') return;
-    const invoiceUrl = buildPlisioInvoiceUrl(
-      sellPaymentInfo?.invoice_url,
-      sellPaymentInfo?.plisio_invoice_id
-    );
-    if (!invoiceUrl) return;
-    openPlisioInvoice(invoiceUrl, sellPaymentInfo.transaction_id || sellPaymentInfo.invoice_id || 'crypto-sell');
-  }, [sellPaymentInfo]);
 
   const paymentMethodMeta = {
     paypal: { label: 'PayPal', emoji: '💳' },
@@ -360,9 +349,6 @@ const CryptoPage = ({ user, logout, settings }) => {
     if (!config?.crypto_settings?.wallets) return null;
     return config.crypto_settings.wallets[chain];
   };
-  const sellInvoiceUrl = sellPaymentInfo
-    ? buildPlisioInvoiceUrl(sellPaymentInfo.invoice_url, sellPaymentInfo.plisio_invoice_id)
-    : null;
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -466,41 +452,6 @@ const CryptoPage = ({ user, logout, settings }) => {
                   {sellPaymentInfo.instructions && (
                     <div className="text-white/80 text-sm bg-white/5 border border-white/10 p-4 rounded-lg">
                       {sellPaymentInfo.instructions}
-                    </div>
-                  )}
-                  {sellPaymentInfo.qr_code && (
-                    <div className="mt-4 flex flex-col items-center gap-2">
-                      <p className="text-white/70 text-sm">Scan the QR code to pay</p>
-                      <img
-                        src={sellPaymentInfo.qr_code}
-                        alt="Payment QR"
-                        className="h-40 w-40 rounded bg-white p-2"
-                      />
-                    </div>
-                  )}
-                  {sellInvoiceUrl && (
-                    <div className="mt-4 space-y-3">
-                      <Button
-                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold"
-                        onClick={() => {
-                          const popup = window.open(sellInvoiceUrl, '_blank', 'noopener,noreferrer');
-                          if (!popup) window.location.assign(sellInvoiceUrl);
-                        }}
-                      >
-                        Open Invoice
-                      </Button>
-                      <p className="text-white/70 text-sm">
-                        Invoice opened automatically. If it did not open,{" "}
-                        <a
-                          href={sellInvoiceUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-emerald-200 underline"
-                        >
-                          open it here
-                        </a>
-                        .
-                      </p>
                     </div>
                   )}
                   {sellPaymentInfo.warning && (
