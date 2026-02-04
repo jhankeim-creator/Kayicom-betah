@@ -14,7 +14,7 @@ import secrets
 import math
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import uuid
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlencode
@@ -432,6 +432,26 @@ def _resolve_crypto_value(
     settings_default: float,
     config_default: float,
 ) -> float:
+    value, _ = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key=settings_key,
+        config_key=config_key,
+        settings_default=settings_default,
+        config_default=config_default,
+    )
+    return value
+
+
+def _resolve_crypto_value_with_source(
+    crypto_settings: Dict[str, Any],
+    config: Dict[str, Any],
+    *,
+    settings_key: str,
+    config_key: str,
+    settings_default: float,
+    config_default: float,
+) -> Tuple[float, str]:
     settings_raw = (crypto_settings or {}).get(settings_key)
     config_raw = (config or {}).get(config_key)
 
@@ -439,10 +459,10 @@ def _resolve_crypto_value(
     config_value = _safe_float(config_raw, config_default)
 
     if _crypto_value_is_explicit(settings_raw, settings_default):
-        return settings_value
+        return settings_value, "settings"
     if _crypto_value_is_explicit(config_raw, config_default):
-        return config_value
-    return settings_value
+        return config_value, "config"
+    return settings_value, "default"
 
 
 def _plisio_success_url(kind: str, ref_id: str) -> Optional[str]:
@@ -2238,7 +2258,7 @@ async def get_crypto_config():
     config_default_fee = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('buy_fee_percent'), 2.0)
     config_default_min = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('min_buy_usd'), 10.0)
 
-    config['buy_rate_usdt'] = _resolve_crypto_value(
+    buy_rate_usdt, buy_rate_source = _resolve_crypto_value_with_source(
         crypto_settings,
         config,
         settings_key='buy_rate_usdt',
@@ -2246,7 +2266,7 @@ async def get_crypto_config():
         settings_default=settings_default_buy,
         config_default=config_default_buy
     )
-    config['sell_rate_usdt'] = _resolve_crypto_value(
+    sell_rate_usdt, sell_rate_source = _resolve_crypto_value_with_source(
         crypto_settings,
         config,
         settings_key='sell_rate_usdt',
@@ -2254,7 +2274,7 @@ async def get_crypto_config():
         settings_default=settings_default_sell,
         config_default=config_default_sell
     )
-    config['transaction_fee_percent'] = _resolve_crypto_value(
+    fee_percent, fee_source = _resolve_crypto_value_with_source(
         crypto_settings,
         config,
         settings_key='transaction_fee_percent',
@@ -2262,7 +2282,7 @@ async def get_crypto_config():
         settings_default=settings_default_fee,
         config_default=config_default_fee
     )
-    config['min_transaction_usd'] = _resolve_crypto_value(
+    min_usd, min_source = _resolve_crypto_value_with_source(
         crypto_settings,
         config,
         settings_key='min_transaction_usd',
@@ -2270,6 +2290,50 @@ async def get_crypto_config():
         settings_default=settings_default_min,
         config_default=config_default_min
     )
+
+    config['buy_rate_usdt'] = buy_rate_usdt
+    config['sell_rate_usdt'] = sell_rate_usdt
+    config['transaction_fee_percent'] = fee_percent
+    config['min_transaction_usd'] = min_usd
+    config['buy_rate_source'] = buy_rate_source
+    config['sell_rate_source'] = sell_rate_source
+    config['transaction_fee_source'] = fee_source
+    config['min_transaction_usd_source'] = min_source
+
+    buy_rate_by_chain: Dict[str, float] = {}
+    sell_rate_by_chain: Dict[str, float] = {}
+    buy_rate_by_chain_source: Dict[str, str] = {}
+    sell_rate_by_chain_source: Dict[str, str] = {}
+
+    for chain in ["BEP20", "TRC20", "MATIC"]:
+        chain_key = chain.lower()
+        chain_buy_default = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(f"buy_rate_{chain_key}"), config_default_buy)
+        chain_sell_default = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(f"sell_rate_{chain_key}"), config_default_sell)
+        buy_rate, buy_source = _resolve_crypto_value_with_source(
+            crypto_settings,
+            config,
+            settings_key='buy_rate_usdt',
+            config_key=f"buy_rate_{chain_key}",
+            settings_default=settings_default_buy,
+            config_default=chain_buy_default
+        )
+        sell_rate, sell_source = _resolve_crypto_value_with_source(
+            crypto_settings,
+            config,
+            settings_key='sell_rate_usdt',
+            config_key=f"sell_rate_{chain_key}",
+            settings_default=settings_default_sell,
+            config_default=chain_sell_default
+        )
+        buy_rate_by_chain[chain] = buy_rate
+        sell_rate_by_chain[chain] = sell_rate
+        buy_rate_by_chain_source[chain] = buy_source
+        sell_rate_by_chain_source[chain] = sell_source
+
+    config['buy_rate_by_chain'] = buy_rate_by_chain
+    config['sell_rate_by_chain'] = sell_rate_by_chain
+    config['buy_rate_by_chain_source'] = buy_rate_by_chain_source
+    config['sell_rate_by_chain_source'] = sell_rate_by_chain_source
     
     return config
 
@@ -2558,6 +2622,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "wallet_address": wallet_address,
         "instructions": (crypto_settings.get("sell_instructions") or "").strip(),
         "invoice_url": invoice_url,
+        "plisio_invoice_id": plisio_invoice_id,
         "qr_code": qr_code,
         "processing_mode": processing_mode,
         "warning": processing_warning
