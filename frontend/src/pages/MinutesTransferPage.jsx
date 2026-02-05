@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const MinutesTransferPage = ({ user, logout, settings }) => {
   const userId = user?.user_id || user?.id;
@@ -288,7 +289,21 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
   };
 
   const selectedTransfer = transfers.find(t => t.id === selectedTransferId) || null;
+  const transferInvoiceUrl = selectedTransfer
+    ? buildPlisioInvoiceUrl(selectedTransfer.plisio_invoice_url, selectedTransfer.plisio_invoice_id)
+    : null;
   const enabled = settings?.minutes_transfer_enabled ?? true;
+
+  useEffect(() => {
+    if (!selectedTransfer) return;
+    if (
+      selectedTransfer.payment_method === 'crypto_plisio' &&
+      ['pending', 'processing'].includes(selectedTransfer.payment_status) &&
+      transferInvoiceUrl
+    ) {
+      openPlisioInvoice(transferInvoiceUrl, selectedTransfer.id);
+    }
+  }, [selectedTransfer, transferInvoiceUrl]);
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -402,12 +417,19 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
                 </div>
               )}
 
-              {selectedTransfer?.plisio_invoice_url && (
-                <a href={selectedTransfer.plisio_invoice_url} target="_blank" rel="noopener noreferrer" className="block">
-                  <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white">
-                    Continue to Pay
-                  </Button>
-                </a>
+              {transferInvoiceUrl && (
+                <p className="text-white/70 text-sm">
+                  Invoice opened automatically. If it did not open,{" "}
+                  <a
+                    href={transferInvoiceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-cyan-200 underline"
+                  >
+                    open it here
+                  </a>
+                  .
+                </p>
               )}
 
               {/* Proof upload for manual methods */}

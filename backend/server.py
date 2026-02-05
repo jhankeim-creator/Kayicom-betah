@@ -14,9 +14,10 @@ import secrets
 import math
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict, EmailStr
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 import uuid
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlencode
 from passlib.context import CryptContext
 import requests
 import base64
@@ -403,6 +404,88 @@ class BulkEmailRequest(BaseModel):
 
 def _frontend_base_url() -> str:
     return os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
+
+
+_DEFAULT_SITE_CRYPTO_SETTINGS = SiteSettings().crypto_settings or {}
+_DEFAULT_CRYPTO_CONFIG = CryptoConfig().model_dump()
+_CRYPTO_FLOAT_TOLERANCE = 1e-9
+
+
+def _crypto_value_is_explicit(raw_value: Any, default_value: float) -> bool:
+    if raw_value is None:
+        return False
+    try:
+        value = float(raw_value)
+    except Exception:
+        return False
+    if math.isnan(value) or math.isinf(value):
+        return False
+    return abs(value - default_value) > _CRYPTO_FLOAT_TOLERANCE
+
+
+def _resolve_crypto_value(
+    crypto_settings: Dict[str, Any],
+    config: Dict[str, Any],
+    *,
+    settings_key: str,
+    config_key: str,
+    settings_default: float,
+    config_default: float,
+) -> float:
+    value, _ = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key=settings_key,
+        config_key=config_key,
+        settings_default=settings_default,
+        config_default=config_default,
+    )
+    return value
+
+
+def _resolve_crypto_value_with_source(
+    crypto_settings: Dict[str, Any],
+    config: Dict[str, Any],
+    *,
+    settings_key: str,
+    config_key: str,
+    settings_default: float,
+    config_default: float,
+) -> Tuple[float, str]:
+    settings_raw = (crypto_settings or {}).get(settings_key)
+    config_raw = (config or {}).get(config_key)
+
+    settings_value = _safe_float(settings_raw, settings_default)
+    config_value = _safe_float(config_raw, config_default)
+
+    if _crypto_value_is_explicit(settings_raw, settings_default):
+        return settings_value, "settings"
+    if _crypto_value_is_explicit(config_raw, config_default):
+        return config_value, "config"
+    return settings_value, "default"
+
+
+def _plisio_success_url(kind: str, ref_id: str) -> Optional[str]:
+    base = _frontend_base_url()
+    if not base:
+        return None
+    query = urlencode({"type": kind, "id": ref_id})
+    return f"{base}/payment-success?{query}"
+
+
+def _plisio_cancel_url(kind: str, ref_id: str) -> Optional[str]:
+    base = _frontend_base_url()
+    if not base:
+        return None
+    if kind == "order":
+        return f"{base}/track/{ref_id}"
+    if kind == "wallet_topup":
+        return f"{base}/wallet"
+    if kind == "minutes_transfer":
+        return f"{base}/minutes"
+    if kind == "crypto_sell":
+        return f"{base}/crypto"
+    return base
 
 
 def _reset_password_base_url() -> str:
@@ -1392,13 +1475,20 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
                 from plisio_helper import PlisioHelper
                 plisio = PlisioHelper(settings['plisio_api_key'])
                 
+                callback_url = _plisio_callback_url()
+                success_url = _plisio_success_url("order", order.id)
+                cancel_url = _plisio_cancel_url("order", order.id)
+
                 # Create Plisio invoice for USDT payment
                 invoice_response = await plisio.create_invoice(
                     amount=total,
                     currency="USDT",
                     order_name=f"Order {order.id}",
                     order_number=order.id,
-                    email=user_email
+                    callback_url=callback_url,
+                    email=user_email,
+                    success_url=success_url,
+                    cancel_url=cancel_url
                 )
                 
                 if invoice_response.get("success"):
@@ -2228,22 +2318,91 @@ async def get_crypto_config():
 
     # Compatibility fields expected by frontend (CryptoPage)
     # Prefer site_settings.crypto_settings, fallback to crypto_config defaults.
-    config['buy_rate_usdt'] = _safe_float(
-        config.get('buy_rate_bep20', config.get('buy_rate_usdt', crypto_settings.get('buy_rate_usdt'))),
-        1.02
+    settings_default_buy = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('buy_rate_usdt'), 1.0)
+    settings_default_sell = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('sell_rate_usdt'), 0.98)
+    settings_default_fee = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('transaction_fee_percent'), 2.0)
+    settings_default_min = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('min_transaction_usd'), 10.0)
+    config_default_buy = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('buy_rate_bep20'), 1.02)
+    config_default_sell = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('sell_rate_bep20'), 0.98)
+    config_default_fee = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('buy_fee_percent'), 2.0)
+    config_default_min = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('min_buy_usd'), 10.0)
+
+    buy_rate_usdt, buy_rate_source = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key='buy_rate_usdt',
+        config_key='buy_rate_bep20',
+        settings_default=settings_default_buy,
+        config_default=config_default_buy
     )
-    config['sell_rate_usdt'] = _safe_float(
-        config.get('sell_rate_bep20', config.get('sell_rate_usdt', crypto_settings.get('sell_rate_usdt'))),
-        0.98
+    sell_rate_usdt, sell_rate_source = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key='sell_rate_usdt',
+        config_key='sell_rate_bep20',
+        settings_default=settings_default_sell,
+        config_default=config_default_sell
     )
-    config['transaction_fee_percent'] = _safe_float(
-        config.get('buy_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
-        2.0
+    fee_percent, fee_source = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key='transaction_fee_percent',
+        config_key='buy_fee_percent',
+        settings_default=settings_default_fee,
+        config_default=config_default_fee
     )
-    config['min_transaction_usd'] = _safe_float(
-        config.get('min_buy_usd', config.get('min_transaction_usd', crypto_settings.get('min_transaction_usd'))),
-        10.0
+    min_usd, min_source = _resolve_crypto_value_with_source(
+        crypto_settings,
+        config,
+        settings_key='min_transaction_usd',
+        config_key='min_buy_usd',
+        settings_default=settings_default_min,
+        config_default=config_default_min
     )
+
+    config['buy_rate_usdt'] = buy_rate_usdt
+    config['sell_rate_usdt'] = sell_rate_usdt
+    config['transaction_fee_percent'] = fee_percent
+    config['min_transaction_usd'] = min_usd
+    config['buy_rate_source'] = buy_rate_source
+    config['sell_rate_source'] = sell_rate_source
+    config['transaction_fee_source'] = fee_source
+    config['min_transaction_usd_source'] = min_source
+
+    buy_rate_by_chain: Dict[str, float] = {}
+    sell_rate_by_chain: Dict[str, float] = {}
+    buy_rate_by_chain_source: Dict[str, str] = {}
+    sell_rate_by_chain_source: Dict[str, str] = {}
+
+    for chain in ["BEP20", "TRC20", "MATIC"]:
+        chain_key = chain.lower()
+        chain_buy_default = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(f"buy_rate_{chain_key}"), config_default_buy)
+        chain_sell_default = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(f"sell_rate_{chain_key}"), config_default_sell)
+        buy_rate, buy_source = _resolve_crypto_value_with_source(
+            crypto_settings,
+            config,
+            settings_key='buy_rate_usdt',
+            config_key=f"buy_rate_{chain_key}",
+            settings_default=settings_default_buy,
+            config_default=chain_buy_default
+        )
+        sell_rate, sell_source = _resolve_crypto_value_with_source(
+            crypto_settings,
+            config,
+            settings_key='sell_rate_usdt',
+            config_key=f"sell_rate_{chain_key}",
+            settings_default=settings_default_sell,
+            config_default=chain_sell_default
+        )
+        buy_rate_by_chain[chain] = buy_rate
+        sell_rate_by_chain[chain] = sell_rate
+        buy_rate_by_chain_source[chain] = buy_source
+        sell_rate_by_chain_source[chain] = sell_source
+
+    config['buy_rate_by_chain'] = buy_rate_by_chain
+    config['sell_rate_by_chain'] = sell_rate_by_chain
+    config['buy_rate_by_chain_source'] = buy_rate_by_chain_source
+    config['sell_rate_by_chain_source'] = sell_rate_by_chain_source
     
     return config
 
@@ -2286,9 +2445,15 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
         raise HTTPException(status_code=400, detail="Unsupported network. Use BEP20 or TRC20.")
 
     # Check limits (prefer site_settings.crypto_settings)
-    min_usd = _safe_float(
-        config.get('min_buy_usd', config.get('min_transaction_usd', crypto_settings.get('min_transaction_usd'))),
-        10.0
+    settings_default_min = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('min_transaction_usd'), 10.0)
+    config_default_min = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('min_buy_usd'), 10.0)
+    min_usd = _resolve_crypto_value(
+        crypto_settings,
+        config,
+        settings_key='min_transaction_usd',
+        config_key='min_buy_usd',
+        settings_default=settings_default_min,
+        config_default=config_default_min
     )
     max_usd = _safe_float(config.get('max_buy_usd', 10000.0), 10000.0)
     if request.amount_usd < min_usd or request.amount_usd > max_usd:
@@ -2301,16 +2466,28 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
 
     # Get rate
     rate_key = f"buy_rate_{chain.lower()}"
-    exchange_rate = _safe_float(
-        config.get(rate_key, config.get("buy_rate_usdt", crypto_settings.get("buy_rate_usdt"))),
-        1.02
+    settings_default_buy = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('buy_rate_usdt'), 1.0)
+    config_default_buy = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(rate_key), 1.02)
+    exchange_rate = _resolve_crypto_value(
+        crypto_settings,
+        config,
+        settings_key="buy_rate_usdt",
+        config_key=rate_key,
+        settings_default=settings_default_buy,
+        config_default=config_default_buy
     )
     
     # Calculate
     amount_crypto = request.amount_usd / exchange_rate
-    fee_percent = _safe_float(
-        config.get('buy_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
-        2.0
+    settings_default_fee = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('transaction_fee_percent'), 2.0)
+    config_default_fee = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('buy_fee_percent'), 2.0)
+    fee_percent = _resolve_crypto_value(
+        crypto_settings,
+        config,
+        settings_key="transaction_fee_percent",
+        config_key="buy_fee_percent",
+        settings_default=settings_default_fee,
+        config_default=config_default_fee
     )
     fee = request.amount_usd * (fee_percent / 100)
     total_usd = request.amount_usd + fee
@@ -2388,16 +2565,28 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     
     # Get rate
     rate_key = f"sell_rate_{chain.lower()}"
-    exchange_rate = _safe_float(
-        config.get(rate_key, config.get("sell_rate_usdt", crypto_settings.get("sell_rate_usdt"))),
-        0.98
+    settings_default_sell = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('sell_rate_usdt'), 0.98)
+    config_default_sell = _safe_float(_DEFAULT_CRYPTO_CONFIG.get(rate_key), 0.98)
+    exchange_rate = _resolve_crypto_value(
+        crypto_settings,
+        config,
+        settings_key="sell_rate_usdt",
+        config_key=rate_key,
+        settings_default=settings_default_sell,
+        config_default=config_default_sell
     )
     
     # Calculate
     amount_usd = request.amount_crypto * exchange_rate
-    fee_percent = _safe_float(
-        config.get('sell_fee_percent', config.get('transaction_fee_percent', crypto_settings.get('transaction_fee_percent'))),
-        2.0
+    settings_default_fee = _safe_float(_DEFAULT_SITE_CRYPTO_SETTINGS.get('transaction_fee_percent'), 2.0)
+    config_default_fee = _safe_float(_DEFAULT_CRYPTO_CONFIG.get('sell_fee_percent'), 2.0)
+    fee_percent = _resolve_crypto_value(
+        crypto_settings,
+        config,
+        settings_key="transaction_fee_percent",
+        config_key="sell_fee_percent",
+        settings_default=settings_default_fee,
+        config_default=config_default_fee
     )
     fee = amount_usd * (fee_percent / 100)
     total_usd = amount_usd - fee
@@ -2418,37 +2607,6 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     qr_code = None
     plisio_invoice_id = None
     processing_warning = None
-
-    plisio_currency = "USDT_TRC20" if chain == "TRC20" else "USDT"
-
-    if settings and settings.get('plisio_api_key'):
-        callback_url = _plisio_callback_url()
-        if not callback_url:
-            processing_warning = "Automatic processing unavailable: BACKEND_URL not configured"
-        else:
-            plisio_helper = PlisioHelper(settings['plisio_api_key'])
-            plisio_result = await plisio_helper.create_invoice(
-                amount=request.amount_crypto,
-                currency=plisio_currency,
-                order_name="Sell USDT Order",
-                order_number=transaction_id,
-                callback_url=callback_url,
-                email=user_email,
-                source_currency=None,
-                source_amount=None
-            )
-
-            if plisio_result.get("success"):
-                processing_mode = "automatic"
-                wallet_address = plisio_result.get("wallet_address")
-                invoice_url = plisio_result.get("invoice_url")
-                qr_code = plisio_result.get("qr_code")
-                plisio_invoice_id = plisio_result.get("invoice_id")
-            else:
-                processing_warning = f"Automatic processing unavailable: {plisio_result.get('error')}"
-    else:
-        processing_warning = "Automatic processing unavailable: Plisio not configured"
-
     if not wallet_address:
         wallet_address = manual_wallet
         if not wallet_address:
@@ -2500,6 +2658,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
         "wallet_address": wallet_address,
         "instructions": (crypto_settings.get("sell_instructions") or "").strip(),
         "invoice_url": invoice_url,
+        "plisio_invoice_id": plisio_invoice_id,
         "qr_code": qr_code,
         "processing_mode": processing_mode,
         "warning": processing_warning
@@ -2921,12 +3080,18 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
     if topup.payment_method == "crypto_plisio" and settings.get("plisio_api_key"):
         try:
             plisio = PlisioHelper(settings["plisio_api_key"])
+            callback_url = _plisio_callback_url()
+            success_url = _plisio_success_url("wallet_topup", topup_id)
+            cancel_url = _plisio_cancel_url("wallet_topup", topup_id)
             invoice_response = await plisio.create_invoice(
                 amount=float(topup.amount),
                 currency="USDT",
                 order_name=f"Wallet Topup {topup_id}",
                 order_number=topup_id,
+                callback_url=callback_url,
                 email=user_email,
+                success_url=success_url,
+                cancel_url=cancel_url,
             )
             if invoice_response.get("success"):
                 doc["plisio_invoice_id"] = invoice_response.get("invoice_id")
@@ -3197,12 +3362,18 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
             raise HTTPException(status_code=400, detail="Plisio not configured")
         try:
             plisio = PlisioHelper(settings["plisio_api_key"])
+            callback_url = _plisio_callback_url()
+            success_url = _plisio_success_url("minutes_transfer", transfer_id)
+            cancel_url = _plisio_cancel_url("minutes_transfer", transfer_id)
             invoice_response = await plisio.create_invoice(
                 amount=float(doc["total_amount"]),
                 currency="USDT",
                 order_name=f"Minutes Transfer {transfer_id}",
                 order_number=transfer_id,
+                callback_url=callback_url,
                 email=user_email,
+                success_url=success_url,
+                cancel_url=cancel_url,
             )
             if invoice_response.get("success"):
                 doc["plisio_invoice_id"] = invoice_response.get("invoice_id")

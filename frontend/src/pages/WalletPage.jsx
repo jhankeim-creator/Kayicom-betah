@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const WalletPage = ({ user, logout, settings }) => {
   const [balance, setBalance] = useState(0);
@@ -167,6 +168,20 @@ const WalletPage = ({ user, logout, settings }) => {
   };
 
   const selectedTopup = topups.find(t => t.id === selectedTopupId) || null;
+  const topupInvoiceUrl = selectedTopup
+    ? buildPlisioInvoiceUrl(selectedTopup.plisio_invoice_url, selectedTopup.plisio_invoice_id)
+    : null;
+
+  useEffect(() => {
+    if (!selectedTopup) return;
+    if (
+      selectedTopup.payment_method === 'crypto_plisio' &&
+      ['pending', 'processing'].includes(selectedTopup.payment_status) &&
+      topupInvoiceUrl
+    ) {
+      openPlisioInvoice(topupInvoiceUrl, selectedTopup.id);
+    }
+  }, [selectedTopup, topupInvoiceUrl]);
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -262,17 +277,19 @@ const WalletPage = ({ user, logout, settings }) => {
                     <div className="mt-4 p-4 bg-white/5 border border-white/10 rounded-lg">
                       <p className="text-white font-semibold">Selected Topup: {selectedTopup.id.slice(0, 8)}</p>
                       <p className="text-white/70 text-sm">Status: {selectedTopup.payment_status}</p>
-                      {selectedTopup.plisio_invoice_url && (
-                        <a
-                          href={selectedTopup.plisio_invoice_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-block mt-3 w-full"
-                        >
-                          <Button className="w-full bg-cyan-500 hover:bg-cyan-600 text-white">
-                            Continue to Pay
-                          </Button>
-                        </a>
+                      {topupInvoiceUrl && (
+                        <p className="text-white/70 text-sm mt-3">
+                          Invoice opened automatically. If it did not open,{" "}
+                          <a
+                            href={topupInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-cyan-200 underline"
+                          >
+                            open it here
+                          </a>
+                          .
+                        </p>
                       )}
                     </div>
                   )}

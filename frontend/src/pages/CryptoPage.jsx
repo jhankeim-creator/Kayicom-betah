@@ -92,6 +92,16 @@ const CryptoPage = ({ user, logout, settings }) => {
     }
   };
 
+  useEffect(() => {
+    if (!user || transactions.length === 0) return;
+    const hasPending = transactions.some((tx) => ['pending', 'processing'].includes(tx.status));
+    if (!hasPending) return;
+    const intervalId = setInterval(() => {
+      loadTransactions();
+    }, 20000);
+    return () => clearInterval(intervalId);
+  }, [user, transactions]);
+
   const handleFileUpload = async (file) => {
     if (!file) return null;
     
@@ -116,20 +126,6 @@ const CryptoPage = ({ user, logout, settings }) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied!`);
   };
-
-  const toNumber = (value, fallback) => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : fallback;
-  };
-
-  const getRateForChain = (prefix, fallback) => {
-    if (!config) return fallback;
-    const key = `${prefix}_${chain.toLowerCase()}`;
-    return toNumber(config?.[key] ?? config?.[`${prefix}_usdt`], fallback);
-  };
-
-  const getBuyFeePercent = () => toNumber(config?.buy_fee_percent ?? config?.transaction_fee_percent, 2);
-  const getSellFeePercent = () => toNumber(config?.sell_fee_percent ?? config?.transaction_fee_percent, 2);
 
   const openProofDialog = (tx) => {
     setSelectedProofTx(tx);
@@ -170,22 +166,43 @@ const CryptoPage = ({ user, logout, settings }) => {
     }
   };
 
+  const formatSourceLabel = (source) => {
+    if (source === 'settings') return 'Settings';
+    if (source === 'config') return 'Config';
+    if (source === 'default') return 'Default';
+    return 'Default';
+  };
+
+  const getBuyRate = () => {
+    if (!config) return 1.02;
+    return config?.buy_rate_by_chain?.[chain] || config?.buy_rate_usdt || 1.02;
+  };
+
+  const getSellRate = () => {
+    if (!config) return 0.98;
+    return config?.sell_rate_by_chain?.[chain] || config?.sell_rate_usdt || 0.98;
+  };
+
+  const buyRateSource = config?.buy_rate_by_chain_source?.[chain] || config?.buy_rate_source;
+  const sellRateSource = config?.sell_rate_by_chain_source?.[chain] || config?.sell_rate_source;
+  const feeSource = config?.transaction_fee_source;
+
   const calculateBuy = (usd) => {
     if (!config) return 0;
-    const rate = getRateForChain('buy_rate', 1.02);
-    const feePercent = getBuyFeePercent();
+    const rate = getBuyRate();
+    const feePercent = config.transaction_fee_percent || 2;
     const crypto = parseFloat(usd) / rate;
     const fee = parseFloat(usd) * (feePercent / 100);
-    return { crypto, fee, total: parseFloat(usd) + fee };
+    return { crypto, fee, total: parseFloat(usd) + fee, rate, feePercent };
   };
 
   const calculateSell = (crypto) => {
     if (!config) return 0;
-    const rate = getRateForChain('sell_rate', 0.98);
-    const feePercent = getSellFeePercent();
+    const rate = getSellRate();
+    const feePercent = config.transaction_fee_percent || 2;
     const usd = parseFloat(crypto) * rate;
     const fee = usd * (feePercent / 100);
-    return { usd, fee, total: usd - fee };
+    return { usd, fee, total: usd - fee, rate, feePercent };
   };
 
   const minBuyUsd = config?.min_transaction_usd || config?.min_buy_usd || 10;
@@ -326,8 +343,6 @@ const CryptoPage = ({ user, logout, settings }) => {
 
   const buyCalculation = amountUsd ? calculateBuy(amountUsd) : null;
   const sellCalculation = amountCrypto ? calculateSell(amountCrypto) : null;
-  const buyFeePercent = getBuyFeePercent();
-  const sellFeePercent = getSellFeePercent();
 
   const selectedGateway = settings?.crypto_payment_gateways?.[paymentMethod];
   const buyPaymentDetails = selectedGateway?.enabled
@@ -338,6 +353,8 @@ const CryptoPage = ({ user, logout, settings }) => {
     if (!config?.crypto_settings?.wallets) return null;
     return config.crypto_settings.wallets[chain];
   };
+  const adminWallet = getAdminWallet();
+  const hasAdminWallet = Boolean(adminWallet && String(adminWallet).trim());
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -443,18 +460,6 @@ const CryptoPage = ({ user, logout, settings }) => {
                       {sellPaymentInfo.instructions}
                     </div>
                   )}
-                  {sellPaymentInfo.invoice_url && (
-                    <a
-                      href={sellPaymentInfo.invoice_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-block w-full mt-4"
-                    >
-                      <Button className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-semibold">
-                        Continue to Pay
-                      </Button>
-                    </a>
-                  )}
                   {sellPaymentInfo.warning && (
                     <div className="mt-4 text-left bg-amber-500/10 border border-amber-500/30 p-4 rounded-lg">
                       <p className="text-amber-200 text-sm">{sellPaymentInfo.warning}</p>
@@ -522,17 +527,24 @@ const CryptoPage = ({ user, logout, settings }) => {
                       {buyCalculation && (
                         <div className="bg-white/5 p-4 rounded-lg space-y-2">
                           <div className="flex justify-between text-white/70">
+                            <span>Rate ({chain}):</span>
+                            <span>${buyCalculation.rate.toFixed(4)} / USDT</span>
+                          </div>
+                          <div className="flex justify-between text-white/70">
                             <span>You will receive:</span>
                             <span className="text-white font-bold">{buyCalculation.crypto.toFixed(2)} USDT</span>
                           </div>
                           <div className="flex justify-between text-white/70">
-                            <span>Fee ({buyFeePercent}%):</span>
+                            <span>Fee ({buyCalculation.feePercent}%):</span>
                             <span>${buyCalculation.fee.toFixed(2)}</span>
                           </div>
                           <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">
                             <span>Total to Pay:</span>
                             <span>${buyCalculation.total.toFixed(2)}</span>
                           </div>
+                          <p className="text-white/50 text-xs">
+                            Rate source: {formatSourceLabel(buyRateSource)} • Fee source: {formatSourceLabel(feeSource)}
+                          </p>
                         </div>
                       )}
 
@@ -665,6 +677,13 @@ const CryptoPage = ({ user, logout, settings }) => {
                       </SelectContent>
                     </Select>
                   </div>
+                  {!hasAdminWallet && (
+                    <div className="bg-red-500/10 border border-red-500/30 p-4 rounded-lg">
+                      <p className="text-red-200 text-sm">
+                        Admin wallet not configured for {chain}. Please select another network or contact support.
+                      </p>
+                    </div>
+                  )}
 
 
                   <div>
@@ -681,17 +700,24 @@ const CryptoPage = ({ user, logout, settings }) => {
                   {sellCalculation && (
                     <div className="bg-white/5 p-4 rounded-lg space-y-2">
                       <div className="flex justify-between text-white/70">
+                        <span>Rate ({chain}):</span>
+                        <span>${sellCalculation.rate.toFixed(4)} / USDT</span>
+                      </div>
+                      <div className="flex justify-between text-white/70">
                         <span>You will receive:</span>
                         <span className="text-white font-bold">${sellCalculation.usd.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-white/70">
-                        <span>Fee ({sellFeePercent}%):</span>
+                        <span>Fee ({sellCalculation.feePercent}%):</span>
                         <span>-${sellCalculation.fee.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-white font-bold border-t border-white/20 pt-2">
                         <span>Total:</span>
                         <span>${sellCalculation.total.toFixed(2)}</span>
                       </div>
+                      <p className="text-white/50 text-xs">
+                        Rate source: {formatSourceLabel(sellRateSource)} • Fee source: {formatSourceLabel(feeSource)}
+                      </p>
                     </div>
                   )}
 
@@ -724,7 +750,7 @@ const CryptoPage = ({ user, logout, settings }) => {
 
                   <Button
                     onClick={handleSell}
-                    disabled={loading || uploadingProof}
+                    disabled={loading || uploadingProof || !hasAdminWallet}
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
                   >
                     {loading || uploadingProof ? 'Processing...' : 'Submit Sell Order'}

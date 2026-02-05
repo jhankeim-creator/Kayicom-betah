@@ -36,6 +36,7 @@ import WithdrawPage from './pages/WithdrawPage';
 import CryptoPage from './pages/CryptoPage';
 import WalletPage from './pages/WalletPage';
 import MinutesTransferPage from './pages/MinutesTransferPage';
+import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/+$/, ''); // Remove trailing slashes
@@ -268,6 +269,7 @@ function App() {
           <Route path="/checkout" element={<CheckoutPage user={user} logout={logout} cart={cart} clearCart={clearCart} settings={settings} />} />
           <Route path="/refund-policy" element={<RefundPolicy user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />
+          <Route path="/payment-success" element={<PaymentSuccessPage user={user} logout={logout} settings={settings} />} />
           <Route path="/login" element={<LoginPage login={login} settings={settings} />} />
           <Route path="/register" element={<RegisterPage login={login} settings={settings} />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage settings={settings} />} />

@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { CreditCard, Wallet, Gamepad2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
 const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const navigate = useNavigate();
@@ -125,8 +126,10 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
       // Clear cart
       clearCart();
 
-      if (paymentMethod === 'crypto_plisio' && order.plisio_invoice_id) {
+      if (paymentMethod === 'crypto_plisio' && (order.plisio_invoice_url || order.plisio_invoice_id)) {
+        const invoiceUrl = buildPlisioInvoiceUrl(order.plisio_invoice_url, order.plisio_invoice_id);
         toast.success('Redirecting to payment...');
+        openPlisioInvoice(invoiceUrl, order.plisio_invoice_id || order.id);
         navigate(`/track/${order.id}`);
       } else {
         toast.success(paymentMethod === 'wallet' ? 'Paid with wallet successfully!' : 'Order created! Please submit your payment proof.');
