@@ -540,6 +540,37 @@ def _safe_float(val: Any, default: float) -> float:
     except Exception:
         return default
 
+def _optional_float(val: Any) -> Optional[float]:
+    """Return float value or None when invalid."""
+    try:
+        if val is None:
+            return None
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except Exception:
+        return None
+
+def _apply_crypto_config_to_settings(settings: Optional[dict], config: Optional[dict]) -> Optional[dict]:
+    if not settings or not config:
+        return settings
+    crypto_settings = dict(settings.get("crypto_settings") or {})
+    buy_rate = _optional_float(config.get("buy_rate_bep20"))
+    if buy_rate is not None:
+        crypto_settings["buy_rate_usdt"] = buy_rate
+    sell_rate = _optional_float(config.get("sell_rate_bep20"))
+    if sell_rate is not None:
+        crypto_settings["sell_rate_usdt"] = sell_rate
+    fee_percent = _optional_float(config.get("buy_fee_percent", config.get("transaction_fee_percent")))
+    if fee_percent is not None:
+        crypto_settings["transaction_fee_percent"] = fee_percent
+    min_usd = _optional_float(config.get("min_buy_usd", config.get("min_transaction_usd")))
+    if min_usd is not None:
+        crypto_settings["min_transaction_usd"] = min_usd
+    settings["crypto_settings"] = crypto_settings
+    return settings
+
 def _send_resend_email(settings: dict, to_email: str, subject: str, html: str):
     """Send one email via Resend. Raises HTTPException on misconfig."""
     if not settings or not settings.get("resend_api_key"):
@@ -777,6 +808,7 @@ class CryptoSellRequest(BaseModel):
 
 class CryptoProofRequest(BaseModel):
     transaction_id: Optional[str] = None
+    tx_hash: Optional[str] = None
     payment_proof: Optional[str] = None
 
 # Crypto Config Model
@@ -1816,6 +1848,9 @@ async def get_settings():
     if isinstance(settings.get('updated_at'), str):
         settings['updated_at'] = datetime.fromisoformat(settings['updated_at'])
 
+    crypto_config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
+    settings = _apply_crypto_config_to_settings(settings, crypto_config)
+
     # Never expose secret keys to clients
     for secret_field in ["plisio_api_key", "mtcgame_api_key", "gosplit_api_key", "z2u_api_key", "resend_api_key"]:
         if secret_field in settings:
@@ -1832,10 +1867,44 @@ async def update_settings(updates: SettingsUpdate):
         {"$set": update_data},
         upsert=True
     )
+
+    crypto_settings = update_data.get("crypto_settings")
+    if isinstance(crypto_settings, dict):
+        config_updates: Dict[str, Any] = {}
+        buy_rate = _optional_float(crypto_settings.get("buy_rate_usdt"))
+        if buy_rate is not None:
+            config_updates["buy_rate_bep20"] = buy_rate
+            config_updates["buy_rate_trc20"] = buy_rate
+            config_updates["buy_rate_matic"] = buy_rate
+            config_updates["buy_rate_usdt"] = buy_rate
+        sell_rate = _optional_float(crypto_settings.get("sell_rate_usdt"))
+        if sell_rate is not None:
+            config_updates["sell_rate_bep20"] = sell_rate
+            config_updates["sell_rate_trc20"] = sell_rate
+            config_updates["sell_rate_matic"] = sell_rate
+            config_updates["sell_rate_usdt"] = sell_rate
+        fee_percent = _optional_float(crypto_settings.get("transaction_fee_percent"))
+        if fee_percent is not None:
+            config_updates["buy_fee_percent"] = fee_percent
+            config_updates["sell_fee_percent"] = fee_percent
+            config_updates["transaction_fee_percent"] = fee_percent
+        min_usd = _optional_float(crypto_settings.get("min_transaction_usd"))
+        if min_usd is not None:
+            config_updates["min_buy_usd"] = min_usd
+            config_updates["min_transaction_usd"] = min_usd
+        if config_updates:
+            config_updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await db.crypto_config.update_one(
+                {"id": "crypto_config"},
+                {"$set": config_updates},
+                upsert=True
+            )
     
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0})
     if isinstance(settings.get('updated_at'), str):
         settings['updated_at'] = datetime.fromisoformat(settings['updated_at'])
+    crypto_config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
+    settings = _apply_crypto_config_to_settings(settings, crypto_config)
     return settings
 
 
@@ -2527,7 +2596,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
 
     # Determine fallback wallet from settings/config
     wallets = (crypto_settings.get("wallets") or {}) if isinstance(crypto_settings, dict) else {}
-    manual_wallet = wallets.get(chain)
+    manual_wallet = wallets.get(chain) or wallets.get(chain.lower())
     if not manual_wallet:
         fallback_key = f"wallet_{chain.lower()}"
         manual_wallet = config.get(fallback_key)
@@ -2538,7 +2607,6 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
     qr_code = None
     plisio_invoice_id = None
     processing_warning = None
-
     if not wallet_address:
         wallet_address = manual_wallet
         if not wallet_address:
@@ -2619,8 +2687,10 @@ async def submit_crypto_payment_proof(transaction_id: str, payload: CryptoProofR
         raise HTTPException(status_code=400, detail="Transaction is not pending")
 
     updates = {}
-    if payload.transaction_id:
-        updates["transaction_id"] = payload.transaction_id
+    if payload.transaction_id and str(payload.transaction_id).strip():
+        updates["transaction_id"] = str(payload.transaction_id).strip()
+    if payload.tx_hash and str(payload.tx_hash).strip():
+        updates["tx_hash"] = str(payload.tx_hash).strip()
     if payload.payment_proof:
         updates["payment_proof"] = payload.payment_proof
     if not updates:

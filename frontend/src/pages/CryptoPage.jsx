@@ -33,6 +33,7 @@ const CryptoPage = ({ user, logout, settings }) => {
   const [proofDialogOpen, setProofDialogOpen] = useState(false);
   const [selectedProofTx, setSelectedProofTx] = useState(null);
   const [proofTxId, setProofTxId] = useState('');
+  const [proofTxHash, setProofTxHash] = useState('');
   const [proofFile, setProofFile] = useState(null);
   const [submittingProof, setSubmittingProof] = useState(false);
 
@@ -129,14 +130,15 @@ const CryptoPage = ({ user, logout, settings }) => {
   const openProofDialog = (tx) => {
     setSelectedProofTx(tx);
     setProofTxId(tx?.transaction_id || '');
+    setProofTxHash(tx?.tx_hash || tx?.transaction_hash || '');
     setProofFile(null);
     setProofDialogOpen(true);
   };
 
   const submitPaymentProof = async () => {
     if (!selectedProofTx?.id) return;
-    if (!proofTxId && !proofFile) {
-      toast.error('Provide a transaction ID or payment proof');
+    if (!proofTxId && !proofFile && !proofTxHash) {
+      toast.error('Provide a transaction ID, hash, or payment proof');
       return;
     }
     setSubmittingProof(true);
@@ -147,12 +149,14 @@ const CryptoPage = ({ user, logout, settings }) => {
       }
       await axiosInstance.post(`/crypto/transactions/${selectedProofTx.id}/proof`, {
         transaction_id: proofTxId || undefined,
+        tx_hash: proofTxHash || undefined,
         payment_proof: proofUrl || undefined,
       });
       toast.success('Payment proof submitted');
       setProofDialogOpen(false);
       setSelectedProofTx(null);
       setProofTxId('');
+      setProofTxHash('');
       setProofFile(null);
       loadTransactions();
     } catch (error) {
@@ -778,7 +782,12 @@ const CryptoPage = ({ user, logout, settings }) => {
                             <p className="text-white/60 text-xs mt-1">Invoice: {tx.invoice_id}</p>
                           )}
                           {tx.transaction_id && (
-                            <p className="text-white/50 text-xs mt-1">TX: {tx.transaction_id}</p>
+                            <p className="text-white/50 text-xs mt-1">Reference: {tx.transaction_id}</p>
+                          )}
+                          {(tx.tx_hash || tx.transaction_hash) && (
+                            <p className="text-white/50 text-xs mt-1 break-all">
+                              Hash: {tx.tx_hash || tx.transaction_hash}
+                            </p>
                           )}
                         </div>
                         <span className={`px-3 py-1 rounded-full text-sm ${
@@ -822,14 +831,25 @@ const CryptoPage = ({ user, logout, settings }) => {
               Transaction: <span className="text-white">{selectedProofTx?.invoice_id || selectedProofTx?.id}</span>
             </div>
             <div>
-              <Label className="text-white">Transaction ID / Reference</Label>
+              <Label className="text-white">Payment Reference (optional)</Label>
               <Input
                 value={proofTxId}
                 onChange={(e) => setProofTxId(e.target.value)}
                 className="bg-white/10 border-white/20 text-white mt-1"
-                placeholder="Enter payment reference or hash"
+                placeholder="Enter payment reference or transaction ID"
               />
             </div>
+            {selectedProofTx?.transaction_type === 'sell' && (
+              <div>
+                <Label className="text-white">Transaction Hash (optional)</Label>
+                <Input
+                  value={proofTxHash}
+                  onChange={(e) => setProofTxHash(e.target.value)}
+                  className="bg-white/10 border-white/20 text-white mt-1"
+                  placeholder="Enter blockchain transaction hash"
+                />
+              </div>
+            )}
             <div>
               <Label className="text-white">Upload Payment Proof</Label>
               <Input
