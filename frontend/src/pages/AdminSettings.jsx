@@ -69,6 +69,9 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     z2u_api_key: '',
     resend_api_key: '',
     resend_from_email: '',
+    telegram_notifications_enabled: false,
+    telegram_bot_token: '',
+    telegram_admin_chat_id: '',
     announcement_enabled: false,
     announcement_message: '',
     trustpilot_enabled: false,
@@ -180,6 +183,9 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           z2u_api_key: currentSettings.z2u_api_key || '',
           resend_api_key: currentSettings.resend_api_key || '',
           resend_from_email: currentSettings.resend_from_email || '',
+          telegram_notifications_enabled: currentSettings.telegram_notifications_enabled ?? false,
+          telegram_bot_token: currentSettings.telegram_bot_token || '',
+          telegram_admin_chat_id: currentSettings.telegram_admin_chat_id || '',
           announcement_enabled: currentSettings.announcement_enabled || false,
           announcement_message: currentSettings.announcement_message || '',
           trustpilot_enabled: currentSettings.trustpilot_enabled || false,
@@ -790,6 +796,51 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                       <p className="text-white/50 text-xs mt-1">
                         This must be a verified sender/domain in Resend; otherwise sending will fail.
                       </p>
+                    </div>
+
+                    <div className="bg-white/5 p-4 rounded-lg border border-white/10">
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <Label className="text-white">Telegram Admin Notifications</Label>
+                          <p className="text-white/60 text-sm mt-1">
+                            Receive all important site notifications in Telegram.
+                          </p>
+                        </div>
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={formData.telegram_notifications_enabled}
+                            onChange={(e) => handleChange('telegram_notifications_enabled', e.target.checked)}
+                            className="w-4 h-4"
+                          />
+                          <span className="text-white text-sm">Enabled</span>
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                          <Label className="text-white/70 text-sm">Telegram Bot Token</Label>
+                          <Input
+                            type="password"
+                            value={formData.telegram_bot_token}
+                            onChange={(e) => handleChange('telegram_bot_token', e.target.value)}
+                            className="bg-white/10 border-white/20 text-white mt-1"
+                            placeholder="123456:ABCDEF..."
+                          />
+                          <p className="text-white/50 text-xs mt-1">
+                            Leave blank to keep existing token unchanged.
+                          </p>
+                        </div>
+                        <div>
+                          <Label className="text-white/70 text-sm">Admin Chat ID</Label>
+                          <Input
+                            value={formData.telegram_admin_chat_id}
+                            onChange={(e) => handleChange('telegram_admin_chat_id', e.target.value)}
+                            className="bg-white/10 border-white/20 text-white mt-1"
+                            placeholder="-1001234567890"
+                          />
+                        </div>
+                      </div>
                     </div>
 
                     <div className="p-4 bg-blue-400/10 border border-blue-400/30 rounded-lg mt-4">

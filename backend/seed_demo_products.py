@@ -21,13 +21,15 @@ DURATION_MONTHS_MAP = {
     "1 Year": 12,
 }
 
-DEFAULT_SUBSCRIPTION_COUNTS = [800, 400, 590]
-DEFAULT_CATEGORY_COUNTS = {
-    "giftcard": [980, 1240, 1580, 1960],
-    "topup": [860, 1120, 1460, 1820],
-    "service": [740, 980, 1260, 1590],
-    "default": [700, 920, 1180, 1510],
+DEFAULT_SUBSCRIPTION_BASE = 1200
+DEFAULT_SUBSCRIPTION_SPAN = 700
+DEFAULT_CATEGORY_BASE = {
+    "giftcard": 1300,
+    "topup": 1250,
+    "service": 1180,
+    "default": 1120,
 }
+DEFAULT_CATEGORY_SPAN = 750
 
 
 def _stable_bucket(value: str, size: int) -> int:
@@ -50,9 +52,9 @@ def _default_orders_count(product: dict) -> int:
     if "netflix" in name and category == "subscription":
         return 1568
     if category == "subscription":
-        return DEFAULT_SUBSCRIPTION_COUNTS[_stable_bucket(seed, len(DEFAULT_SUBSCRIPTION_COUNTS))]
-    options = DEFAULT_CATEGORY_COUNTS.get(category) or DEFAULT_CATEGORY_COUNTS["default"]
-    return options[_stable_bucket(seed, len(options))]
+        return DEFAULT_SUBSCRIPTION_BASE + _stable_bucket(seed, DEFAULT_SUBSCRIPTION_SPAN)
+    base = DEFAULT_CATEGORY_BASE.get(category) or DEFAULT_CATEGORY_BASE["default"]
+    return base + _stable_bucket(seed, DEFAULT_CATEGORY_SPAN)
 
 DEMO_PRODUCTS = [
     # GIFT CARDS
