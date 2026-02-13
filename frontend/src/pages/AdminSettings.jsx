@@ -50,6 +50,7 @@ const isCoreCategory = (value) => CORE_CATEGORIES.includes(normalizeCategoryKey(
 
 const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }) => {
   const [loading, setLoading] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [categoryImageUploads, setCategoryImageUploads] = useState({});
   const [formData, setFormData] = useState({
@@ -505,6 +506,30 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     }
   };
 
+  const handleTelegramTest = async () => {
+    setTestingTelegram(true);
+    try {
+      const payload = {
+        telegram_notifications_enabled: formData.telegram_notifications_enabled
+      };
+      const botToken = String(formData.telegram_bot_token || '').trim();
+      const chatId = String(formData.telegram_admin_chat_id || '').trim();
+      if (botToken) {
+        payload.telegram_bot_token = botToken;
+      }
+      if (chatId) {
+        payload.telegram_admin_chat_id = chatId;
+      }
+      const response = await axiosInstance.post('/settings/telegram/test', payload);
+      toast.success(response?.data?.message || 'Telegram test message sent.');
+    } catch (error) {
+      const detail = error?.response?.data?.detail || 'Failed to send Telegram test message';
+      toast.error(detail);
+    } finally {
+      setTestingTelegram(false);
+    }
+  };
+
   return (
     <div className="min-h-screen gradient-bg">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={currentSettings} />
@@ -840,6 +865,20 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             placeholder="-1001234567890"
                           />
                         </div>
+                      </div>
+                      <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleTelegramTest}
+                          disabled={testingTelegram}
+                          className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10"
+                        >
+                          {testingTelegram ? 'Sending test...' : 'Send Test Telegram Message'}
+                        </Button>
+                        <p className="text-white/50 text-xs">
+                          This test uses values in this form (even before saving).
+                        </p>
                       </div>
                     </div>
 

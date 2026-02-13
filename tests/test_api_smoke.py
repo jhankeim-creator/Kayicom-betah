@@ -653,3 +653,60 @@ def test_telegram_notification_does_not_send_when_explicitly_disabled(app_module
     asyncio.run(app_module._notify_admin_telegram("Should not send", ["line"]))
 
     assert sent["count"] == 0
+
+
+def test_telegram_test_endpoint_uses_payload_overrides(app_module, monkeypatch):
+    app_module.db.settings._docs[0].update(
+        {
+            "telegram_notifications_enabled": False,
+            "telegram_bot_token": "111111:STORED",
+            "telegram_admin_chat_id": "-100111111",
+        }
+    )
+
+    sent = {"count": 0}
+
+    class _Resp:
+        status_code = 200
+        text = '{"ok":true}'
+
+        @staticmethod
+        def json():
+            return {"ok": True}
+
+    def fake_post(url, json, timeout):
+        sent["count"] += 1
+        sent["url"] = url
+        sent["payload"] = json
+        sent["timeout"] = timeout
+        return _Resp()
+
+    monkeypatch.setattr(app_module.requests, "post", fake_post, raising=True)
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/settings/telegram/test",
+        json={
+            "telegram_bot_token": " 222222:OVERRIDE ",
+            "telegram_admin_chat_id": " -100222222 ",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert sent["count"] == 1
+    assert sent["url"] == "https://api.telegram.org/bot222222:OVERRIDE/sendMessage"
+    assert sent["payload"]["chat_id"] == "-100222222"
+
+
+def test_telegram_test_endpoint_returns_400_without_credentials(app_module, monkeypatch):
+    monkeypatch.delenv("TELEGRAM_BOT_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_ADMIN_CHAT_ID", raising=False)
+    monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
+    monkeypatch.delenv("TELEGRAM_CHAT_ID", raising=False)
+
+    app_module.db.settings._docs[0].pop("telegram_bot_token", None)
+    app_module.db.settings._docs[0].pop("telegram_admin_chat_id", None)
+    app_module.db.settings._docs[0]["telegram_notifications_enabled"] = True
+
+    client = TestClient(app_module.app)
+    r = client.post("/api/settings/telegram/test", json={"telegram_notifications_enabled": True})
+    assert r.status_code == 400, r.text
+    assert "missing bot token" in (r.json().get("detail") or "").lower()
