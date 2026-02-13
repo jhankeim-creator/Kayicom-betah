@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Calendar, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
+import { getBlogPostBySlugOrId } from '../utils/blogApi';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -31,16 +31,11 @@ const BlogDetailPage = ({ user, logout, cart, settings }) => {
   useEffect(() => {
     const loadPost = async () => {
       try {
-        const bySlug = await axiosInstance.get(`/blog/posts/by-slug/${encodeURIComponent(slug)}`);
-        setPost(bySlug.data || null);
+        const result = await getBlogPostBySlugOrId(slug);
+        setPost(result.post || null);
       } catch (error) {
-        try {
-          const fallbackById = await axiosInstance.get(`/blog/posts/${encodeURIComponent(slug)}`);
-          setPost(fallbackById.data || null);
-        } catch (fallbackError) {
-          console.error('Error loading blog post:', fallbackError);
-          toast.error('Blog post not found');
-        }
+        console.error('Error loading blog post:', error);
+        toast.error('Blog post not found');
       } finally {
         setLoading(false);
       }

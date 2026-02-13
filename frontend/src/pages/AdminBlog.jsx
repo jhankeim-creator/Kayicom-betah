@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
@@ -9,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { listBlogPosts, createBlogPost, updateBlogPost, deleteBlogPost } from '../utils/blogApi';
 
 const EMPTY_FORM = {
   title: '',
@@ -44,13 +44,15 @@ const AdminBlog = ({ user, logout, settings }) => {
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [editorMode, setEditorMode] = useState('write');
+  const [dataSource, setDataSource] = useState('api');
 
   const cartItemCount = useMemo(() => 0, []);
 
   const loadPosts = async () => {
     try {
-      const response = await axiosInstance.get('/blog/posts?published_only=false&limit=300');
-      setPosts(Array.isArray(response.data) ? response.data : []);
+      const result = await listBlogPosts({ publishedOnly: false, limit: 300 });
+      setPosts(result.posts || []);
+      setDataSource(result.source || 'api');
     } catch (error) {
       console.error('Error loading blog posts:', error);
       toast.error('Unable to load blog posts');
@@ -111,10 +113,12 @@ const AdminBlog = ({ user, logout, settings }) => {
     setSaving(true);
     try {
       if (editingId) {
-        await axiosInstance.put(`/blog/posts/${editingId}`, payload);
+        const result = await updateBlogPost(editingId, payload);
+        if (result?.source) setDataSource(result.source);
         toast.success('Blog post updated');
       } else {
-        await axiosInstance.post('/blog/posts', payload);
+        const result = await createBlogPost(payload);
+        if (result?.source) setDataSource(result.source);
         toast.success('Blog post created');
       }
       resetForm();
@@ -130,7 +134,8 @@ const AdminBlog = ({ user, logout, settings }) => {
   const handleDelete = async (post) => {
     if (!window.confirm(`Delete "${post.title}"?`)) return;
     try {
-      await axiosInstance.delete(`/blog/posts/${post.id}`);
+      const result = await deleteBlogPost(post.id);
+      if (result?.source) setDataSource(result.source);
       toast.success('Blog post deleted');
       if (editingId === post.id) {
         resetForm();
@@ -157,6 +162,11 @@ const AdminBlog = ({ user, logout, settings }) => {
             <div>
               <h1 className="text-3xl md:text-4xl font-bold text-white">Manage Blog</h1>
               <p className="text-white/70 mt-1">Publish updates and information for your customers.</p>
+              {dataSource === 'fallback' && (
+                <p className="text-yellow-300 text-xs mt-1">
+                  Compatibility mode active: primary blog API unavailable, using settings storage fallback.
+                </p>
+              )}
             </div>
             <Link to="/admin">
               <Button className="bg-white text-purple-600 hover:bg-gray-100">Admin Home</Button>

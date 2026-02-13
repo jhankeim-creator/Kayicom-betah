@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Calendar, ArrowRight, FileText } from 'lucide-react';
 import { toast } from 'sonner';
+import { listBlogPosts } from '../utils/blogApi';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -30,8 +30,8 @@ const BlogPage = ({ user, logout, cart, settings }) => {
   useEffect(() => {
     const loadPosts = async () => {
       try {
-        const response = await axiosInstance.get('/blog/posts?published_only=true&limit=100');
-        setPosts(Array.isArray(response.data) ? response.data : []);
+        const result = await listBlogPosts({ publishedOnly: true, limit: 100 });
+        setPosts(result.posts || []);
       } catch (error) {
         console.error('Error loading blog posts:', error);
         toast.error('Unable to load blog posts');
