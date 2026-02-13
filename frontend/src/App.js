@@ -269,7 +269,7 @@ function App() {
           <Route path="/checkout" element={<CheckoutPage user={user} logout={logout} cart={cart} clearCart={clearCart} settings={settings} />} />
           <Route path="/refund-policy" element={<RefundPolicy user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/blog" element={<BlogPage user={user} logout={logout} cart={cart} settings={settings} />} />
-          <Route path="/blog/:id" element={<BlogDetailPage user={user} logout={logout} cart={cart} settings={settings} />} />
+          <Route path="/blog/:slug" element={<BlogDetailPage user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />
           <Route path="/payment-success" element={<PaymentSuccessPage user={user} logout={logout} settings={settings} />} />
           <Route path="/login" element={<LoginPage login={login} settings={settings} />} />

@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package } from 'lucide-react';
+import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeOrdersCount } from '../utils/ordersCount';
 
@@ -14,9 +14,12 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
   const { t } = useContext(LanguageContext);
   const [featuredProducts, setFeaturedProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [latestBlogPosts, setLatestBlogPosts] = useState([]);
+  const [blogLoading, setBlogLoading] = useState(true);
 
   useEffect(() => {
     loadFeaturedProducts();
+    loadLatestBlogPosts();
   }, []);
 
   const groupProducts = (items) => {
@@ -54,6 +57,18 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
       toast.error('Error loading products');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadLatestBlogPosts = async () => {
+    try {
+      const response = await axiosInstance.get('/blog/posts?published_only=true&limit=3');
+      setLatestBlogPosts(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error loading latest blog posts:', error);
+      setLatestBlogPosts([]);
+    } finally {
+      setBlogLoading(false);
     }
   };
 
@@ -286,6 +301,51 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
           </div>
         ) : (
           <div className="text-center text-gray-400 text-xl py-12">No products available</div>
+        )}
+      </div>
+
+      {/* Latest Blog Posts */}
+      <div className="container mx-auto px-4 py-4 md:py-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">Latest Blog Posts</h2>
+            <p className="text-gray-400">News, tips, and updates from KayiCom</p>
+          </div>
+          <Link to="/blog">
+            <Button variant="outline" className="border-pink-500/30 text-pink-400 hover:bg-pink-500/10">
+              Visit Blog <ArrowRight size={16} className="ml-2" />
+            </Button>
+          </Link>
+        </div>
+
+        {blogLoading ? (
+          <div className="text-center text-gray-400 text-xl py-8">{t('loading')}</div>
+        ) : latestBlogPosts.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+            {latestBlogPosts.map((post) => (
+              <Link to={`/blog/${post.slug || post.id}`} key={post.id}>
+                <Card className="overflow-hidden bg-gray-900/50 border-white/10 hover:border-white/30 transition">
+                  {post.cover_image_url ? (
+                    <div className="h-40 bg-gray-900">
+                      <img src={post.cover_image_url} alt={post.title} className="w-full h-full object-cover" />
+                    </div>
+                  ) : null}
+                  <CardContent className="p-4">
+                    <h3 className="text-white font-bold text-lg mb-2 line-clamp-2">{post.title}</h3>
+                    <p className="text-white/60 text-xs mb-2 flex items-center gap-2">
+                      <Calendar size={14} />
+                      {new Date(post.published_at || post.created_at).toLocaleDateString()}
+                    </p>
+                    <p className="text-white/75 text-sm line-clamp-3">
+                      {post.excerpt || String(post.content || '').slice(0, 140)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-gray-400 py-8">No blog posts available yet.</div>
         )}
       </div>
 
