@@ -508,21 +508,38 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
 
   const handleTelegramTest = async () => {
     setTestingTelegram(true);
+    const payload = {
+      // Force enable for test flow so legacy fallback can trigger a real notification.
+      telegram_notifications_enabled: true
+    };
+    const botToken = String(formData.telegram_bot_token || '').trim();
+    const chatId = String(formData.telegram_admin_chat_id || '').trim();
+    if (botToken) {
+      payload.telegram_bot_token = botToken;
+    }
+    if (chatId) {
+      payload.telegram_admin_chat_id = chatId;
+    }
     try {
-      const payload = {
-        telegram_notifications_enabled: formData.telegram_notifications_enabled
-      };
-      const botToken = String(formData.telegram_bot_token || '').trim();
-      const chatId = String(formData.telegram_admin_chat_id || '').trim();
-      if (botToken) {
-        payload.telegram_bot_token = botToken;
-      }
-      if (chatId) {
-        payload.telegram_admin_chat_id = chatId;
-      }
       const response = await axiosInstance.post('/settings/telegram/test', payload);
       toast.success(response?.data?.message || 'Telegram test message sent.');
+      if (!formData.telegram_notifications_enabled) {
+        handleChange('telegram_notifications_enabled', true);
+      }
     } catch (error) {
+      if (error?.response?.status === 404) {
+        // Backward compatibility: older backend versions don't expose /settings/telegram/test.
+        try {
+          await axiosInstance.put('/settings', payload);
+          toast.success('Telegram activated and test notification sent (legacy mode).');
+          await loadSettings();
+          return;
+        } catch (fallbackError) {
+          const fallbackDetail = fallbackError?.response?.data?.detail || 'Failed to activate Telegram in legacy mode';
+          toast.error(fallbackDetail);
+          return;
+        }
+      }
       const detail = error?.response?.data?.detail || 'Failed to send Telegram test message';
       toast.error(detail);
     } finally {
