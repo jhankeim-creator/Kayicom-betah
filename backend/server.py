@@ -614,6 +614,34 @@ def _frontend_base_url() -> str:
     return os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
 
 
+def _first_non_empty_text(*values: Any) -> str:
+    for value in values:
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def _parse_optional_bool(value: Any) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            return bool(int(value))
+        except Exception:
+            return None
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    return None
+
+
 def _build_admin_notification_message(event: str, lines: Optional[List[str]] = None) -> str:
     message_lines = [f"[KayiCom] {event}"]
     for line in (lines or []):
@@ -643,18 +671,31 @@ async def _notify_admin_telegram(
     """
     try:
         settings = settings_override or await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
-        enabled_value = settings.get("telegram_notifications_enabled")
-        if enabled_value is None:
-            env_enabled = os.environ.get("TELEGRAM_NOTIFICATIONS_ENABLED", "false").strip().lower()
-            enabled = env_enabled in {"1", "true", "yes", "on"}
-        else:
-            enabled = bool(enabled_value)
+
+        bot_token = _first_non_empty_text(
+            settings.get("telegram_bot_token"),
+            settings.get("telegram_token"),  # legacy alias compatibility
+            os.environ.get("TELEGRAM_BOT_TOKEN"),
+            os.environ.get("TELEGRAM_TOKEN"),  # legacy alias compatibility
+        )
+        chat_id = _first_non_empty_text(
+            settings.get("telegram_admin_chat_id"),
+            settings.get("telegram_chat_id"),  # legacy alias compatibility
+            os.environ.get("TELEGRAM_ADMIN_CHAT_ID"),
+            os.environ.get("TELEGRAM_CHAT_ID"),  # legacy alias compatibility
+        )
+
+        enabled = _parse_optional_bool(settings.get("telegram_notifications_enabled"))
+        if enabled is None:
+            enabled = _parse_optional_bool(os.environ.get("TELEGRAM_NOTIFICATIONS_ENABLED"))
+        if enabled is None:
+            # Backward compatibility: older configs only had token + chat_id and no boolean flag.
+            enabled = bool(bot_token and chat_id)
         if not enabled:
             return
 
-        bot_token = (settings.get("telegram_bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
-        chat_id = str(settings.get("telegram_admin_chat_id") or os.environ.get("TELEGRAM_ADMIN_CHAT_ID") or "").strip()
         if not bot_token or not chat_id:
+            logging.warning("Telegram notification skipped: missing bot token or chat id while enabled")
             return
 
         url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -666,6 +707,15 @@ async def _notify_admin_telegram(
         resp = await asyncio.to_thread(requests.post, url, json=payload, timeout=10)
         if not (200 <= resp.status_code < 300):
             logging.error(f"Telegram notify failed ({resp.status_code}): {resp.text[:300]}")
+            return
+
+        try:
+            body = resp.json()
+        except Exception:
+            body = None
+        if isinstance(body, dict) and body.get("ok") is False:
+            desc = body.get("description") or "unknown Telegram API error"
+            logging.error(f"Telegram notify rejected by API: {desc}")
     except Exception as e:
         logging.error(f"Telegram notification error: {e}")
 
@@ -2461,6 +2511,13 @@ async def get_settings():
 @api_router.put("/settings", response_model=SiteSettings)
 async def update_settings(updates: SettingsUpdate):
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    for key in ("telegram_bot_token", "telegram_admin_chat_id"):
+        if key in update_data and isinstance(update_data[key], str):
+            cleaned = update_data[key].strip()
+            if cleaned:
+                update_data[key] = cleaned
+            else:
+                update_data.pop(key, None)
     update_data['updated_at'] = datetime.now(timezone.utc).isoformat()
     
     await db.settings.update_one(
