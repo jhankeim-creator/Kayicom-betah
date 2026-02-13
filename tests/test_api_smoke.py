@@ -111,6 +111,13 @@ class _FakeCollection:
                 return {"matched_count": 1, "modified_count": 1}
         return {"matched_count": 0, "modified_count": 0}
 
+    async def delete_one(self, query):
+        for idx, d in enumerate(self._docs):
+            if _doc_matches(d, query):
+                self._docs.pop(idx)
+                return type("DeleteResult", (), {"deleted_count": 1})()
+        return type("DeleteResult", (), {"deleted_count": 0})()
+
     async def count_documents(self, query):
         return sum(1 for d in self._docs if _doc_matches(d, query))
 
@@ -133,6 +140,7 @@ class _FakeDB:
         }])
         self.minutes_transfers = _FakeCollection()
         self.orders = _FakeCollection()
+        self.blog_posts = _FakeCollection()
         self.credits_transactions = _FakeCollection()
         self.withdrawals = _FakeCollection()
         self.wallet_topups = _FakeCollection()
@@ -324,6 +332,44 @@ def test_paid_order_increments_product_orders_count_idempotently(app_module):
     assert float(product_after.get("orders_count", 0)) == pytest.approx(baseline + 3.0)
 
 
+def test_new_order_increments_product_orders_count_immediately(app_module):
+    app_module.db.users._docs.append(
+        {
+            "id": "u-order-1",
+            "email": "uorder@example.com",
+            "full_name": "Order User",
+            "role": "customer",
+            "password": app_module.pwd_context.hash("x"),
+            "wallet_balance": 0.0,
+            "customer_id": "KC-77778888",
+            "is_blocked": False,
+        }
+    )
+    product_seed = {
+        "id": "p-order-1",
+        "name": "Netflix Test",
+        "description": "Subscription",
+        "category": "subscription",
+        "price": 12.0,
+        "is_subscription": True,
+        "orders_count": 0,
+    }
+    app_module.db.products._docs.append(product_seed)
+    baseline = float(app_module._normalize_orders_count_for_product(product_seed))
+
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/orders?user_id=u-order-1&user_email=uorder@example.com",
+        json={
+            "items": [{"product_id": "p-order-1", "product_name": "Netflix Test", "quantity": 2, "price": 12.0}],
+            "payment_method": "paypal",
+        },
+    )
+    assert r.status_code == 200, r.text
+    product = next(p for p in app_module.db.products._docs if p["id"] == "p-order-1")
+    assert float(product.get("orders_count", 0)) == pytest.approx(baseline + 2.0)
+
+
 def test_unpaid_orders_auto_cancel_after_15_minutes(app_module):
     app_module.db.orders._docs.append(
         {
@@ -351,6 +397,34 @@ def test_crypto_buy_sell_endpoints_disabled_by_default(app_module):
     client = TestClient(app_module.app)
     r = client.get("/api/crypto/config")
     assert r.status_code == 410
+
+
+def test_blog_post_publish_flow(app_module):
+    client = TestClient(app_module.app)
+    create = client.post(
+        "/api/blog/posts",
+        json={
+            "title": "Service Update",
+            "excerpt": "Quick update",
+            "content": "We updated delivery flow.",
+            "tags": ["update", "service"],
+            "published": False,
+        },
+    )
+    assert create.status_code == 200, create.text
+    post_id = create.json()["id"]
+
+    listed_before = client.get("/api/blog/posts")
+    assert listed_before.status_code == 200, listed_before.text
+    assert all(post["id"] != post_id for post in listed_before.json())
+
+    publish = client.put(f"/api/blog/posts/{post_id}", json={"published": True})
+    assert publish.status_code == 200, publish.text
+    assert publish.json()["published"] is True
+
+    listed_after = client.get("/api/blog/posts")
+    assert listed_after.status_code == 200, listed_after.text
+    assert any(post["id"] == post_id for post in listed_after.json())
 
 
 def test_minutes_quote_and_wallet_create(app_module):

@@ -184,6 +184,34 @@ def _matched_count(result: Any) -> int:
         return int(result.get("matched_count", 0) or 0)
     return int(getattr(result, "matched_count", 0) or 0)
 
+
+def _normalize_blog_tags(tags: Optional[List[str]]) -> List[str]:
+    seen = set()
+    cleaned: List[str] = []
+    for value in tags or []:
+        tag = str(value or "").strip()
+        if not tag:
+            continue
+        key = tag.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        cleaned.append(tag)
+    return cleaned
+
+
+def _normalize_blog_post_doc(post: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(post or {})
+    normalized["tags"] = _normalize_blog_tags(normalized.get("tags"))
+    for field in ["created_at", "updated_at", "published_at"]:
+        value = normalized.get(field)
+        if isinstance(value, str):
+            try:
+                normalized[field] = datetime.fromisoformat(value)
+            except Exception:
+                normalized[field] = None
+    return normalized
+
 # Product Models
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -484,6 +512,39 @@ class BulkEmailRequest(BaseModel):
     message: str
     recipient_type: str  # all, customers, specific_emails
     specific_emails: Optional[List[EmailStr]] = None
+
+
+class BlogPost(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    title: str
+    excerpt: Optional[str] = None
+    content: str
+    cover_image_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    published: bool = False
+    published_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class BlogPostCreate(BaseModel):
+    title: str
+    excerpt: Optional[str] = None
+    content: str
+    cover_image_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    published: Optional[bool] = False
+
+
+class BlogPostUpdate(BaseModel):
+    title: Optional[str] = None
+    excerpt: Optional[str] = None
+    content: Optional[str] = None
+    cover_image_url: Optional[str] = None
+    tags: Optional[List[str]] = None
+    published: Optional[bool] = None
+    published_at: Optional[datetime] = None
 
 
 # ==================== EMAIL HELPERS ====================
@@ -1183,6 +1244,14 @@ async def login(credentials: LoginRequest):
         await db.users.update_one({"id": user["id"]}, {"$set": {"customer_id": cid}})
         user["customer_id"] = cid
 
+    await _notify_admin_telegram(
+        "User login",
+        [
+            f"Email: {user.get('email')}",
+            f"Role: {user.get('role')}",
+        ],
+    )
+
     return {
         "user_id": user['id'],
         "id": user['id'],
@@ -1380,6 +1449,15 @@ async def create_product(product_data: ProductCreate):
     doc['created_at'] = doc['created_at'].isoformat()
     
     await db.products.insert_one(doc)
+    await _notify_admin_telegram(
+        "Product created",
+        [
+            f"Product ID: {product.id}",
+            f"Name: {product.name}",
+            f"Category: {product.category}",
+            f"Price: ${float(product.price):.2f}",
+        ],
+    )
     return product
 
 @api_router.put("/products/{product_id}", response_model=Product)
@@ -1408,13 +1486,32 @@ async def update_product(product_id: str, updates: ProductUpdate):
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
     updated["orders_count"] = _normalize_orders_count_for_product(updated)
+    await _notify_admin_telegram(
+        "Product updated",
+        [
+            f"Product ID: {product_id}",
+            f"Name: {updated.get('name')}",
+            f"Changed fields: {', '.join(sorted(update_data.keys())) or 'none'}",
+        ],
+    )
     return updated
 
 @api_router.delete("/products/{product_id}")
 async def delete_product(product_id: str):
+    existing = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Product not found")
     result = await db.products.delete_one({"id": product_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Product not found")
+    await _notify_admin_telegram(
+        "Product deleted",
+        [
+            f"Product ID: {product_id}",
+            f"Name: {existing.get('name')}",
+            f"Category: {existing.get('category')}",
+        ],
+    )
     return {"message": "Product deleted successfully"}
 
 
@@ -1491,15 +1588,21 @@ async def _record_coupon_usage_if_needed(order_id: str):
 
 async def _record_product_orders_if_needed(order_id: str):
     """
-    Increment per-product orders_count once per paid order.
+    Increment per-product orders_count once per order lifecycle.
+    We count valid newly-created orders (not failed/cancelled) and keep it idempotent
+    with a marker on the order document.
     Uses a marker on the order document to keep operation idempotent.
     """
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         return
-    if order.get("payment_status") != "paid":
-        return
     if order.get("product_orders_recorded"):
+        return
+    payment_status = str(order.get("payment_status") or "").lower()
+    order_status = str(order.get("order_status") or "").lower()
+    if payment_status in {"failed", "cancelled"}:
+        return
+    if order_status in {"cancelled"}:
         return
 
     # Mark first so repeated webhook/admin calls don't double count.
@@ -1526,6 +1629,19 @@ async def _record_product_orders_if_needed(order_id: str):
 
     try:
         for product_id, qty in increments.items():
+            product_doc = await db.products.find_one({"id": product_id}, {"_id": 0})
+            if not product_doc:
+                continue
+            baseline = _normalize_orders_count_for_product(product_doc)
+            try:
+                current = int(product_doc.get("orders_count", 0) or 0)
+            except Exception:
+                current = 0
+            if current < baseline:
+                await db.products.update_one(
+                    {"id": product_id},
+                    {"$set": {"orders_count": int(baseline)}}
+                )
             await db.products.update_one(
                 {"id": product_id},
                 {"$inc": {"orders_count": int(qty)}}
@@ -1642,6 +1758,15 @@ async def create_coupon(data: CouponCreate):
     if coupon.expires_at:
         doc["expires_at"] = coupon.expires_at.isoformat()
     await db.coupons.insert_one(doc)
+    await _notify_admin_telegram(
+        "Coupon created",
+        [
+            f"Coupon ID: {coupon.id}",
+            f"Code: {coupon.code}",
+            f"Type: {coupon.discount_type}",
+            f"Value: {float(coupon.discount_value)}",
+        ],
+    )
     return coupon
 
 @api_router.put("/coupons/{coupon_id}", response_model=Coupon)
@@ -1669,13 +1794,31 @@ async def update_coupon(coupon_id: str, updates: CouponUpdate):
             updated["expires_at"] = datetime.fromisoformat(updated["expires_at"])
         except Exception:
             updated["expires_at"] = None
+    await _notify_admin_telegram(
+        "Coupon updated",
+        [
+            f"Coupon ID: {coupon_id}",
+            f"Code: {updated.get('code')}",
+            f"Changed fields: {', '.join(sorted(update_data.keys())) or 'none'}",
+        ],
+    )
     return updated
 
 @api_router.delete("/coupons/{coupon_id}")
 async def delete_coupon(coupon_id: str):
+    existing = await db.coupons.find_one({"id": coupon_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Coupon not found")
     res = await db.coupons.delete_one({"id": coupon_id})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Coupon not found")
+    await _notify_admin_telegram(
+        "Coupon deleted",
+        [
+            f"Coupon ID: {coupon_id}",
+            f"Code: {existing.get('code')}",
+        ],
+    )
     return {"message": "Coupon deleted"}
 
 # ==================== ORDER ENDPOINTS ====================
@@ -1887,7 +2030,7 @@ async def update_order_status(
     # Record coupon usage once payment is marked as paid
     if payment_status == "paid":
         await _record_coupon_usage_if_needed(order_id)
-        await _record_product_orders_if_needed(order_id)
+    await _record_product_orders_if_needed(order_id)
 
     # If order is completed, trigger referral payout check (idempotent)
     if order_status == "completed":
@@ -2270,7 +2413,156 @@ async def update_settings(updates: SettingsUpdate):
         settings['updated_at'] = datetime.fromisoformat(settings['updated_at'])
     crypto_config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
     settings = _apply_crypto_config_to_settings(settings, crypto_config)
+    await _notify_admin_telegram(
+        "Site settings updated",
+        [
+            f"Updated fields: {', '.join(sorted(update_data.keys()))}",
+        ],
+        settings_override=settings,
+    )
     return settings
+
+
+# ==================== BLOG ENDPOINTS ====================
+
+@api_router.get("/blog/posts", response_model=List[BlogPost])
+async def list_blog_posts(published_only: bool = True, limit: int = 50):
+    limit = max(1, min(int(limit), 500))
+    query: Dict[str, Any] = {}
+    if published_only:
+        query["published"] = True
+
+    posts = await db.blog_posts.find(query, {"_id": 0}).sort("published_at", -1).to_list(limit)
+    normalized = [_normalize_blog_post_doc(post) for post in posts]
+
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    normalized.sort(
+        key=lambda post: post.get("published_at") or post.get("created_at") or epoch,
+        reverse=True,
+    )
+    return normalized
+
+
+@api_router.get("/blog/posts/{post_id}", response_model=BlogPost)
+async def get_blog_post(post_id: str, published_only: bool = True):
+    query: Dict[str, Any] = {"id": post_id}
+    if published_only:
+        query["published"] = True
+    post = await db.blog_posts.find_one(query, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    return _normalize_blog_post_doc(post)
+
+
+@api_router.post("/blog/posts", response_model=BlogPost)
+async def create_blog_post(payload: BlogPostCreate):
+    title = str(payload.title or "").strip()
+    content = str(payload.content or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Title is required")
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    now = datetime.now(timezone.utc)
+    is_published = bool(payload.published)
+    post = BlogPost(
+        title=title,
+        excerpt=(str(payload.excerpt).strip() if payload.excerpt is not None else None) or None,
+        content=content,
+        cover_image_url=(str(payload.cover_image_url).strip() if payload.cover_image_url is not None else None) or None,
+        tags=_normalize_blog_tags(payload.tags),
+        published=is_published,
+        published_at=now if is_published else None,
+        created_at=now,
+        updated_at=now,
+    )
+
+    doc = post.model_dump()
+    doc["created_at"] = post.created_at.isoformat()
+    doc["updated_at"] = post.updated_at.isoformat()
+    if post.published_at:
+        doc["published_at"] = post.published_at.isoformat()
+    else:
+        doc["published_at"] = None
+
+    await db.blog_posts.insert_one(doc)
+    await _notify_admin_telegram(
+        "Blog post created",
+        [
+            f"Post ID: {post.id}",
+            f"Title: {post.title}",
+            f"Published: {'yes' if post.published else 'no'}",
+        ],
+    )
+    return post
+
+
+@api_router.put("/blog/posts/{post_id}", response_model=BlogPost)
+async def update_blog_post(post_id: str, payload: BlogPostUpdate):
+    existing = await db.blog_posts.find_one({"id": post_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+
+    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    if "title" in update_data:
+        update_data["title"] = str(update_data["title"]).strip()
+        if not update_data["title"]:
+            raise HTTPException(status_code=400, detail="Title is required")
+    if "content" in update_data:
+        update_data["content"] = str(update_data["content"]).strip()
+        if not update_data["content"]:
+            raise HTTPException(status_code=400, detail="Content is required")
+    if "excerpt" in update_data:
+        update_data["excerpt"] = str(update_data["excerpt"]).strip() or None
+    if "cover_image_url" in update_data:
+        update_data["cover_image_url"] = str(update_data["cover_image_url"]).strip() or None
+    if "tags" in update_data:
+        update_data["tags"] = _normalize_blog_tags(update_data.get("tags"))
+
+    if "published" in update_data:
+        was_published = bool(existing.get("published"))
+        now_published = bool(update_data["published"])
+        if now_published and not was_published and "published_at" not in update_data:
+            update_data["published_at"] = datetime.now(timezone.utc).isoformat()
+        if not now_published:
+            update_data["published_at"] = None
+
+    if "published_at" in update_data and isinstance(update_data["published_at"], datetime):
+        update_data["published_at"] = update_data["published_at"].isoformat()
+
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.blog_posts.update_one({"id": post_id}, {"$set": update_data})
+
+    updated = await db.blog_posts.find_one({"id": post_id}, {"_id": 0})
+    normalized = _normalize_blog_post_doc(updated or existing)
+    await _notify_admin_telegram(
+        "Blog post updated",
+        [
+            f"Post ID: {post_id}",
+            f"Title: {normalized.get('title')}",
+            f"Published: {'yes' if normalized.get('published') else 'no'}",
+        ],
+    )
+    return normalized
+
+
+@api_router.delete("/blog/posts/{post_id}")
+async def delete_blog_post(post_id: str):
+    existing = await db.blog_posts.find_one({"id": post_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    result = await db.blog_posts.delete_one({"id": post_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+
+    await _notify_admin_telegram(
+        "Blog post deleted",
+        [
+            f"Post ID: {post_id}",
+            f"Title: {existing.get('title')}",
+        ],
+    )
+    return {"message": "Blog post deleted successfully"}
 
 
 # ==================== ADMIN: CUSTOMERS ====================
@@ -2318,6 +2610,14 @@ async def admin_block_customer(user_id: str, body: AdminBlockCustomerRequest):
         {"$set": {"is_blocked": True, "blocked_at": datetime.now(timezone.utc).isoformat(), "blocked_reason": body.reason}}
     )
     updated = await db.users.find_one({"id": user_id, "role": "customer"}, {"_id": 0, "password": 0, "password_hash": 0})
+    await _notify_admin_telegram(
+        "Customer blocked",
+        [
+            f"User ID: {user_id}",
+            f"Email: {user.get('email')}",
+            f"Reason: {body.reason or 'n/a'}",
+        ],
+    )
     return updated or {"message": "Blocked"}
 
 
@@ -2331,6 +2631,13 @@ async def admin_unblock_customer(user_id: str):
         {"$set": {"is_blocked": False, "blocked_at": None, "blocked_reason": None}}
     )
     updated = await db.users.find_one({"id": user_id, "role": "customer"}, {"_id": 0, "password": 0, "password_hash": 0})
+    await _notify_admin_telegram(
+        "Customer unblocked",
+        [
+            f"User ID: {user_id}",
+            f"Email: {user.get('email')}",
+        ],
+    )
     return updated or {"message": "Unblocked"}
 
 # ==================== BULK EMAIL ENDPOINTS ====================
@@ -2388,13 +2695,23 @@ async def send_bulk_email(email_data: BulkEmailRequest):
         except Exception as e:
             failed.append({"email": recipient, "status": None, "error": str(e)[:300]})
 
-    return {
+    result = {
         "message": f"Bulk email sent to {sent_count} recipients",
         "sent_count": sent_count,
         "failed_count": len(failed),
         "failed": failed[:20],
         "recipients_preview": recipients[:10] if len(recipients) > 10 else recipients
     }
+    await _notify_admin_telegram(
+        "Bulk email sent",
+        [
+            f"Subject: {email_data.subject}",
+            f"Recipient type: {email_data.recipient_type}",
+            f"Sent: {sent_count}",
+            f"Failed: {len(failed)}",
+        ],
+    )
+    return result
 
 # ==================== STATS ENDPOINTS ====================
 
@@ -3337,6 +3654,16 @@ async def admin_adjust_wallet(req: AdminWalletAdjustRequest):
         # Still return the actual balance, but log the issue
     
     logging.info(f"Admin wallet adjust: user_id={user['id']}, identifier={ident}, action={req.action}, amount={amt}, delta={delta}, old_balance={current_balance}, new_balance={new_balance}")
+    await _notify_admin_telegram(
+        "Admin wallet adjusted",
+        [
+            f"User: {user.get('email') or user.get('id')}",
+            f"Action: {req.action}",
+            f"Amount: ${float(amt):.2f}",
+            f"New balance: ${float(new_balance):.2f}",
+            f"Reason: {req.reason or 'n/a'}",
+        ],
+    )
     
     return JSONResponse({
         "user_id": user["id"], 
@@ -3400,6 +3727,16 @@ async def admin_adjust_credits(req: AdminCreditsAdjustRequest):
     })
 
     updated = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    await _notify_admin_telegram(
+        "Admin credits adjusted",
+        [
+            f"User: {user.get('email') or user.get('id')}",
+            f"Action: {req.action}",
+            f"Credits: {int(credits)}",
+            f"New balance: {int((updated or {}).get('credits_balance', 0))}",
+            f"Reason: {req.reason or 'n/a'}",
+        ],
+    )
     return {"user_id": user["id"], "customer_id": user.get("customer_id"), "credits_balance": int(updated.get("credits_balance", 0))}
 
 
@@ -3445,6 +3782,14 @@ async def convert_credits_to_wallet(req: CreditsConvertRequest, user_id: str, us
     })
 
     updated = await db.users.find_one({"id": user_id}, {"_id": 0})
+    await _notify_admin_telegram(
+        "Credits converted to wallet",
+        [
+            f"User: {user_email or user_id}",
+            f"Credits converted: {int(credits)}",
+            f"USD added: ${float(usd):.2f}",
+        ],
+    )
     return {"user_id": user_id, "credits_converted": credits, "usd_added": float(usd), "wallet_balance": float(updated.get("wallet_balance", 0.0)), "credits_balance": int(updated.get("credits_balance", 0))}
 
 @api_router.post("/wallet/topups")

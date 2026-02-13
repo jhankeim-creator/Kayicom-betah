@@ -34,6 +34,9 @@ import WithdrawPage from './pages/WithdrawPage';
 import WalletPage from './pages/WalletPage';
 import MinutesTransferPage from './pages/MinutesTransferPage';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
+import BlogPage from './pages/BlogPage';
+import BlogDetailPage from './pages/BlogDetailPage';
+import AdminBlog from './pages/AdminBlog';
 import WhatsAppButton from './components/WhatsAppButton';
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/+$/, ''); // Remove trailing slashes
@@ -265,6 +268,8 @@ function App() {
           <Route path="/cart" element={<CartPage user={user} logout={logout} cart={cart} removeFromCart={removeFromCart} updateCartQuantity={updateCartQuantity} settings={settings} />} />
           <Route path="/checkout" element={<CheckoutPage user={user} logout={logout} cart={cart} clearCart={clearCart} settings={settings} />} />
           <Route path="/refund-policy" element={<RefundPolicy user={user} logout={logout} cart={cart} settings={settings} />} />
+          <Route path="/blog" element={<BlogPage user={user} logout={logout} cart={cart} settings={settings} />} />
+          <Route path="/blog/:id" element={<BlogDetailPage user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />
           <Route path="/payment-success" element={<PaymentSuccessPage user={user} logout={logout} settings={settings} />} />
           <Route path="/login" element={<LoginPage login={login} settings={settings} />} />
@@ -418,6 +423,14 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <AdminCustomers user={user} logout={logout} settings={settings} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/blog"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminBlog user={user} logout={logout} settings={settings} />
               </ProtectedRoute>
             }
           />
