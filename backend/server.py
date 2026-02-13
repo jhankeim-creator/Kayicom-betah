@@ -879,7 +879,8 @@ async def _order_auto_cancel_worker():
 
 
 _DEFAULT_SITE_CRYPTO_SETTINGS = SiteSettings().crypto_settings or {}
-_DEFAULT_CRYPTO_CONFIG = CryptoConfig().model_dump()
+# Initialized after CryptoConfig is defined.
+_DEFAULT_CRYPTO_CONFIG: Dict[str, Any] = {}
 _CRYPTO_FLOAT_TOLERANCE = 1e-9
 
 
@@ -1311,6 +1312,9 @@ class CryptoConfig(BaseModel):
     wallet_trc20: Optional[str] = None
     wallet_matic: Optional[str] = None
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+_DEFAULT_CRYPTO_CONFIG = CryptoConfig().model_dump()
 
 
 # ==================== AUTH ENDPOINTS ====================
