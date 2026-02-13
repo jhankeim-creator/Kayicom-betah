@@ -277,7 +277,7 @@ def test_products_search_and_category_combined(app_module):
     assert items[0]["id"] == "s1"
 
 
-def test_products_default_orders_count_is_zero(app_module):
+def test_products_default_orders_count_is_not_empty(app_module):
     app_module.db.products._docs.append(
         {"id": "p-oc-1", "name": "Gift", "description": "Desc", "category": "giftcard", "price": 10.0}
     )
@@ -286,7 +286,7 @@ def test_products_default_orders_count_is_zero(app_module):
     assert r.status_code == 200, r.text
     data = r.json()
     product = next(p for p in data if p["id"] == "p-oc-1")
-    assert product.get("orders_count") == 0
+    assert int(product.get("orders_count", 0)) > 0
 
 
 def test_paid_order_increments_product_orders_count_idempotently(app_module):
@@ -308,17 +308,49 @@ def test_paid_order_increments_product_orders_count_idempotently(app_module):
         }
     )
     client = TestClient(app_module.app)
+    # Trigger startup jobs (backfill may set a default non-zero baseline).
+    client.get("/api/products")
+    baseline = float(next(p for p in app_module.db.products._docs if p["id"] == "p-sale-1").get("orders_count", 0) or 0)
 
     r = client.put("/api/orders/o-sale-1/complete")
     assert r.status_code == 200, r.text
     product = next(p for p in app_module.db.products._docs if p["id"] == "p-sale-1")
-    assert float(product.get("orders_count", 0)) == pytest.approx(3.0)
+    assert float(product.get("orders_count", 0)) == pytest.approx(baseline + 3.0)
 
     # Calling the paid transition again should not increment twice.
     r2 = client.put("/api/orders/o-sale-1/complete")
     assert r2.status_code == 200, r2.text
     product_after = next(p for p in app_module.db.products._docs if p["id"] == "p-sale-1")
-    assert float(product_after.get("orders_count", 0)) == pytest.approx(3.0)
+    assert float(product_after.get("orders_count", 0)) == pytest.approx(baseline + 3.0)
+
+
+def test_unpaid_orders_auto_cancel_after_15_minutes(app_module):
+    app_module.db.orders._docs.append(
+        {
+            "id": "o-exp-1",
+            "user_id": "u-exp-1",
+            "user_email": "exp@example.com",
+            "items": [],
+            "total_amount": 15.0,
+            "payment_method": "paypal",
+            "payment_status": "pending",
+            "order_status": "pending",
+            "created_at": "2020-01-01T00:00:00+00:00",
+            "updated_at": "2020-01-01T00:00:00+00:00",
+        }
+    )
+    client = TestClient(app_module.app)
+    r = client.get("/api/orders")
+    assert r.status_code == 200, r.text
+    order = next(o for o in r.json() if o["id"] == "o-exp-1")
+    assert order["payment_status"] == "cancelled"
+    assert order["order_status"] == "cancelled"
+
+
+def test_crypto_buy_sell_endpoints_disabled_by_default(app_module):
+    client = TestClient(app_module.app)
+    r = client.get("/api/crypto/config")
+    assert r.status_code == 410
 
 
 def test_minutes_quote_and_wallet_create(app_module):

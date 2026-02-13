@@ -99,7 +99,7 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
   const categories = (() => {
     const raw = [...CORE_CATEGORIES, ...(settings?.product_categories || [])]
       .map(normalizeCategory)
-      .filter(Boolean);
+      .filter((value) => Boolean(value) && value !== 'crypto');
     const unique = Array.from(new Set(raw.length ? raw : CORE_CATEGORIES));
     return unique.map((key) => {
       const meta = categoryMeta[key];

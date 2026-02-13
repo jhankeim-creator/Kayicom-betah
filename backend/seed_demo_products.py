@@ -3,6 +3,7 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from dotenv import load_dotenv
 import uuid
+import hashlib
 from datetime import datetime, timezone
 
 load_dotenv('.env')
@@ -19,6 +20,39 @@ DURATION_MONTHS_MAP = {
     "12 Months": 12,
     "1 Year": 12,
 }
+
+DEFAULT_SUBSCRIPTION_COUNTS = [800, 400, 590]
+DEFAULT_CATEGORY_COUNTS = {
+    "giftcard": [980, 1240, 1580, 1960],
+    "topup": [860, 1120, 1460, 1820],
+    "service": [740, 980, 1260, 1590],
+    "default": [700, 920, 1180, 1510],
+}
+
+
+def _stable_bucket(value: str, size: int) -> int:
+    if size <= 0:
+        return 0
+    digest = hashlib.sha256((value or "default").encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % size
+
+
+def _default_orders_count(product: dict) -> int:
+    name = str(product.get("name") or "").lower()
+    category = str(product.get("category") or "").lower()
+    seed = "|".join([
+        str(product.get("id") or ""),
+        str(product.get("parent_product_id") or ""),
+        str(product.get("variant_name") or ""),
+        name,
+        category,
+    ])
+    if "netflix" in name and category == "subscription":
+        return 1568
+    if category == "subscription":
+        return DEFAULT_SUBSCRIPTION_COUNTS[_stable_bucket(seed, len(DEFAULT_SUBSCRIPTION_COUNTS))]
+    options = DEFAULT_CATEGORY_COUNTS.get(category) or DEFAULT_CATEGORY_COUNTS["default"]
+    return options[_stable_bucket(seed, len(options))]
 
 DEMO_PRODUCTS = [
     # GIFT CARDS
@@ -153,6 +187,7 @@ async def seed_demo():
                 },
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
+            product["orders_count"] = _default_orders_count(product)
             
             await db.products.insert_one(product)
             total_added += 1

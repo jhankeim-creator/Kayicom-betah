@@ -14,7 +14,7 @@ import { Package, Plus, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
-const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service', 'crypto'];
+const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service'];
 const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
 const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
   name,
