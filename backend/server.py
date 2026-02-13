@@ -1168,7 +1168,6 @@ async def _has_other_active_subscription(order: dict, now: datetime) -> bool:
         "$or": or_filters,
         "payment_status": "paid",
         "order_status": "completed",
-        "subscription_end_date": {"$ne": None},
     }
     candidates = await db.orders.find(query, {"_id": 0}).to_list(5000)
     current_order_id = str(order.get("id") or "").strip()
