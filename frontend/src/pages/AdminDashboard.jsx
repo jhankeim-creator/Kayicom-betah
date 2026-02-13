@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle } from 'lucide-react';
+import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AdminDashboard = ({ user, logout, settings }) => {
@@ -163,6 +163,16 @@ const AdminDashboard = ({ user, logout, settings }) => {
                   <span className="text-5xl mb-4 block">🏷️</span>
                   <h3 className="text-xl font-bold text-white mb-2">Coupons</h3>
                   <p className="text-white/70">Create promo codes</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link to="/admin/blog">
+              <Card className="glass-effect border-white/20 hover:border-white/40 transition cursor-pointer">
+                <CardContent className="p-8 text-center">
+                  <FileText className="mx-auto mb-4 text-cyan-400" size={48} />
+                  <h3 className="text-xl font-bold text-white mb-2">Blog</h3>
+                  <p className="text-white/70">Publish updates for customers</p>
                 </CardContent>
               </Card>
             </Link>

@@ -43,6 +43,9 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
             <Link to="/" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-home">
               Home
             </Link>
+            <Link to="/blog" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-blog">
+              Blog
+            </Link>
             {user && (
               <>
                 <Link to="/dashboard" className="text-white font-medium hover:text-pink-400 transition">
@@ -109,6 +112,11 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                       <Link to="/products" className="cursor-pointer text-gray-300 hover:text-pink-400">
                         <Package className="mr-2" size={16} />
                         Products
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link to="/blog" className="cursor-pointer text-gray-300 hover:text-pink-400">
+                        📰 Blog
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
