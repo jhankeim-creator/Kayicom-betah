@@ -31,11 +31,13 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
       const rep = sorted[0];
       const minPrice = sorted[0]?.price ?? rep.price;
       const maxPrice = sorted[sorted.length - 1]?.price ?? rep.price;
+      const ordersCount = g.variants.reduce((sum, item) => sum + (Number(item.orders_count) || 0), 0);
       return {
         ...rep,
         _variant_count: g.variants.length,
         _min_price: minPrice,
         _max_price: maxPrice,
+        _orders_count: ordersCount,
         _group_id: g.groupId,
       };
     });
@@ -97,7 +99,7 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
   const categories = (() => {
     const raw = [...CORE_CATEGORIES, ...(settings?.product_categories || [])]
       .map(normalizeCategory)
-      .filter(Boolean);
+      .filter((value) => Boolean(value) && value !== 'crypto');
     const unique = Array.from(new Set(raw.length ? raw : CORE_CATEGORIES));
     return unique.map((key) => {
       const meta = categoryMeta[key];
@@ -263,6 +265,9 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
                   </div>
                   <CardContent className="p-4 bg-gray-900/50">
                     <h3 className="text-sm md:text-base font-bold text-white mb-2 line-clamp-2">{product.name}</h3>
+                    <p className="text-gray-400 text-xs mb-2">
+                      {Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders
+                    </p>
                     <div className="flex items-center justify-between">
                       <span className="text-xl font-bold gradient-text">
                         {product._variant_count > 1

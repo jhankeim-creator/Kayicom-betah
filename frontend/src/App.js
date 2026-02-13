@@ -21,8 +21,6 @@ import AdminProducts from './pages/AdminProducts';
 import AdminOrders from './pages/AdminOrders';
 import AdminSettings from './pages/AdminSettings';
 import AdminWithdrawals from './pages/AdminWithdrawals';
-import AdminCrypto from './pages/AdminCrypto';
-import AdminCryptoTransactions from './pages/AdminCryptoTransactions';
 import AdminWalletTopups from './pages/AdminWalletTopups';
 import AdminCoupons from './pages/AdminCoupons';
 import AdminMinutesTransfers from './pages/AdminMinutesTransfers';
@@ -33,7 +31,6 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import ReferralPage from './pages/ReferralPage';
 import WithdrawPage from './pages/WithdrawPage';
-import CryptoPage from './pages/CryptoPage';
 import WalletPage from './pages/WalletPage';
 import MinutesTransferPage from './pages/MinutesTransferPage';
 import PaymentSuccessPage from './pages/PaymentSuccessPage';
@@ -329,8 +326,6 @@ function App() {
             }
           />
           
-          <Route path="/crypto" element={<CryptoPage user={user} logout={logout} settings={settings} />} />
-          
           <Route
             path="/admin"
             element={
@@ -382,30 +377,6 @@ function App() {
             }
           />
           
-          <Route
-            path="/admin/crypto"
-            element={
-              <ProtectedRoute adminOnly>
-                <div className="min-h-screen gradient-bg">
-                  <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
-                  <div className="container mx-auto px-4 py-12">
-                    <AdminCrypto />
-                  </div>
-                  <Footer settings={settings} />
-                </div>
-              </ProtectedRoute>
-            }
-          />
-          
-          <Route
-            path="/admin/crypto-transactions"
-            element={
-              <ProtectedRoute adminOnly>
-                <AdminCryptoTransactions user={user} logout={logout} settings={settings} />
-              </ProtectedRoute>
-            }
-          />
-
           <Route
             path="/admin/wallet-topups"
             element={

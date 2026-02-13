@@ -21,7 +21,7 @@ const PaymentSuccessPage = ({ user, logout, settings }) => {
       case 'minutes_transfer':
         return { label: 'View Mobile Topups', href: '/minutes' };
       case 'crypto_sell':
-        return { label: 'View Crypto Transactions', href: '/crypto' };
+        return { label: 'Go to Dashboard', href: '/dashboard' };
       case 'order':
       default:
         return id ? { label: 'View Order', href: `/track/${id}` } : null;

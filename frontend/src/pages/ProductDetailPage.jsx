@@ -92,6 +92,12 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     }
     return '';
   })();
+  const totalOrdersCount = (() => {
+    if (variants.length > 0) {
+      return variants.reduce((sum, item) => sum + (Number(item.orders_count) || 0), 0);
+    }
+    return Number(selectedProduct?.orders_count) || 0;
+  })();
   const getVariantLabel = (variant) => {
     if (!variant) return '';
     if (variant.variant_name) return variant.variant_name;
@@ -135,6 +141,9 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </span>
               )}
             </div>
+            <p className="text-white/70 text-sm mb-6" data-testid="product-orders-count">
+              {Math.max(0, Math.floor(totalOrdersCount))} orders
+            </p>
 
             <div className="mb-6">
               <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm" data-testid="product-category">

@@ -7,6 +7,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 from motor.motor_asyncio import AsyncIOMotorClient
+import asyncio
 import os
 import logging
 import hashlib
@@ -107,6 +108,80 @@ def _email_match(value: str) -> Dict[str, Any]:
     normalized = value.strip()
     return {"$regex": f"^{re.escape(normalized)}$", "$options": "i"}
 
+
+DEFAULT_SUBSCRIPTION_ORDERS_COUNT = [800, 400, 590]
+DEFAULT_CATEGORY_ORDERS_COUNT = {
+    "giftcard": [980, 1240, 1580, 1960],
+    "topup": [860, 1120, 1460, 1820],
+    "service": [740, 980, 1260, 1590],
+    "subscription": DEFAULT_SUBSCRIPTION_ORDERS_COUNT,
+    "default": [700, 920, 1180, 1510],
+}
+NETFLIX_DEFAULT_ORDERS_COUNT = 1568
+ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "15")))
+CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+_order_auto_cancel_task: Optional[asyncio.Task] = None
+
+
+def _stable_bucket(value: str, size: int) -> int:
+    if size <= 0:
+        return 0
+    key = (value or "default").encode("utf-8")
+    digest = hashlib.sha256(key).hexdigest()
+    return int(digest[:8], 16) % size
+
+
+def _default_orders_count_for_product(product: Optional[Dict[str, Any]]) -> int:
+    if not isinstance(product, dict):
+        return 900
+    name = str(product.get("name") or "").strip().lower()
+    category = str(product.get("category") or "").strip().lower()
+    is_subscription = bool(product.get("is_subscription")) or category == "subscription"
+    seed = "|".join([
+        str(product.get("id") or ""),
+        str(product.get("parent_product_id") or ""),
+        str(product.get("variant_name") or ""),
+        name,
+        category,
+    ])
+    if "netflix" in name and is_subscription:
+        return NETFLIX_DEFAULT_ORDERS_COUNT
+    if is_subscription:
+        idx = _stable_bucket(seed, len(DEFAULT_SUBSCRIPTION_ORDERS_COUNT))
+        return int(DEFAULT_SUBSCRIPTION_ORDERS_COUNT[idx])
+    options = DEFAULT_CATEGORY_ORDERS_COUNT.get(category) or DEFAULT_CATEGORY_ORDERS_COUNT["default"]
+    idx = _stable_bucket(seed, len(options))
+    return int(options[idx])
+
+
+def _normalize_orders_count_for_product(product: Dict[str, Any]) -> int:
+    default_value = _default_orders_count_for_product(product)
+    try:
+        current = int(product.get("orders_count", 0) or 0)
+    except Exception:
+        current = 0
+    if current <= 0:
+        return default_value
+    return max(current, default_value)
+
+
+def _parse_datetime_utc(value: Any) -> Optional[datetime]:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except Exception:
+            return None
+    return None
+
+
+def _matched_count(result: Any) -> int:
+    if isinstance(result, dict):
+        return int(result.get("matched_count", 0) or 0)
+    return int(getattr(result, "matched_count", 0) or 0)
+
 # Product Models
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -131,6 +206,7 @@ class Product(BaseModel):
     giftcard_category: Optional[str] = None  # For gift cards: Shopping, Gaming, Entertainment, etc.
     giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
     is_subscription: bool = False  # Track if this triggers referral payout
+    orders_count: int = 0  # Total purchased quantity for this product
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -155,6 +231,7 @@ class ProductCreate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     is_subscription: bool = False
+    orders_count: int = 0
     metadata: Optional[Dict[str, Any]] = None
 
 class ProductUpdate(BaseModel):
@@ -178,6 +255,7 @@ class ProductUpdate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     is_subscription: Optional[bool] = None
+    orders_count: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
 
 # Order Models
@@ -277,6 +355,9 @@ class SiteSettings(BaseModel):
     z2u_api_key: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None  # e.g. "KayiCom <no-reply@yourdomain.com>"
+    telegram_notifications_enabled: Optional[bool] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_admin_chat_id: Optional[str] = None
     announcement_enabled: Optional[bool] = False
     announcement_message: Optional[str] = None
     trustpilot_enabled: Optional[bool] = False
@@ -368,6 +449,9 @@ class SettingsUpdate(BaseModel):
     z2u_api_key: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None
+    telegram_notifications_enabled: Optional[bool] = None
+    telegram_bot_token: Optional[str] = None
+    telegram_admin_chat_id: Optional[str] = None
     announcement_enabled: Optional[bool] = None
     announcement_message: Optional[str] = None
     trustpilot_enabled: Optional[bool] = None
@@ -404,6 +488,151 @@ class BulkEmailRequest(BaseModel):
 
 def _frontend_base_url() -> str:
     return os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
+
+
+def _build_admin_notification_message(event: str, lines: Optional[List[str]] = None) -> str:
+    message_lines = [f"[KayiCom] {event}"]
+    for line in (lines or []):
+        if line is None:
+            continue
+        value = str(line).strip()
+        if value:
+            message_lines.append(value)
+    message_lines.append(f"Time: {datetime.now(timezone.utc).isoformat()}")
+    text = "\n".join(message_lines)
+    if len(text) > 3900:
+        text = text[:3897] + "..."
+    return text
+
+
+async def _notify_admin_telegram(
+    event: str,
+    lines: Optional[List[str]] = None,
+    settings_override: Optional[Dict[str, Any]] = None
+):
+    """
+    Send admin activity notifications to Telegram.
+    Config can come from site_settings or environment:
+    - TELEGRAM_NOTIFICATIONS_ENABLED
+    - TELEGRAM_BOT_TOKEN
+    - TELEGRAM_ADMIN_CHAT_ID
+    """
+    try:
+        settings = settings_override or await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+        enabled_value = settings.get("telegram_notifications_enabled")
+        if enabled_value is None:
+            env_enabled = os.environ.get("TELEGRAM_NOTIFICATIONS_ENABLED", "false").strip().lower()
+            enabled = env_enabled in {"1", "true", "yes", "on"}
+        else:
+            enabled = bool(enabled_value)
+        if not enabled:
+            return
+
+        bot_token = (settings.get("telegram_bot_token") or os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
+        chat_id = str(settings.get("telegram_admin_chat_id") or os.environ.get("TELEGRAM_ADMIN_CHAT_ID") or "").strip()
+        if not bot_token or not chat_id:
+            return
+
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": _build_admin_notification_message(event, lines),
+            "disable_web_page_preview": True,
+        }
+        resp = await asyncio.to_thread(requests.post, url, json=payload, timeout=10)
+        if not (200 <= resp.status_code < 300):
+            logging.error(f"Telegram notify failed ({resp.status_code}): {resp.text[:300]}")
+    except Exception as e:
+        logging.error(f"Telegram notification error: {e}")
+
+
+def _ensure_crypto_exchange_enabled():
+    if not CRYPTO_EXCHANGE_ENABLED:
+        raise HTTPException(status_code=410, detail="Crypto buy/sell is disabled")
+
+
+async def _backfill_default_orders_count(limit: int = 5000) -> int:
+    """Ensure products always have a non-empty orders_count baseline."""
+    updated = 0
+    try:
+        products = await db.products.find({}, {"_id": 0}).to_list(limit)
+    except Exception:
+        return 0
+
+    for product in products:
+        normalized = _normalize_orders_count_for_product(product)
+        current = 0
+        try:
+            current = int(product.get("orders_count", 0) or 0)
+        except Exception:
+            current = 0
+        if current >= normalized:
+            continue
+        await db.products.update_one({"id": product.get("id")}, {"$set": {"orders_count": int(normalized)}})
+        updated += 1
+    return updated
+
+
+async def _auto_cancel_unpaid_orders() -> int:
+    """
+    Auto-cancel unpaid orders after ORDER_PAYMENT_TIMEOUT_MINUTES.
+    Unpaid statuses considered: pending, pending_verification.
+    """
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=ORDER_PAYMENT_TIMEOUT_MINUTES)
+    orders = await db.orders.find({}, {"_id": 0}).to_list(5000)
+    cancelled_ids: List[str] = []
+
+    for order in orders:
+        payment_status = str(order.get("payment_status") or "").lower()
+        order_status = str(order.get("order_status") or "").lower()
+        if payment_status not in {"pending", "pending_verification"}:
+            continue
+        if order_status in {"completed", "cancelled"}:
+            continue
+
+        created_at = _parse_datetime_utc(order.get("created_at"))
+        if not created_at or created_at > cutoff:
+            continue
+
+        oid = order.get("id")
+        if not oid:
+            continue
+        res = await db.orders.update_one(
+            {"id": oid},
+            {"$set": {
+                "payment_status": "cancelled",
+                "order_status": "cancelled",
+                "cancellation_reason": f"Auto-cancelled after {ORDER_PAYMENT_TIMEOUT_MINUTES} minutes without payment",
+                "cancelled_at": now.isoformat(),
+                "updated_at": now.isoformat(),
+            }}
+        )
+        if _matched_count(res) > 0:
+            cancelled_ids.append(oid)
+
+    if cancelled_ids:
+        preview = ", ".join(cancelled_ids[:10])
+        more = "" if len(cancelled_ids) <= 10 else f" (+{len(cancelled_ids) - 10} more)"
+        await _notify_admin_telegram(
+            "Orders auto-cancelled",
+            [
+                f"Count: {len(cancelled_ids)}",
+                f"Order IDs: {preview}{more}",
+            ],
+        )
+    return len(cancelled_ids)
+
+
+async def _order_auto_cancel_worker():
+    while True:
+        try:
+            cancelled = await _auto_cancel_unpaid_orders()
+            if cancelled > 0:
+                logging.info(f"Auto-cancelled {cancelled} unpaid order(s)")
+        except Exception as e:
+            logging.error(f"Order auto-cancel worker error: {e}")
+        await asyncio.sleep(60)
 
 
 _DEFAULT_SITE_CRYPTO_SETTINGS = SiteSettings().crypto_settings or {}
@@ -867,6 +1096,14 @@ async def register(user_data: UserCreate):
     doc['created_at'] = doc['created_at'].isoformat()
     
     await db.users.insert_one(doc)
+    await _notify_admin_telegram(
+        "New customer registered",
+        [
+            f"Email: {user.email}",
+            f"Customer ID: {user.customer_id}",
+            f"Name: {user.full_name}",
+        ],
+    )
     return user
 
 @api_router.post("/auth/login")
@@ -1083,6 +1320,7 @@ async def get_products(
                 created_at = product.get("created_at", datetime.now(timezone.utc))
                 if isinstance(created_at, str):
                     created_at = datetime.fromisoformat(created_at)
+                orders_count = _normalize_orders_count_for_product(product)
 
                 validated_product = {
                     "id": product.get("id", ""),
@@ -1106,6 +1344,7 @@ async def get_products(
                     "giftcard_category": product.get("giftcard_category"),
                     "giftcard_subcategory": product.get("giftcard_subcategory"),
                     "is_subscription": product.get("is_subscription", False),
+                    "orders_count": orders_count,
                     "metadata": product.get("metadata", {}),
                     "created_at": created_at,
                 }
@@ -1128,11 +1367,13 @@ async def get_product(product_id: str):
     
     if isinstance(product.get('created_at'), str):
         product['created_at'] = datetime.fromisoformat(product['created_at'])
+    product["orders_count"] = _normalize_orders_count_for_product(product)
     return product
 
 @api_router.post("/products", response_model=Product)
 async def create_product(product_data: ProductCreate):
     product = Product(**product_data.model_dump())
+    product.orders_count = _normalize_orders_count_for_product(product.model_dump())
     doc = product.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     
@@ -1146,6 +1387,17 @@ async def update_product(product_id: str, updates: ProductUpdate):
         raise HTTPException(status_code=404, detail="Product not found")
     
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    if "orders_count" in update_data:
+        try:
+            update_data["orders_count"] = int(update_data["orders_count"])
+        except Exception:
+            raise HTTPException(status_code=400, detail="orders_count must be an integer")
+        merged = {**existing, **update_data}
+        default_count = _default_orders_count_for_product(merged)
+        if update_data["orders_count"] <= 0:
+            update_data["orders_count"] = default_count
+        else:
+            update_data["orders_count"] = max(update_data["orders_count"], default_count)
     
     if update_data:
         await db.products.update_one({"id": product_id}, {"$set": update_data})
@@ -1153,6 +1405,7 @@ async def update_product(product_id: str, updates: ProductUpdate):
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    updated["orders_count"] = _normalize_orders_count_for_product(updated)
     return updated
 
 @api_router.delete("/products/{product_id}")
@@ -1232,6 +1485,56 @@ async def _record_coupon_usage_if_needed(order_id: str):
 
     await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
     await db.orders.update_one({"id": order_id}, {"$set": {"coupon_usage_recorded": True}})
+
+
+async def _record_product_orders_if_needed(order_id: str):
+    """
+    Increment per-product orders_count once per paid order.
+    Uses a marker on the order document to keep operation idempotent.
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return
+    if order.get("payment_status") != "paid":
+        return
+    if order.get("product_orders_recorded"):
+        return
+
+    # Mark first so repeated webhook/admin calls don't double count.
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"product_orders_recorded": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    increments: Dict[str, int] = {}
+    for item in order.get("items") or []:
+        product_id = item.get("product_id")
+        if not product_id:
+            continue
+        try:
+            qty = int(item.get("quantity", 1))
+        except Exception:
+            qty = 1
+        if qty <= 0:
+            qty = 1
+        increments[product_id] = increments.get(product_id, 0) + qty
+
+    if not increments:
+        return
+
+    try:
+        for product_id, qty in increments.items():
+            await db.products.update_one(
+                {"id": product_id},
+                {"$inc": {"orders_count": int(qty)}}
+            )
+    except Exception as e:
+        # Allow retries if product increment fails.
+        await db.orders.update_one(
+            {"id": order_id},
+            {"$set": {"product_orders_recorded": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        raise e
 
 
 async def _record_loyalty_credits_if_needed(order_id: str):
@@ -1377,6 +1680,7 @@ async def delete_coupon(coupon_id: str):
 
 @api_router.post("/orders", response_model=Order)
 async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
+    await _auto_cancel_unpaid_orders()
     user_doc = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user_doc:
         raise HTTPException(status_code=404, detail="User not found")
@@ -1502,10 +1806,23 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
     doc['updated_at'] = doc['updated_at'].isoformat()
     
     await db.orders.insert_one(doc)
+    await _record_product_orders_if_needed(order.id)
+    await _notify_admin_telegram(
+        "New order created",
+        [
+            f"Order ID: {order.id}",
+            f"Customer: {user_email}",
+            f"Items: {len(validated_items)}",
+            f"Total: ${float(total):.2f}",
+            f"Payment method: {order.payment_method}",
+            f"Payment status: {order.payment_status}",
+        ],
+    )
     return order
 
 @api_router.get("/orders", response_model=List[Order])
 async def get_orders(user_id: Optional[str] = None):
+    await _auto_cancel_unpaid_orders()
     query = {}
     if user_id:
         query['user_id'] = user_id
@@ -1526,6 +1843,7 @@ async def get_orders(user_id: Optional[str] = None):
 
 @api_router.get("/orders/{order_id}", response_model=Order)
 async def get_order(order_id: str):
+    await _auto_cancel_unpaid_orders()
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
@@ -1567,6 +1885,7 @@ async def update_order_status(
     # Record coupon usage once payment is marked as paid
     if payment_status == "paid":
         await _record_coupon_usage_if_needed(order_id)
+        await _record_product_orders_if_needed(order_id)
 
     # If order is completed, trigger referral payout check (idempotent)
     if order_status == "completed":
@@ -1580,6 +1899,16 @@ async def update_order_status(
                 logging.error(f"Subscription email check error: {e}")
             await check_and_credit_referral(order)
             await _record_loyalty_credits_if_needed(order_id)
+
+    await _notify_admin_telegram(
+        "Order status updated",
+        [
+            f"Order ID: {order_id}",
+            f"Payment status: {payment_status or 'unchanged'}",
+            f"Order status: {order_status or 'unchanged'}",
+            f"Reason: {reason.strip() if reason else 'n/a'}",
+        ],
+    )
     
     return {"message": "Order updated successfully"}
 
@@ -1636,6 +1965,7 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
     }
     
     await db.orders.update_one({"id": order_id}, {"$set": updates})
+    await _record_product_orders_if_needed(order_id)
 
     # Set subscription dates if this order is a subscription
     order = await _set_subscription_dates_if_needed(order_id)
@@ -1698,6 +2028,15 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
         except Exception as e:
             logging.error(f"Subscription email check error: {e}")
 
+    await _notify_admin_telegram(
+        "Order delivered",
+        [
+            f"Order ID: {order_id}",
+            f"Customer: {order.get('user_email') if order else 'unknown'}",
+            f"Items with delivery details: {len(normalized_items)}",
+        ],
+    )
+
     return {"message": "Order delivered successfully"}
 
 
@@ -1726,6 +2065,15 @@ async def upload_payment_proof(proof_data: ManualPaymentProof):
         }}
     )
 
+    await _notify_admin_telegram(
+        "Order payment proof submitted",
+        [
+            f"Order ID: {proof_data.order_id}",
+            f"Transaction ID: {proof_data.transaction_id}",
+            f"Status: pending_verification",
+        ],
+    )
+
     return {"message": "Payment proof uploaded successfully"}
 
 @api_router.post("/payments/plisio-callback")
@@ -1747,6 +2095,14 @@ async def plisio_callback(data: Dict[str, Any]):
                 }}
             )
             await _record_coupon_usage_if_needed(order_id)
+            await _record_product_orders_if_needed(order_id)
+            await _notify_admin_telegram(
+                "Crypto payment confirmed (order)",
+                [
+                    f"Order ID: {order_id}",
+                    "Status: paid / processing",
+                ],
+            )
         else:
             # Then try wallet topups
             topup = await db.wallet_topups.find_one({"id": order_id}, {"_id": 0})
@@ -1852,7 +2208,14 @@ async def get_settings():
     settings = _apply_crypto_config_to_settings(settings, crypto_config)
 
     # Never expose secret keys to clients
-    for secret_field in ["plisio_api_key", "mtcgame_api_key", "gosplit_api_key", "z2u_api_key", "resend_api_key"]:
+    for secret_field in [
+        "plisio_api_key",
+        "mtcgame_api_key",
+        "gosplit_api_key",
+        "z2u_api_key",
+        "resend_api_key",
+        "telegram_bot_token",
+    ]:
         if secret_field in settings:
             settings[secret_field] = None
     return settings
@@ -2059,6 +2422,7 @@ async def run_subscription_notifications():
 
 @api_router.get("/stats/dashboard")
 async def get_dashboard_stats():
+    await _auto_cancel_unpaid_orders()
     total_orders = await db.orders.count_documents({})
     total_products = await db.products.count_documents({})
     total_customers = await db.users.count_documents({"role": "customer"})
@@ -2196,6 +2560,15 @@ async def register_with_referral(user_data: UserCreate, referral_code: Optional[
             doc['referred_by'] = referral_code
     
     await db.users.insert_one(doc)
+    await _notify_admin_telegram(
+        "New customer registered (referral)",
+        [
+            f"Email: {user.email}",
+            f"Customer ID: {user.customer_id}",
+            f"Name: {user.full_name}",
+            f"Referral code used: {doc.get('referred_by') or 'none'}",
+        ],
+    )
     return user
 
 # ==================== WITHDRAWAL ENDPOINTS ====================
@@ -2244,6 +2617,16 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user_id: str, user_e
     await db.users.update_one(
         {"id": user_id},
         {"$inc": {"referral_balance": -withdrawal.amount}}
+    )
+
+    await _notify_admin_telegram(
+        "Withdrawal request created",
+        [
+            f"Withdrawal ID: {withdrawal_doc['id']}",
+            f"User: {user_email}",
+            f"Amount: ${float(withdrawal.amount):.2f}",
+            f"Method: {withdrawal.method}",
+        ],
     )
     
     return {"message": "Withdrawal request submitted", "withdrawal_id": withdrawal_doc['id']}
@@ -2294,6 +2677,14 @@ async def update_withdrawal_status(withdrawal_id: str, status: str, admin_notes:
         )
     
     await db.withdrawals.update_one({"id": withdrawal_id}, {"$set": updates})
+    await _notify_admin_telegram(
+        "Withdrawal status updated",
+        [
+            f"Withdrawal ID: {withdrawal_id}",
+            f"New status: {status}",
+            f"Admin notes: {admin_notes or 'n/a'}",
+        ],
+    )
     
     return {"message": f"Withdrawal {status}"}
 
@@ -2302,6 +2693,7 @@ async def update_withdrawal_status(withdrawal_id: str, status: str, admin_notes:
 @api_router.get("/crypto/config")
 async def get_crypto_config():
     """Get crypto exchange rates and config"""
+    _ensure_crypto_exchange_enabled()
     config = await db.crypto_config.find_one({"id": "crypto_config"}, {"_id": 0})
     if not config:
         # Create default config
@@ -2409,6 +2801,7 @@ async def get_crypto_config():
 @api_router.put("/crypto/config")
 async def update_crypto_config(updates: Dict[str, Any]):
     """Admin: Update crypto config"""
+    _ensure_crypto_exchange_enabled()
     updates['updated_at'] = datetime.now(timezone.utc).isoformat()
     
     result = await db.crypto_config.update_one(
@@ -2422,6 +2815,7 @@ async def update_crypto_config(updates: Dict[str, Any]):
 @api_router.post("/crypto/buy")
 async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email: str = None):
     """User buys USDT - Generate Plisio invoice automatically"""
+    _ensure_crypto_exchange_enabled()
     # Extract user info from request if not provided
     if not user_id:
         user_id = "guest"
@@ -2546,6 +2940,7 @@ async def buy_crypto(request: CryptoBuyRequest, user_id: str = None, user_email:
 @api_router.post("/crypto/sell")
 async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str):
     """User sells USDT"""
+    _ensure_crypto_exchange_enabled()
     config = await db.crypto_config.find_one({"id": "crypto_config"})
     if not config:
         raise HTTPException(status_code=500, detail="Crypto config not found")
@@ -2669,6 +3064,7 @@ async def sell_crypto(request: CryptoSellRequest, user_id: str, user_email: str)
 @api_router.get("/crypto/transactions/user/{user_id}")
 async def get_user_crypto_transactions(user_id: str):
     """Get user's crypto transactions"""
+    _ensure_crypto_exchange_enabled()
     transactions = await db.crypto_transactions.find(
         {"user_id": user_id},
         {"_id": 0}
@@ -2680,6 +3076,7 @@ async def get_user_crypto_transactions(user_id: str):
 @api_router.post("/crypto/transactions/{transaction_id}/proof")
 async def submit_crypto_payment_proof(transaction_id: str, payload: CryptoProofRequest):
     """Attach payment proof/tx id for a pending crypto transaction."""
+    _ensure_crypto_exchange_enabled()
     tx = await db.crypto_transactions.find_one({"id": transaction_id})
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -2703,6 +3100,7 @@ async def submit_crypto_payment_proof(transaction_id: str, payload: CryptoProofR
 @api_router.get("/crypto/transactions/all")
 async def get_all_crypto_transactions():
     """Admin: Get all crypto transactions"""
+    _ensure_crypto_exchange_enabled()
     transactions = await db.crypto_transactions.find(
         {},
         {"_id": 0}
@@ -2721,6 +3119,7 @@ async def update_crypto_transaction_status(
     update_data: CryptoStatusUpdate
 ):
     """Admin: Update crypto transaction status"""
+    _ensure_crypto_exchange_enabled()
     if update_data.status not in ['processing', 'completed', 'rejected', 'failed']:
         raise HTTPException(status_code=400, detail="Invalid status")
     
@@ -3100,6 +3499,16 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
             logging.error(f"Plisio topup error: {e}")
 
     await db.wallet_topups.insert_one(doc)
+    await _notify_admin_telegram(
+        "Wallet topup created",
+        [
+            f"Topup ID: {topup_id}",
+            f"User: {user_email}",
+            f"Amount: ${float(topup.amount):.2f}",
+            f"Payment method: {topup.payment_method}",
+            f"Payment status: {doc.get('payment_status')}",
+        ],
+    )
 
     # Attach payment instructions for manual methods (optional)
     payment_info = {}
@@ -3178,6 +3587,14 @@ async def submit_wallet_topup_proof(proof: WalletTopupProof):
         raise HTTPException(status_code=404, detail="Topup not found after update")
     
     logging.info(f"Payment proof submitted for topup {proof.topup_id}, URL length: {len(proof.payment_proof_url) if proof.payment_proof_url else 0}")
+    await _notify_admin_telegram(
+        "Wallet topup proof submitted",
+        [
+            f"Topup ID: {proof.topup_id}",
+            f"Transaction ID: {proof.transaction_id}",
+            "Status: pending_verification",
+        ],
+    )
     
     return {
         "message": "Topup proof submitted",
@@ -3212,6 +3629,15 @@ async def update_wallet_topup_status(topup_id: str, payment_status: str):
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         await db.wallet_topups.update_one({"id": topup_id}, {"$set": {"credited": True}})
+
+    await _notify_admin_telegram(
+        "Wallet topup status updated",
+        [
+            f"Topup ID: {topup_id}",
+            f"User: {topup.get('user_email') or topup.get('user_id')}",
+            f"Status: {payment_status}",
+        ],
+    )
 
     return {"message": "Topup updated"}
 
@@ -3387,6 +3813,18 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
             raise HTTPException(status_code=400, detail="Payment method not enabled")
 
     await db.minutes_transfers.insert_one(doc)
+    await _notify_admin_telegram(
+        "Mobile topup request created",
+        [
+            f"Transfer ID: {transfer_id}",
+            f"User: {user_email}",
+            f"Country: {country}",
+            f"Phone: {phone}",
+            f"Total: ${float(doc['total_amount']):.2f}",
+            f"Payment method: {payload.payment_method}",
+            f"Payment status: {doc.get('payment_status')}",
+        ],
+    )
 
     payment_info = {}
     if payload.payment_method not in ["wallet", "crypto_plisio"]:
@@ -3469,6 +3907,14 @@ async def submit_minutes_transfer_proof(proof: MinutesTransferProof):
     )
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Transfer not found")
+    await _notify_admin_telegram(
+        "Mobile topup proof submitted",
+        [
+            f"Transfer ID: {proof.transfer_id}",
+            f"Transaction ID: {proof.transaction_id}",
+            "Status: pending_verification",
+        ],
+    )
     return {"message": "Payment proof submitted"}
 
 
@@ -3493,6 +3939,14 @@ async def update_minutes_transfer_status(transfer_id: str, updates: MinutesTrans
     if res.matched_count == 0:
         raise HTTPException(status_code=404, detail="Transfer not found")
     updated = await db.minutes_transfers.find_one({"id": transfer_id}, {"_id": 0})
+    await _notify_admin_telegram(
+        "Mobile topup status updated",
+        [
+            f"Transfer ID: {transfer_id}",
+            f"Payment status: {update_data.get('payment_status', 'unchanged')}",
+            f"Transfer status: {update_data.get('transfer_status', 'unchanged')}",
+        ],
+    )
     return updated or {"message": "Updated"}
 
 @api_router.post("/orders/{order_id}/refund")
@@ -3539,6 +3993,16 @@ async def refund_order_to_wallet(order_id: str, adjustment: WalletAdjustment):
         }}
     )
 
+    await _notify_admin_telegram(
+        "Order refunded to wallet",
+        [
+            f"Order ID: {order_id}",
+            f"User: {user_email or user_id}",
+            f"Amount refunded: ${float(adjustment.amount):.2f}",
+            f"Reason: {adjustment.reason or 'Order refund'}",
+        ],
+    )
+
     return {"message": "Refunded to wallet", "user_id": user_id, "amount": float(adjustment.amount)}
 
 # Modify order status endpoint to trigger referral check
@@ -3560,6 +4024,7 @@ async def complete_order_with_referral_check(order_id: str):
     )
 
     await _record_coupon_usage_if_needed(order_id)
+    await _record_product_orders_if_needed(order_id)
     await _set_subscription_dates_if_needed(order_id)
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     try:
@@ -3572,6 +4037,13 @@ async def complete_order_with_referral_check(order_id: str):
 
     # Award loyalty credits for successful order
     await _record_loyalty_credits_if_needed(order_id)
+    await _notify_admin_telegram(
+        "Order completed",
+        [
+            f"Order ID: {order_id}",
+            f"User: {order.get('user_email') or order.get('user_id')}",
+        ],
+    )
     
     return {"message": "Order completed"}
 
@@ -3712,6 +4184,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                 parent_product = {
                     **product_group,
                     "id": parent_id,
+                    "orders_count": _default_orders_count_for_product({**product_group, "id": parent_id}),
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.products.insert_one(parent_product)
@@ -3725,9 +4198,11 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                         "variant_name": variant.get("value") or variant.get("duration"),
                         "price": variant["price"],
                         "region": variant.get("region"),
+                        "orders_count": 0,
                         "subscription_duration_months": None,  # Will be set if duration
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
+                    variant_product["orders_count"] = _default_orders_count_for_product(variant_product)
 
                     # Handle duration for subscriptions
                     if "duration" in variant:
@@ -3747,8 +4222,10 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                 single_product = {
                     **product_group,
                     "id": str(uuid.uuid4()),
+                    "orders_count": 0,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
+                single_product["orders_count"] = _default_orders_count_for_product(single_product)
                 await db.products.insert_one(single_product)
                 total_added += 1
 
@@ -4404,6 +4881,36 @@ async def reset_admin_password():
             "traceback": traceback.format_exc()
         }
 
+@app.on_event("startup")
+async def startup_background_jobs():
+    global _order_auto_cancel_task
+    try:
+        updated = await _backfill_default_orders_count()
+        if updated:
+            logging.info(f"Backfilled orders_count for {updated} product(s)")
+    except Exception as e:
+        logging.error(f"Failed to backfill product orders_count defaults: {e}")
+
+    if _order_auto_cancel_task is not None:
+        try:
+            task_loop = _order_auto_cancel_task.get_loop()
+            if _order_auto_cancel_task.done() or task_loop.is_closed():
+                _order_auto_cancel_task = None
+        except Exception:
+            _order_auto_cancel_task = None
+
+    if _order_auto_cancel_task is None:
+        _order_auto_cancel_task = asyncio.create_task(_order_auto_cancel_worker())
+
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global _order_auto_cancel_task
+    if _order_auto_cancel_task is not None:
+        _order_auto_cancel_task.cancel()
+        try:
+            await _order_auto_cancel_task
+        except (asyncio.CancelledError, RuntimeError):
+            pass
+        _order_auto_cancel_task = None
     client.close()

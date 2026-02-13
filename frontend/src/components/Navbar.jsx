@@ -1,6 +1,6 @@
 import { useContext } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, User, LogOut, Home, Package, Settings } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Package, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -43,9 +43,6 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
             <Link to="/" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-home">
               Home
             </Link>
-            <Link to="/crypto" className="text-white font-medium hover:text-pink-400 transition" data-testid="nav-crypto">
-              Crypto
-            </Link>
             {user && (
               <>
                 <Link to="/dashboard" className="text-white font-medium hover:text-pink-400 transition">
@@ -64,17 +61,6 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
             )}
           </div>
           
-          {/* Mobile Menu - Hamburger for logged in users */}
-          <div className="flex lg:hidden items-center gap-1">
-            {!user && (
-              <>
-                <Link to="/crypto" className="text-white hover:text-pink-400 p-1.5">
-                  <span className="text-xs font-semibold">Crypto</span>
-                </Link>
-              </>
-            )}
-          </div>
-
           {/* Right side */}
           <div className="flex items-center gap-0 md:gap-3 flex-shrink-0">
             <LanguageSwitcher />
@@ -123,11 +109,6 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                       <Link to="/products" className="cursor-pointer text-gray-300 hover:text-pink-400">
                         <Package className="mr-2" size={16} />
                         Products
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link to="/crypto" className="cursor-pointer text-gray-300 hover:text-pink-400">
-                        💱 Crypto
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
