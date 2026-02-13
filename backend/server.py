@@ -123,6 +123,11 @@ NETFLIX_DEFAULT_ORDERS_COUNT = 1568
 ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "15")))
 CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 _order_auto_cancel_task: Optional[asyncio.Task] = None
+_subscription_notification_task: Optional[asyncio.Task] = None
+SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS = max(
+    60,
+    int(os.environ.get("SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS", "300")),
+)
 
 
 def _stable_bucket(value: str, size: int) -> int:
@@ -1264,6 +1269,31 @@ async def _maybe_send_subscription_emails(order: dict):
                 ],
             )
             await mark_sent("expired_admin_telegram")
+
+
+async def _run_subscription_notification_checks(limit: int = 5000) -> int:
+    orders = await db.orders.find(
+        {"subscription_end_date": {"$ne": None}, "payment_status": "paid", "order_status": "completed"},
+        {"_id": 0},
+    ).to_list(limit)
+
+    processed = 0
+    for order in orders:
+        try:
+            await _maybe_send_subscription_emails(order)
+            processed += 1
+        except Exception as e:
+            logging.error(f"Subscription notification error for {order.get('id')}: {e}")
+    return processed
+
+
+async def _subscription_notifications_worker():
+    while True:
+        try:
+            await _run_subscription_notification_checks()
+        except Exception as e:
+            logging.error(f"Subscription notifications worker error: {e}")
+        await asyncio.sleep(SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS)
 
 
 # Withdrawal Models
@@ -3046,23 +3076,8 @@ async def run_subscription_notifications():
     Run subscription reminder checks for all paid+completed subscription orders.
     Safe to call from a cron job.
     """
-    now = datetime.now(timezone.utc)
-    # Find orders with subscription_end_date set
-    orders = await db.orders.find(
-        {"subscription_end_date": {"$ne": None}, "payment_status": "paid", "order_status": "completed"},
-        {"_id": 0}
-    ).to_list(5000)
-
-    processed = 0
-    for order in orders:
-        try:
-            # Ensure dates exist (and parseable)
-            await _maybe_send_subscription_emails(order)
-            processed += 1
-        except Exception as e:
-            logging.error(f"Subscription notification error for {order.get('id')}: {e}")
-
-    return {"processed": processed, "timestamp": now.isoformat()}
+    processed = await _run_subscription_notification_checks(limit=5000)
+    return {"processed": processed, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @api_router.get("/stats/dashboard")
 async def get_dashboard_stats():
@@ -5555,7 +5570,7 @@ async def reset_admin_password():
 
 @app.on_event("startup")
 async def startup_background_jobs():
-    global _order_auto_cancel_task
+    global _order_auto_cancel_task, _subscription_notification_task
     try:
         updated_blog = await _backfill_blog_post_fields()
         if updated_blog:
@@ -5581,10 +5596,21 @@ async def startup_background_jobs():
     if _order_auto_cancel_task is None:
         _order_auto_cancel_task = asyncio.create_task(_order_auto_cancel_worker())
 
+    if _subscription_notification_task is not None:
+        try:
+            task_loop = _subscription_notification_task.get_loop()
+            if _subscription_notification_task.done() or task_loop.is_closed():
+                _subscription_notification_task = None
+        except Exception:
+            _subscription_notification_task = None
+
+    if _subscription_notification_task is None:
+        _subscription_notification_task = asyncio.create_task(_subscription_notifications_worker())
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    global _order_auto_cancel_task
+    global _order_auto_cancel_task, _subscription_notification_task
     if _order_auto_cancel_task is not None:
         _order_auto_cancel_task.cancel()
         try:
@@ -5592,4 +5618,11 @@ async def shutdown_db_client():
         except (asyncio.CancelledError, RuntimeError):
             pass
         _order_auto_cancel_task = None
+    if _subscription_notification_task is not None:
+        _subscription_notification_task.cancel()
+        try:
+            await _subscription_notification_task
+        except (asyncio.CancelledError, RuntimeError):
+            pass
+        _subscription_notification_task = None
     client.close()
