@@ -109,14 +109,16 @@ def _email_match(value: str) -> Dict[str, Any]:
     return {"$regex": f"^{re.escape(normalized)}$", "$options": "i"}
 
 
-DEFAULT_SUBSCRIPTION_ORDERS_COUNT = [800, 400, 590]
-DEFAULT_CATEGORY_ORDERS_COUNT = {
-    "giftcard": [980, 1240, 1580, 1960],
-    "topup": [860, 1120, 1460, 1820],
-    "service": [740, 980, 1260, 1590],
-    "subscription": DEFAULT_SUBSCRIPTION_ORDERS_COUNT,
-    "default": [700, 920, 1180, 1510],
+DEFAULT_SUBSCRIPTION_ORDERS_BASE = 1200
+DEFAULT_SUBSCRIPTION_ORDERS_SPAN = 700
+DEFAULT_CATEGORY_ORDERS_BASE = {
+    "giftcard": 1300,
+    "topup": 1250,
+    "service": 1180,
+    "subscription": DEFAULT_SUBSCRIPTION_ORDERS_BASE,
+    "default": 1120,
 }
+DEFAULT_CATEGORY_ORDERS_SPAN = 750
 NETFLIX_DEFAULT_ORDERS_COUNT = 1568
 ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "15")))
 CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -133,7 +135,7 @@ def _stable_bucket(value: str, size: int) -> int:
 
 def _default_orders_count_for_product(product: Optional[Dict[str, Any]]) -> int:
     if not isinstance(product, dict):
-        return 900
+        return 1200
     name = str(product.get("name") or "").strip().lower()
     category = str(product.get("category") or "").strip().lower()
     is_subscription = bool(product.get("is_subscription")) or category == "subscription"
@@ -147,11 +149,11 @@ def _default_orders_count_for_product(product: Optional[Dict[str, Any]]) -> int:
     if "netflix" in name and is_subscription:
         return NETFLIX_DEFAULT_ORDERS_COUNT
     if is_subscription:
-        idx = _stable_bucket(seed, len(DEFAULT_SUBSCRIPTION_ORDERS_COUNT))
-        return int(DEFAULT_SUBSCRIPTION_ORDERS_COUNT[idx])
-    options = DEFAULT_CATEGORY_ORDERS_COUNT.get(category) or DEFAULT_CATEGORY_ORDERS_COUNT["default"]
-    idx = _stable_bucket(seed, len(options))
-    return int(options[idx])
+        offset = _stable_bucket(seed, DEFAULT_SUBSCRIPTION_ORDERS_SPAN)
+        return int(DEFAULT_SUBSCRIPTION_ORDERS_BASE + offset)
+    base = int(DEFAULT_CATEGORY_ORDERS_BASE.get(category) or DEFAULT_CATEGORY_ORDERS_BASE["default"])
+    offset = _stable_bucket(seed, DEFAULT_CATEGORY_ORDERS_SPAN)
+    return int(base + offset)
 
 
 def _normalize_orders_count_for_product(product: Dict[str, Any]) -> int:

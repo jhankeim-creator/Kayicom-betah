@@ -277,7 +277,7 @@ def test_products_search_and_category_combined(app_module):
     assert items[0]["id"] == "s1"
 
 
-def test_products_default_orders_count_is_not_empty(app_module):
+def test_products_default_orders_count_is_above_1000(app_module):
     app_module.db.products._docs.append(
         {"id": "p-oc-1", "name": "Gift", "description": "Desc", "category": "giftcard", "price": 10.0}
     )
@@ -286,7 +286,7 @@ def test_products_default_orders_count_is_not_empty(app_module):
     assert r.status_code == 200, r.text
     data = r.json()
     product = next(p for p in data if p["id"] == "p-oc-1")
-    assert int(product.get("orders_count", 0)) > 0
+    assert int(product.get("orders_count", 0)) > 1000
 
 
 def test_paid_order_increments_product_orders_count_idempotently(app_module):
