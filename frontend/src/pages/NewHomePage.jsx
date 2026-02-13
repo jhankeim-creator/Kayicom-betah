@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package, Calendar } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeOrdersCount } from '../utils/ordersCount';
+import { listBlogPosts } from '../utils/blogApi';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
 const NewHomePage = ({ user, logout, cart, settings }) => {
@@ -62,8 +63,8 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
 
   const loadLatestBlogPosts = async () => {
     try {
-      const response = await axiosInstance.get('/blog/posts?published_only=true&limit=3');
-      setLatestBlogPosts(Array.isArray(response.data) ? response.data : []);
+      const result = await listBlogPosts({ publishedOnly: true, limit: 3 });
+      setLatestBlogPosts(result.posts || []);
     } catch (error) {
       console.error('Error loading latest blog posts:', error);
       setLatestBlogPosts([]);
