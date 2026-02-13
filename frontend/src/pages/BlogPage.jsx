@@ -89,7 +89,7 @@ const BlogPage = ({ user, logout, cart, settings }) => {
                           </span>
                         ))}
                       </div>
-                      <Link to={`/blog/${post.id}`}>
+                      <Link to={`/blog/${post.slug || post.id}`}>
                         <Button className="gradient-button text-white w-full">
                           Read more <ArrowRight size={16} className="ml-2" />
                         </Button>

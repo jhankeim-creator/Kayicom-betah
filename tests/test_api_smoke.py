@@ -408,11 +408,18 @@ def test_blog_post_publish_flow(app_module):
             "excerpt": "Quick update",
             "content": "We updated delivery flow.",
             "tags": ["update", "service"],
+            "seo_title": "Service Update | KayiCom",
+            "seo_description": "Quick update",
+            "cta_label": "Browse products",
+            "cta_url": "/products",
             "published": False,
         },
     )
     assert create.status_code == 200, create.text
-    post_id = create.json()["id"]
+    created = create.json()
+    post_id = created["id"]
+    post_slug = created.get("slug")
+    assert isinstance(post_slug, str) and post_slug
 
     listed_before = client.get("/api/blog/posts")
     assert listed_before.status_code == 200, listed_before.text
@@ -422,9 +429,31 @@ def test_blog_post_publish_flow(app_module):
     assert publish.status_code == 200, publish.text
     assert publish.json()["published"] is True
 
+    by_slug = client.get(f"/api/blog/posts/by-slug/{post_slug}")
+    assert by_slug.status_code == 200, by_slug.text
+    assert by_slug.json()["id"] == post_id
+
     listed_after = client.get("/api/blog/posts")
     assert listed_after.status_code == 200, listed_after.text
     assert any(post["id"] == post_id for post in listed_after.json())
+
+
+def test_blog_slug_is_unique_for_similar_titles(app_module):
+    client = TestClient(app_module.app)
+    r1 = client.post(
+        "/api/blog/posts",
+        json={"title": "Promo Week", "content": "First", "published": True},
+    )
+    assert r1.status_code == 200, r1.text
+    r2 = client.post(
+        "/api/blog/posts",
+        json={"title": "Promo Week", "content": "Second", "published": True},
+    )
+    assert r2.status_code == 200, r2.text
+    slug1 = r1.json().get("slug")
+    slug2 = r2.json().get("slug")
+    assert slug1 and slug2
+    assert slug1 != slug2
 
 
 def test_minutes_quote_and_wallet_create(app_module):

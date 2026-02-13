@@ -12,10 +12,15 @@ import { toast } from 'sonner';
 
 const EMPTY_FORM = {
   title: '',
+  slug: '',
   excerpt: '',
   content: '',
   cover_image_url: '',
   tags: '',
+  seo_title: '',
+  seo_description: '',
+  cta_label: '',
+  cta_url: '',
   published: false,
 };
 
@@ -38,6 +43,7 @@ const AdminBlog = ({ user, logout, settings }) => {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [formData, setFormData] = useState(EMPTY_FORM);
+  const [editorMode, setEditorMode] = useState('write');
 
   const cartItemCount = useMemo(() => 0, []);
 
@@ -60,16 +66,22 @@ const AdminBlog = ({ user, logout, settings }) => {
   const resetForm = () => {
     setEditingId(null);
     setFormData(EMPTY_FORM);
+    setEditorMode('write');
   };
 
   const startEdit = (post) => {
     setEditingId(post.id);
     setFormData({
       title: post.title || '',
+      slug: post.slug || '',
       excerpt: post.excerpt || '',
       content: post.content || '',
       cover_image_url: post.cover_image_url || '',
       tags: Array.isArray(post.tags) ? post.tags.join(', ') : '',
+      seo_title: post.seo_title || '',
+      seo_description: post.seo_description || '',
+      cta_label: post.cta_label || '',
+      cta_url: post.cta_url || '',
       published: Boolean(post.published),
     });
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -84,10 +96,15 @@ const AdminBlog = ({ user, logout, settings }) => {
 
     const payload = {
       title: formData.title.trim(),
+      slug: formData.slug.trim() || null,
       excerpt: formData.excerpt.trim() || null,
       content: formData.content.trim(),
       cover_image_url: formData.cover_image_url.trim() || null,
       tags: toTagsArray(formData.tags),
+      seo_title: formData.seo_title.trim() || null,
+      seo_description: formData.seo_description.trim() || null,
+      cta_label: formData.cta_label.trim() || null,
+      cta_url: formData.cta_url.trim() || null,
       published: Boolean(formData.published),
     };
 
@@ -125,6 +142,12 @@ const AdminBlog = ({ user, logout, settings }) => {
     }
   };
 
+  const contentWordCount = String(formData.content || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const estimatedReadMinutes = Math.max(1, Math.ceil(contentWordCount / 200));
+
   return (
     <div className="min-h-screen gradient-bg">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
@@ -146,14 +169,28 @@ const AdminBlog = ({ user, logout, settings }) => {
                 {editingId ? 'Edit Blog Post' : 'Create Blog Post'}
               </h2>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <Label className="text-white">Title</Label>
-                  <Input
-                    value={formData.title}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
-                    className="bg-white/10 border-white/20 text-white mt-1"
-                    placeholder="Write a title..."
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-white">Title</Label>
+                    <Input
+                      value={formData.title}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, title: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="Write a title..."
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-white">SEO Slug (optional)</Label>
+                    <Input
+                      value={formData.slug}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, slug: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="example-blog-post-title"
+                    />
+                    <p className="text-white/50 text-xs mt-1">
+                      URL preview: /blog/{(formData.slug || formData.title || 'your-post').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'your-post'}
+                    </p>
+                  </div>
                 </div>
                 <div>
                   <Label className="text-white">Excerpt (short summary)</Label>
@@ -166,14 +203,45 @@ const AdminBlog = ({ user, logout, settings }) => {
                   />
                 </div>
                 <div>
-                  <Label className="text-white">Content</Label>
-                  <Textarea
-                    value={formData.content}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, content: e.target.value }))}
-                    className="bg-white/10 border-white/20 text-white mt-1"
-                    rows={10}
-                    placeholder="Write your full post here..."
-                  />
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-white">Article Writing Area</Label>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={editorMode === 'write' ? 'default' : 'outline'}
+                        className={editorMode === 'write' ? 'gradient-button text-white' : 'border-white/30 text-white hover:bg-white/10'}
+                        onClick={() => setEditorMode('write')}
+                      >
+                        Write
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={editorMode === 'preview' ? 'default' : 'outline'}
+                        className={editorMode === 'preview' ? 'gradient-button text-white' : 'border-white/30 text-white hover:bg-white/10'}
+                        onClick={() => setEditorMode('preview')}
+                      >
+                        Preview
+                      </Button>
+                    </div>
+                  </div>
+                  {editorMode === 'write' ? (
+                    <Textarea
+                      value={formData.content}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, content: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      rows={14}
+                      placeholder="Write your full article here..."
+                    />
+                  ) : (
+                    <div className="mt-1 rounded-lg border border-white/10 bg-black/30 p-4 text-white/90 whitespace-pre-wrap min-h-[280px]">
+                      {formData.content || 'Your preview will appear here...'}
+                    </div>
+                  )}
+                  <p className="text-white/50 text-xs mt-2">
+                    Words: {contentWordCount} • Estimated reading time: {estimatedReadMinutes} min
+                  </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
@@ -195,6 +263,46 @@ const AdminBlog = ({ user, logout, settings }) => {
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-white">SEO Title (optional)</Label>
+                    <Input
+                      value={formData.seo_title}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, seo_title: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="SEO optimized title"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-white">SEO Description (optional)</Label>
+                    <Input
+                      value={formData.seo_description}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, seo_description: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="Short SEO description for search engines"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-white">CTA Label (optional)</Label>
+                    <Input
+                      value={formData.cta_label}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, cta_label: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="Shop now"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-white">CTA URL (optional)</Label>
+                    <Input
+                      value={formData.cta_url}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, cta_url: e.target.value }))}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="/products/subscription or https://..."
+                    />
+                  </div>
+                </div>
                 <label className="inline-flex items-center gap-2 text-white">
                   <input
                     type="checkbox"
@@ -202,7 +310,7 @@ const AdminBlog = ({ user, logout, settings }) => {
                     onChange={(e) => setFormData((prev) => ({ ...prev, published: e.target.checked }))}
                     className="w-4 h-4"
                   />
-                  Publish immediately
+                  Publish immediately (visible on public blog)
                 </label>
 
                 <div className="flex flex-wrap gap-3">
@@ -239,6 +347,7 @@ const AdminBlog = ({ user, logout, settings }) => {
                       <p className="text-white/60 text-xs mt-1">
                         Updated: {formatDate(post.updated_at)} {post.published_at ? `• Published: ${formatDate(post.published_at)}` : ''}
                       </p>
+                      <p className="text-white/50 text-xs mt-1">Slug: {post.slug || '-'}</p>
                       <p className="text-white/75 text-sm mt-2 line-clamp-2">
                         {post.excerpt || String(post.content || '').slice(0, 180)}
                       </p>
@@ -250,7 +359,7 @@ const AdminBlog = ({ user, logout, settings }) => {
                           Delete
                         </Button>
                         {post.published && (
-                          <Link to={`/blog/${post.id}`} target="_blank" rel="noreferrer">
+                          <Link to={`/blog/${post.slug || post.id}`} target="_blank" rel="noreferrer">
                             <Button type="button" size="sm" variant="outline" className="border-white/30 text-white hover:bg-white/10">
                               View
                             </Button>

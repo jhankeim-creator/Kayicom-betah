@@ -200,9 +200,55 @@ def _normalize_blog_tags(tags: Optional[List[str]]) -> List[str]:
     return cleaned
 
 
+def _slugify_text(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return slug or "post"
+
+
+def _derive_blog_excerpt(content: str, limit: int = 180) -> str:
+    text = str(content or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _derive_blog_seo_description(explicit_value: Optional[str], excerpt: Optional[str], content: str) -> str:
+    if explicit_value is not None and str(explicit_value).strip():
+        return str(explicit_value).strip()
+    if excerpt and str(excerpt).strip():
+        return str(excerpt).strip()
+    return _derive_blog_excerpt(content, 160)
+
+
+async def _generate_unique_blog_slug(
+    title: str,
+    preferred_slug: Optional[str] = None,
+    exclude_post_id: Optional[str] = None,
+) -> str:
+    base = _slugify_text(preferred_slug if preferred_slug is not None else title)
+    candidate = base
+    idx = 2
+    while True:
+        existing = await db.blog_posts.find_one({"slug": candidate}, {"_id": 0, "id": 1})
+        if not existing or existing.get("id") == exclude_post_id:
+            return candidate
+        candidate = f"{base}-{idx}"
+        idx += 1
+
+
 def _normalize_blog_post_doc(post: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(post or {})
     normalized["tags"] = _normalize_blog_tags(normalized.get("tags"))
+    normalized["slug"] = _slugify_text(normalized.get("slug") or normalized.get("title") or normalized.get("id") or "post")
+    normalized["excerpt"] = (str(normalized.get("excerpt")).strip() if normalized.get("excerpt") is not None else None) or None
+    normalized["seo_title"] = (str(normalized.get("seo_title")).strip() if normalized.get("seo_title") is not None else None) or None
+    normalized["seo_description"] = _derive_blog_seo_description(
+        normalized.get("seo_description"),
+        normalized.get("excerpt"),
+        str(normalized.get("content") or ""),
+    )
+    normalized["cta_label"] = (str(normalized.get("cta_label")).strip() if normalized.get("cta_label") is not None else None) or None
+    normalized["cta_url"] = (str(normalized.get("cta_url")).strip() if normalized.get("cta_url") is not None else None) or None
     for field in ["created_at", "updated_at", "published_at"]:
         value = normalized.get(field)
         if isinstance(value, str):
@@ -517,11 +563,16 @@ class BulkEmailRequest(BaseModel):
 class BlogPost(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    slug: str
     title: str
     excerpt: Optional[str] = None
     content: str
     cover_image_url: Optional[str] = None
     tags: Optional[List[str]] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
     published: bool = False
     published_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -530,19 +581,29 @@ class BlogPost(BaseModel):
 
 class BlogPostCreate(BaseModel):
     title: str
+    slug: Optional[str] = None
     excerpt: Optional[str] = None
     content: str
     cover_image_url: Optional[str] = None
     tags: Optional[List[str]] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
     published: Optional[bool] = False
 
 
 class BlogPostUpdate(BaseModel):
     title: Optional[str] = None
+    slug: Optional[str] = None
     excerpt: Optional[str] = None
     content: Optional[str] = None
     cover_image_url: Optional[str] = None
     tags: Optional[List[str]] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
+    cta_label: Optional[str] = None
+    cta_url: Optional[str] = None
     published: Optional[bool] = None
     published_at: Optional[datetime] = None
 
@@ -607,6 +668,38 @@ async def _notify_admin_telegram(
             logging.error(f"Telegram notify failed ({resp.status_code}): {resp.text[:300]}")
     except Exception as e:
         logging.error(f"Telegram notification error: {e}")
+
+
+async def _backfill_blog_post_fields(limit: int = 5000) -> int:
+    """Ensure existing blog posts have slug + normalized SEO fields."""
+    updated = 0
+    try:
+        posts = await db.blog_posts.find({}, {"_id": 0}).to_list(limit)
+    except Exception:
+        return 0
+
+    for post in posts:
+        updates: Dict[str, Any] = {}
+        post_id = str(post.get("id") or "")
+        if not str(post.get("slug") or "").strip():
+            updates["slug"] = await _generate_unique_blog_slug(
+                str(post.get("title") or post_id or "post"),
+                exclude_post_id=post_id or None,
+            )
+        normalized_tags = _normalize_blog_tags(post.get("tags"))
+        if normalized_tags != (post.get("tags") or []):
+            updates["tags"] = normalized_tags
+        if post.get("seo_description") in [None, ""]:
+            updates["seo_description"] = _derive_blog_seo_description(
+                None,
+                post.get("excerpt"),
+                str(post.get("content") or ""),
+            )
+        if updates:
+            updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+            await db.blog_posts.update_one({"id": post_id}, {"$set": updates})
+            updated += 1
+    return updated
 
 
 def _ensure_crypto_exchange_enabled():
@@ -2443,6 +2536,18 @@ async def list_blog_posts(published_only: bool = True, limit: int = 50):
     return normalized
 
 
+@api_router.get("/blog/posts/by-slug/{slug}", response_model=BlogPost)
+async def get_blog_post_by_slug(slug: str, published_only: bool = True):
+    normalized_slug = _slugify_text(slug)
+    query: Dict[str, Any] = {"slug": normalized_slug}
+    if published_only:
+        query["published"] = True
+    post = await db.blog_posts.find_one(query, {"_id": 0})
+    if not post:
+        raise HTTPException(status_code=404, detail="Blog post not found")
+    return _normalize_blog_post_doc(post)
+
+
 @api_router.get("/blog/posts/{post_id}", response_model=BlogPost)
 async def get_blog_post(post_id: str, published_only: bool = True):
     query: Dict[str, Any] = {"id": post_id}
@@ -2465,12 +2570,24 @@ async def create_blog_post(payload: BlogPostCreate):
 
     now = datetime.now(timezone.utc)
     is_published = bool(payload.published)
+    preferred_slug = str(payload.slug).strip() if payload.slug is not None else None
+    slug = await _generate_unique_blog_slug(title, preferred_slug or None)
+    excerpt = (str(payload.excerpt).strip() if payload.excerpt is not None else None) or None
+    seo_title = (str(payload.seo_title).strip() if payload.seo_title is not None else None) or None
+    seo_description = _derive_blog_seo_description(payload.seo_description, excerpt, content)
+    cta_label = (str(payload.cta_label).strip() if payload.cta_label is not None else None) or None
+    cta_url = (str(payload.cta_url).strip() if payload.cta_url is not None else None) or None
     post = BlogPost(
+        slug=slug,
         title=title,
-        excerpt=(str(payload.excerpt).strip() if payload.excerpt is not None else None) or None,
+        excerpt=excerpt,
         content=content,
         cover_image_url=(str(payload.cover_image_url).strip() if payload.cover_image_url is not None else None) or None,
         tags=_normalize_blog_tags(payload.tags),
+        seo_title=seo_title,
+        seo_description=seo_description,
+        cta_label=cta_label,
+        cta_url=cta_url,
         published=is_published,
         published_at=now if is_published else None,
         created_at=now,
@@ -2491,6 +2608,7 @@ async def create_blog_post(payload: BlogPostCreate):
         [
             f"Post ID: {post.id}",
             f"Title: {post.title}",
+            f"Slug: {post.slug}",
             f"Published: {'yes' if post.published else 'no'}",
         ],
     )
@@ -2504,20 +2622,48 @@ async def update_blog_post(post_id: str, payload: BlogPostUpdate):
         raise HTTPException(status_code=404, detail="Blog post not found")
 
     update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    next_title = str(existing.get("title") or "")
+    next_content = str(existing.get("content") or "")
+    next_excerpt = (str(existing.get("excerpt")).strip() if existing.get("excerpt") is not None else None) or None
     if "title" in update_data:
         update_data["title"] = str(update_data["title"]).strip()
         if not update_data["title"]:
             raise HTTPException(status_code=400, detail="Title is required")
+        next_title = update_data["title"]
+    if "slug" in update_data:
+        update_data["slug"] = str(update_data["slug"]).strip() or None
     if "content" in update_data:
         update_data["content"] = str(update_data["content"]).strip()
         if not update_data["content"]:
             raise HTTPException(status_code=400, detail="Content is required")
+        next_content = update_data["content"]
     if "excerpt" in update_data:
         update_data["excerpt"] = str(update_data["excerpt"]).strip() or None
+        next_excerpt = update_data["excerpt"]
     if "cover_image_url" in update_data:
         update_data["cover_image_url"] = str(update_data["cover_image_url"]).strip() or None
     if "tags" in update_data:
         update_data["tags"] = _normalize_blog_tags(update_data.get("tags"))
+    if "seo_title" in update_data:
+        update_data["seo_title"] = str(update_data["seo_title"]).strip() or None
+    if "seo_description" in update_data:
+        update_data["seo_description"] = str(update_data["seo_description"]).strip() or None
+    if "cta_label" in update_data:
+        update_data["cta_label"] = str(update_data["cta_label"]).strip() or None
+    if "cta_url" in update_data:
+        update_data["cta_url"] = str(update_data["cta_url"]).strip() or None
+
+    if "slug" in update_data or "title" in update_data:
+        update_data["slug"] = await _generate_unique_blog_slug(
+            next_title,
+            preferred_slug=update_data.get("slug"),
+            exclude_post_id=post_id,
+        )
+    if "seo_description" not in update_data:
+        # Keep SEO description in sync when excerpt/content changed and explicit SEO description doesn't exist.
+        existing_seo = existing.get("seo_description")
+        if existing_seo in [None, ""] and ("excerpt" in update_data or "content" in update_data):
+            update_data["seo_description"] = _derive_blog_seo_description(None, next_excerpt, next_content)
 
     if "published" in update_data:
         was_published = bool(existing.get("published"))
@@ -2540,6 +2686,7 @@ async def update_blog_post(post_id: str, payload: BlogPostUpdate):
         [
             f"Post ID: {post_id}",
             f"Title: {normalized.get('title')}",
+            f"Slug: {normalized.get('slug')}",
             f"Published: {'yes' if normalized.get('published') else 'no'}",
         ],
     )
@@ -5231,6 +5378,13 @@ async def reset_admin_password():
 @app.on_event("startup")
 async def startup_background_jobs():
     global _order_auto_cancel_task
+    try:
+        updated_blog = await _backfill_blog_post_fields()
+        if updated_blog:
+            logging.info(f"Backfilled blog fields for {updated_blog} post(s)")
+    except Exception as e:
+        logging.error(f"Failed to backfill blog fields: {e}")
+
     try:
         updated = await _backfill_default_orders_count()
         if updated:

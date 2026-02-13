@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Calendar } from 'lucide-react';
+import { ArrowLeft, Calendar, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 
 const formatDate = (value) => {
@@ -20,7 +20,7 @@ const formatDate = (value) => {
 };
 
 const BlogDetailPage = ({ user, logout, cart, settings }) => {
-  const { id } = useParams();
+  const { slug } = useParams();
   const [post, setPost] = useState(null);
   const [loading, setLoading] = useState(true);
   const cartItemCount = useMemo(
@@ -31,17 +31,43 @@ const BlogDetailPage = ({ user, logout, cart, settings }) => {
   useEffect(() => {
     const loadPost = async () => {
       try {
-        const response = await axiosInstance.get(`/blog/posts/${id}`);
-        setPost(response.data || null);
+        const bySlug = await axiosInstance.get(`/blog/posts/by-slug/${encodeURIComponent(slug)}`);
+        setPost(bySlug.data || null);
       } catch (error) {
-        console.error('Error loading blog post:', error);
-        toast.error('Blog post not found');
+        try {
+          const fallbackById = await axiosInstance.get(`/blog/posts/${encodeURIComponent(slug)}`);
+          setPost(fallbackById.data || null);
+        } catch (fallbackError) {
+          console.error('Error loading blog post:', fallbackError);
+          toast.error('Blog post not found');
+        }
       } finally {
         setLoading(false);
       }
     };
     loadPost();
-  }, [id]);
+  }, [slug]);
+
+  useEffect(() => {
+    if (!post) return undefined;
+    const previousTitle = document.title;
+    const nextTitle = post.seo_title || post.title || 'Blog';
+    document.title = `${nextTitle} | KayiCom`;
+
+    const previousDescriptionEl = document.querySelector('meta[name="description"]');
+    const prevDescription = previousDescriptionEl?.getAttribute('content') || null;
+    const description = post.seo_description || post.excerpt || '';
+    if (previousDescriptionEl && description) {
+      previousDescriptionEl.setAttribute('content', description);
+    }
+
+    return () => {
+      document.title = previousTitle;
+      if (previousDescriptionEl && prevDescription !== null) {
+        previousDescriptionEl.setAttribute('content', prevDescription);
+      }
+    };
+  }, [post]);
 
   const publishDate = formatDate(post?.published_at || post?.created_at);
 
@@ -88,6 +114,15 @@ const BlogDetailPage = ({ user, logout, cart, settings }) => {
                 <div className="text-white/90 leading-7 whitespace-pre-wrap">
                   {post.content}
                 </div>
+                {(post.cta_url || '').trim() && (
+                  <div className="mt-8">
+                    <a href={post.cta_url} target="_blank" rel="noreferrer">
+                      <Button className="gradient-button text-white">
+                        {post.cta_label || 'Shop now'} <ArrowRight size={16} className="ml-2" />
+                      </Button>
+                    </a>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
