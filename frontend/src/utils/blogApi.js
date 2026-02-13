@@ -21,11 +21,22 @@ const toTagsArray = (value) => {
 
 const nowIso = () => new Date().toISOString();
 
+const stripHtml = (value = '') =>
+  String(value || '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|section|article|blockquote|tr)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const normalizePost = (raw = {}) => {
   const title = String(raw.title || '').trim();
   const content = String(raw.content || '').trim();
-  const excerptValue = raw.excerpt != null ? String(raw.excerpt).trim() : '';
-  const excerpt = excerptValue || (content.length > 180 ? `${content.slice(0, 177).trim()}...` : content);
+  const plainContent = stripHtml(content);
+  const excerptValue = raw.excerpt != null ? stripHtml(raw.excerpt) : '';
+  const excerpt = excerptValue || (plainContent.length > 180 ? `${plainContent.slice(0, 177).trim()}...` : plainContent);
   const slug = slugify(raw.slug || title || raw.id || 'post');
   return {
     id: String(raw.id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`),
@@ -36,7 +47,7 @@ const normalizePost = (raw = {}) => {
     cover_image_url: raw.cover_image_url ? String(raw.cover_image_url).trim() : null,
     tags: toTagsArray(raw.tags),
     seo_title: raw.seo_title ? String(raw.seo_title).trim() : null,
-    seo_description: raw.seo_description ? String(raw.seo_description).trim() : excerpt,
+    seo_description: raw.seo_description ? stripHtml(raw.seo_description) : excerpt,
     cta_label: raw.cta_label ? String(raw.cta_label).trim() : null,
     cta_url: raw.cta_url ? String(raw.cta_url).trim() : null,
     published: Boolean(raw.published),

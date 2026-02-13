@@ -19,6 +19,14 @@ const formatDate = (value) => {
   });
 };
 
+const stripHtmlPreviewText = (value = '') =>
+  String(value || '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
 const BlogPage = ({ user, logout, cart, settings }) => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,7 +72,8 @@ const BlogPage = ({ user, logout, cart, settings }) => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {posts.map((post) => {
-                const excerpt = post.excerpt || String(post.content || '').slice(0, 180);
+                const excerptSource = post.excerpt || post.content || '';
+                const excerpt = stripHtmlPreviewText(excerptSource).slice(0, 180);
                 const publishDate = formatDate(post.published_at || post.created_at);
                 return (
                   <Card key={post.id} className="glass-effect border-white/20 overflow-hidden">

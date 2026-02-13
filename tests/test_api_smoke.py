@@ -459,6 +459,24 @@ def test_blog_slug_is_unique_for_similar_titles(app_module):
     assert slug1 != slug2
 
 
+def test_blog_html_content_keeps_html_and_normalizes_excerpt(app_module):
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/blog/posts",
+        json={
+            "title": "HTML Post",
+            "content": "<h2>Header</h2><p>Hello <strong>world</strong></p><script>alert('x')</script>",
+            "published": True,
+        },
+    )
+    assert r.status_code == 200, r.text
+    post = r.json()
+    assert "<h2>Header</h2>" in post.get("content", "")
+    assert "<" not in (post.get("excerpt") or "")
+    assert "alert" not in (post.get("excerpt") or "").lower()
+    assert "<" not in (post.get("seo_description") or "")
+
+
 def test_minutes_quote_and_wallet_create(app_module):
     # Seed a user with wallet funds
     app_module.db.users._docs.append(

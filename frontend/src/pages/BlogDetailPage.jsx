@@ -5,6 +5,7 @@ import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Calendar, ArrowRight } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { toast } from 'sonner';
 import { getBlogPostBySlugOrId } from '../utils/blogApi';
 
@@ -16,6 +17,21 @@ const formatDate = (value) => {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+  });
+};
+
+const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
+const sanitizeBlogHtml = (value = '') => {
+  const raw = String(value || '');
+  const html = HTML_TAG_REGEX.test(raw) ? raw : raw.replace(/\n/g, '<br />');
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+      'ul', 'ol', 'li', 'blockquote', 'code', 'pre',
+      'a', 'img', 'hr'
+    ],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title'],
   });
 };
 
@@ -65,6 +81,7 @@ const BlogDetailPage = ({ user, logout, cart, settings }) => {
   }, [post]);
 
   const publishDate = formatDate(post?.published_at || post?.created_at);
+  const safeContentHtml = useMemo(() => sanitizeBlogHtml(post?.content || ''), [post?.content]);
 
   return (
     <div className="min-h-screen gradient-bg">
@@ -106,9 +123,10 @@ const BlogDetailPage = ({ user, logout, cart, settings }) => {
                     </span>
                   ))}
                 </div>
-                <div className="text-white/90 leading-7 whitespace-pre-wrap">
-                  {post.content}
-                </div>
+                <div
+                  className="blog-html-content text-white/90 leading-7"
+                  dangerouslySetInnerHTML={{ __html: safeContentHtml }}
+                />
                 {(post.cta_url || '').trim() && (
                   <div className="mt-8">
                     <a href={post.cta_url} target="_blank" rel="noreferrer">
