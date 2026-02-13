@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Package, ShoppingCart, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizeOrdersCount } from '../utils/ordersCount';
 
 const formatSubscriptionDurationLabel = (months) => {
   const value = Number(months);
@@ -94,9 +95,9 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   })();
   const totalOrdersCount = (() => {
     if (variants.length > 0) {
-      return variants.reduce((sum, item) => sum + (Number(item.orders_count) || 0), 0);
+      return variants.reduce((sum, item) => sum + normalizeOrdersCount(item), 0);
     }
-    return Number(selectedProduct?.orders_count) || 0;
+    return normalizeOrdersCount(selectedProduct);
   })();
   const getVariantLabel = (variant) => {
     if (!variant) return '';
