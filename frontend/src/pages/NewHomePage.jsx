@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Zap, Shield, MessageCircle, DollarSign, Star, TrendingUp, Package } from 'lucide-react';
 import { toast } from 'sonner';
+import { normalizeOrdersCount } from '../utils/ordersCount';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
 const NewHomePage = ({ user, logout, cart, settings }) => {
@@ -31,7 +32,7 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
       const rep = sorted[0];
       const minPrice = sorted[0]?.price ?? rep.price;
       const maxPrice = sorted[sorted.length - 1]?.price ?? rep.price;
-      const ordersCount = g.variants.reduce((sum, item) => sum + (Number(item.orders_count) || 0), 0);
+      const ordersCount = g.variants.reduce((sum, item) => sum + normalizeOrdersCount(item), 0);
       return {
         ...rep,
         _variant_count: g.variants.length,
