@@ -131,6 +131,7 @@ class Product(BaseModel):
     giftcard_category: Optional[str] = None  # For gift cards: Shopping, Gaming, Entertainment, etc.
     giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
     is_subscription: bool = False  # Track if this triggers referral payout
+    orders_count: int = 0  # Total purchased quantity for this product
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -155,6 +156,7 @@ class ProductCreate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     is_subscription: bool = False
+    orders_count: int = 0
     metadata: Optional[Dict[str, Any]] = None
 
 class ProductUpdate(BaseModel):
@@ -178,6 +180,7 @@ class ProductUpdate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     is_subscription: Optional[bool] = None
+    orders_count: Optional[int] = None
     metadata: Optional[Dict[str, Any]] = None
 
 # Order Models
@@ -1083,6 +1086,12 @@ async def get_products(
                 created_at = product.get("created_at", datetime.now(timezone.utc))
                 if isinstance(created_at, str):
                     created_at = datetime.fromisoformat(created_at)
+                try:
+                    orders_count = int(product.get("orders_count", 0) or 0)
+                except Exception:
+                    orders_count = 0
+                if orders_count < 0:
+                    orders_count = 0
 
                 validated_product = {
                     "id": product.get("id", ""),
@@ -1106,6 +1115,7 @@ async def get_products(
                     "giftcard_category": product.get("giftcard_category"),
                     "giftcard_subcategory": product.get("giftcard_subcategory"),
                     "is_subscription": product.get("is_subscription", False),
+                    "orders_count": orders_count,
                     "metadata": product.get("metadata", {}),
                     "created_at": created_at,
                 }
@@ -1128,6 +1138,10 @@ async def get_product(product_id: str):
     
     if isinstance(product.get('created_at'), str):
         product['created_at'] = datetime.fromisoformat(product['created_at'])
+    try:
+        product["orders_count"] = max(0, int(product.get("orders_count", 0) or 0))
+    except Exception:
+        product["orders_count"] = 0
     return product
 
 @api_router.post("/products", response_model=Product)
@@ -1146,6 +1160,11 @@ async def update_product(product_id: str, updates: ProductUpdate):
         raise HTTPException(status_code=404, detail="Product not found")
     
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    if "orders_count" in update_data:
+        try:
+            update_data["orders_count"] = max(0, int(update_data["orders_count"]))
+        except Exception:
+            raise HTTPException(status_code=400, detail="orders_count must be a non-negative integer")
     
     if update_data:
         await db.products.update_one({"id": product_id}, {"$set": update_data})
@@ -1153,6 +1172,10 @@ async def update_product(product_id: str, updates: ProductUpdate):
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
+    try:
+        updated["orders_count"] = max(0, int(updated.get("orders_count", 0) or 0))
+    except Exception:
+        updated["orders_count"] = 0
     return updated
 
 @api_router.delete("/products/{product_id}")
@@ -1232,6 +1255,56 @@ async def _record_coupon_usage_if_needed(order_id: str):
 
     await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
     await db.orders.update_one({"id": order_id}, {"$set": {"coupon_usage_recorded": True}})
+
+
+async def _record_product_orders_if_needed(order_id: str):
+    """
+    Increment per-product orders_count once per paid order.
+    Uses a marker on the order document to keep operation idempotent.
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return
+    if order.get("payment_status") != "paid":
+        return
+    if order.get("product_orders_recorded"):
+        return
+
+    # Mark first so repeated webhook/admin calls don't double count.
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {"product_orders_recorded": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    increments: Dict[str, int] = {}
+    for item in order.get("items") or []:
+        product_id = item.get("product_id")
+        if not product_id:
+            continue
+        try:
+            qty = int(item.get("quantity", 1))
+        except Exception:
+            qty = 1
+        if qty <= 0:
+            qty = 1
+        increments[product_id] = increments.get(product_id, 0) + qty
+
+    if not increments:
+        return
+
+    try:
+        for product_id, qty in increments.items():
+            await db.products.update_one(
+                {"id": product_id},
+                {"$inc": {"orders_count": int(qty)}}
+            )
+    except Exception as e:
+        # Allow retries if product increment fails.
+        await db.orders.update_one(
+            {"id": order_id},
+            {"$set": {"product_orders_recorded": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        raise e
 
 
 async def _record_loyalty_credits_if_needed(order_id: str):
@@ -1502,6 +1575,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
     doc['updated_at'] = doc['updated_at'].isoformat()
     
     await db.orders.insert_one(doc)
+    await _record_product_orders_if_needed(order.id)
     return order
 
 @api_router.get("/orders", response_model=List[Order])
@@ -1567,6 +1641,7 @@ async def update_order_status(
     # Record coupon usage once payment is marked as paid
     if payment_status == "paid":
         await _record_coupon_usage_if_needed(order_id)
+        await _record_product_orders_if_needed(order_id)
 
     # If order is completed, trigger referral payout check (idempotent)
     if order_status == "completed":
@@ -1636,6 +1711,7 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
     }
     
     await db.orders.update_one({"id": order_id}, {"$set": updates})
+    await _record_product_orders_if_needed(order_id)
 
     # Set subscription dates if this order is a subscription
     order = await _set_subscription_dates_if_needed(order_id)
@@ -1747,6 +1823,7 @@ async def plisio_callback(data: Dict[str, Any]):
                 }}
             )
             await _record_coupon_usage_if_needed(order_id)
+            await _record_product_orders_if_needed(order_id)
         else:
             # Then try wallet topups
             topup = await db.wallet_topups.find_one({"id": order_id}, {"_id": 0})
@@ -3560,6 +3637,7 @@ async def complete_order_with_referral_check(order_id: str):
     )
 
     await _record_coupon_usage_if_needed(order_id)
+    await _record_product_orders_if_needed(order_id)
     await _set_subscription_dates_if_needed(order_id)
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     try:
@@ -3712,6 +3790,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                 parent_product = {
                     **product_group,
                     "id": parent_id,
+                    "orders_count": 0,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.products.insert_one(parent_product)
@@ -3725,6 +3804,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                         "variant_name": variant.get("value") or variant.get("duration"),
                         "price": variant["price"],
                         "region": variant.get("region"),
+                        "orders_count": 0,
                         "subscription_duration_months": None,  # Will be set if duration
                         "created_at": datetime.now(timezone.utc).isoformat()
                     }
@@ -3747,6 +3827,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                 single_product = {
                     **product_group,
                     "id": str(uuid.uuid4()),
+                    "orders_count": 0,
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.products.insert_one(single_product)

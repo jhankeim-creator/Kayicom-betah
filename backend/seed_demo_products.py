@@ -147,6 +147,7 @@ async def seed_demo():
                 "region": region,
                 "giftcard_category": product_group.get("giftcard_category"),
                 "is_subscription": product_group.get("is_subscription", False),
+                "orders_count": 0,
                 "metadata": {
                     "product_type": product_group["category"]
                 },

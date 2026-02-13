@@ -95,11 +95,13 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
       const rep = sorted[0];
       const minPrice = sorted[0]?.price ?? rep.price;
       const maxPrice = sorted[sorted.length - 1]?.price ?? rep.price;
+      const ordersCount = g.variants.reduce((sum, item) => sum + (Number(item.orders_count) || 0), 0);
       return {
         ...rep,
         _variant_count: g.variants.length,
         _min_price: minPrice,
         _max_price: maxPrice,
+        _orders_count: ordersCount,
         _group_id: g.groupId
       };
     });
@@ -265,11 +267,10 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
             <span className="text-xs text-red-400 bg-red-400/20 px-2 py-1 rounded">Out of Stock</span>
           )}
         </div>
-        {product._variant_count > 1 && (
-          <p className="text-white/60 text-xs mb-3">
-            {product._variant_count} options available
-          </p>
-        )}
+        <div className="flex items-center justify-between text-white/60 text-xs mb-3">
+          <span>{Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders</span>
+          {product._variant_count > 1 && <span>{product._variant_count} options available</span>}
+        </div>
         <div className="flex gap-2">
           <Link to={`/product/${product.id}`} className="flex-1">
             <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>

@@ -277,6 +277,50 @@ def test_products_search_and_category_combined(app_module):
     assert items[0]["id"] == "s1"
 
 
+def test_products_default_orders_count_is_zero(app_module):
+    app_module.db.products._docs.append(
+        {"id": "p-oc-1", "name": "Gift", "description": "Desc", "category": "giftcard", "price": 10.0}
+    )
+    client = TestClient(app_module.app)
+    r = client.get("/api/products")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    product = next(p for p in data if p["id"] == "p-oc-1")
+    assert product.get("orders_count") == 0
+
+
+def test_paid_order_increments_product_orders_count_idempotently(app_module):
+    app_module.db.products._docs.append(
+        {"id": "p-sale-1", "name": "Steam", "description": "Gaming", "category": "giftcard", "price": 10.0}
+    )
+    app_module.db.orders._docs.append(
+        {
+            "id": "o-sale-1",
+            "user_id": "u-sale-1",
+            "user_email": "sale@example.com",
+            "items": [
+                {"product_id": "p-sale-1", "product_name": "Steam", "quantity": 3, "price": 10.0}
+            ],
+            "total_amount": 30.0,
+            "payment_method": "paypal",
+            "payment_status": "pending",
+            "order_status": "pending",
+        }
+    )
+    client = TestClient(app_module.app)
+
+    r = client.put("/api/orders/o-sale-1/complete")
+    assert r.status_code == 200, r.text
+    product = next(p for p in app_module.db.products._docs if p["id"] == "p-sale-1")
+    assert float(product.get("orders_count", 0)) == pytest.approx(3.0)
+
+    # Calling the paid transition again should not increment twice.
+    r2 = client.put("/api/orders/o-sale-1/complete")
+    assert r2.status_code == 200, r2.text
+    product_after = next(p for p in app_module.db.products._docs if p["id"] == "p-sale-1")
+    assert float(product_after.get("orders_count", 0)) == pytest.approx(3.0)
+
+
 def test_minutes_quote_and_wallet_create(app_module):
     # Seed a user with wallet funds
     app_module.db.users._docs.append(
