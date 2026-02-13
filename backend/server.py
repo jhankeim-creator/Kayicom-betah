@@ -1149,8 +1149,40 @@ async def _set_subscription_dates_if_needed(order_id: str) -> Optional[Dict[str,
     updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
     return updated
 
+async def _has_other_active_subscription(order: dict, now: datetime) -> bool:
+    """Check if user has another paid+completed subscription still active."""
+    if not order:
+        return False
+    user_id = str(order.get("user_id") or "").strip()
+    user_email = str(order.get("user_email") or "").strip()
+    if not user_id and not user_email:
+        return False
+
+    or_filters: List[Dict[str, Any]] = []
+    if user_id:
+        or_filters.append({"user_id": user_id})
+    if user_email:
+        or_filters.append({"user_email": _email_match(user_email)})
+
+    query: Dict[str, Any] = {
+        "$or": or_filters,
+        "payment_status": "paid",
+        "order_status": "completed",
+        "subscription_end_date": {"$ne": None},
+    }
+    candidates = await db.orders.find(query, {"_id": 0}).to_list(5000)
+    current_order_id = str(order.get("id") or "").strip()
+    for candidate in candidates:
+        if str(candidate.get("id") or "").strip() == current_order_id:
+            continue
+        candidate_end = _parse_datetime_utc(candidate.get("subscription_end_date"))
+        if candidate_end and candidate_end > now:
+            return True
+    return False
+
+
 async def _maybe_send_subscription_emails(order: dict):
-    """Send reminder emails (5 days before + at expiry) once per order."""
+    """Send customer reminders and admin expiry action alert once per order."""
     if not order:
         return
     if order.get("payment_status") != "paid" or order.get("order_status") != "completed":
@@ -1215,6 +1247,24 @@ async def _maybe_send_subscription_emails(order: dict):
         )
         _send_resend_email(settings, user_email, subject, html)
         await mark_sent("expired")
+
+    # Admin action alert:
+    # if subscription has expired and user has no other active paid subscription,
+    # notify admin to disable shared-platform access manually.
+    if now >= end and not await already_sent("expired_admin_telegram"):
+        has_active_renewal = await _has_other_active_subscription(order, now)
+        if not has_active_renewal:
+            await _notify_admin_telegram(
+                "Subscription expired - manual access removal",
+                [
+                    f"Order ID: {order.get('id') or 'unknown'}",
+                    f"Customer: {user_email}",
+                    f"Expired at: {_format_dt(end)}",
+                    "Renewal status: no active paid renewal found",
+                    "Action required: disable access on shared external platform.",
+                ],
+            )
+            await mark_sent("expired_admin_telegram")
 
 
 # Withdrawal Models

@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 import sys
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -142,6 +143,7 @@ class _FakeDB:
         self.minutes_transfers = _FakeCollection()
         self.orders = _FakeCollection()
         self.blog_posts = _FakeCollection()
+        self.subscription_notifications = _FakeCollection()
         self.credits_transactions = _FakeCollection()
         self.withdrawals = _FakeCollection()
         self.wallet_topups = _FakeCollection()
@@ -710,3 +712,67 @@ def test_telegram_test_endpoint_returns_400_without_credentials(app_module, monk
     r = client.post("/api/settings/telegram/test", json={"telegram_notifications_enabled": True})
     assert r.status_code == 400, r.text
     assert "missing bot token" in (r.json().get("detail") or "").lower()
+
+
+def test_subscription_expired_sends_admin_alert_once_without_paid_renewal(app_module, monkeypatch):
+    now = datetime.now(timezone.utc)
+    expired_order = {
+        "id": "sub-exp-1",
+        "user_id": "u-sub-1",
+        "user_email": "sub1@example.com",
+        "payment_status": "paid",
+        "order_status": "completed",
+        "subscription_end_date": (now - timedelta(days=1)).isoformat(),
+    }
+    app_module.db.orders._docs.append(expired_order)
+
+    alerts = []
+
+    async def fake_notify(event, lines=None, settings_override=None, force_send=False, raise_on_error=False):
+        alerts.append({"event": event, "lines": list(lines or [])})
+        return True
+
+    monkeypatch.setattr(app_module, "_notify_admin_telegram", fake_notify, raising=True)
+    monkeypatch.setattr(app_module, "_send_resend_email", lambda *_args, **_kwargs: None, raising=True)
+
+    asyncio.run(app_module._maybe_send_subscription_emails(expired_order))
+    assert len(alerts) == 1
+    assert alerts[0]["event"] == "Subscription expired - manual access removal"
+    assert any(d.get("type") == "expired_admin_telegram" for d in app_module.db.subscription_notifications._docs)
+
+    asyncio.run(app_module._maybe_send_subscription_emails(expired_order))
+    assert len(alerts) == 1
+
+
+def test_subscription_expired_skips_admin_alert_when_active_renewal_exists(app_module, monkeypatch):
+    now = datetime.now(timezone.utc)
+    expired_order = {
+        "id": "sub-exp-2",
+        "user_id": "u-sub-2",
+        "user_email": "sub2@example.com",
+        "payment_status": "paid",
+        "order_status": "completed",
+        "subscription_end_date": (now - timedelta(days=2)).isoformat(),
+    }
+    renewed_order = {
+        "id": "sub-renewed-2",
+        "user_id": "u-sub-2",
+        "user_email": "sub2@example.com",
+        "payment_status": "paid",
+        "order_status": "completed",
+        "subscription_end_date": (now + timedelta(days=20)).isoformat(),
+    }
+    app_module.db.orders._docs.extend([expired_order, renewed_order])
+
+    alerts = []
+
+    async def fake_notify(event, lines=None, settings_override=None, force_send=False, raise_on_error=False):
+        alerts.append({"event": event, "lines": list(lines or [])})
+        return True
+
+    monkeypatch.setattr(app_module, "_notify_admin_telegram", fake_notify, raising=True)
+    monkeypatch.setattr(app_module, "_send_resend_email", lambda *_args, **_kwargs: None, raising=True)
+
+    asyncio.run(app_module._maybe_send_subscription_emails(expired_order))
+    assert alerts == []
+    assert not any(d.get("type") == "expired_admin_telegram" for d in app_module.db.subscription_notifications._docs)
