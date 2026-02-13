@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field, ConfigDict, EmailStr
 from typing import List, Optional, Dict, Any, Tuple
 import uuid
 from datetime import datetime, timezone, timedelta
+from html import unescape
 from urllib.parse import urlencode
 from passlib.context import CryptContext
 import requests
@@ -210,8 +211,20 @@ def _slugify_text(value: str) -> str:
     return slug or "post"
 
 
+def _strip_html_to_text(value: Any) -> str:
+    text = str(value or "")
+    # Remove script/style blocks fully before stripping other tags.
+    text = re.sub(r"(?is)<(script|style).*?>.*?</\1>", " ", text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</(p|div|li|h1|h2|h3|h4|h5|h6|section|article|blockquote|tr)>", "\n", text)
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    text = unescape(text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def _derive_blog_excerpt(content: str, limit: int = 180) -> str:
-    text = str(content or "").strip()
+    text = _strip_html_to_text(content)
     if len(text) <= limit:
         return text
     return text[: max(0, limit - 3)].rstrip() + "..."
@@ -219,9 +232,13 @@ def _derive_blog_excerpt(content: str, limit: int = 180) -> str:
 
 def _derive_blog_seo_description(explicit_value: Optional[str], excerpt: Optional[str], content: str) -> str:
     if explicit_value is not None and str(explicit_value).strip():
-        return str(explicit_value).strip()
+        explicit_clean = _strip_html_to_text(explicit_value)
+        if explicit_clean:
+            return explicit_clean
     if excerpt and str(excerpt).strip():
-        return str(excerpt).strip()
+        excerpt_clean = _strip_html_to_text(excerpt)
+        if excerpt_clean:
+            return excerpt_clean
     return _derive_blog_excerpt(content, 160)
 
 
@@ -245,7 +262,7 @@ def _normalize_blog_post_doc(post: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(post or {})
     normalized["tags"] = _normalize_blog_tags(normalized.get("tags"))
     normalized["slug"] = _slugify_text(normalized.get("slug") or normalized.get("title") or normalized.get("id") or "post")
-    normalized["excerpt"] = (str(normalized.get("excerpt")).strip() if normalized.get("excerpt") is not None else None) or None
+    normalized["excerpt"] = (_strip_html_to_text(normalized.get("excerpt")) if normalized.get("excerpt") is not None else None) or None
     normalized["seo_title"] = (str(normalized.get("seo_title")).strip() if normalized.get("seo_title") is not None else None) or None
     normalized["seo_description"] = _derive_blog_seo_description(
         normalized.get("seo_description"),
@@ -2780,7 +2797,7 @@ async def create_blog_post(payload: BlogPostCreate):
     is_published = bool(payload.published)
     preferred_slug = str(payload.slug).strip() if payload.slug is not None else None
     slug = await _generate_unique_blog_slug(title, preferred_slug or None)
-    excerpt = (str(payload.excerpt).strip() if payload.excerpt is not None else None) or None
+    excerpt = (_strip_html_to_text(payload.excerpt) if payload.excerpt is not None else None) or None
     seo_title = (str(payload.seo_title).strip() if payload.seo_title is not None else None) or None
     seo_description = _derive_blog_seo_description(payload.seo_description, excerpt, content)
     cta_label = (str(payload.cta_label).strip() if payload.cta_label is not None else None) or None
@@ -2832,7 +2849,7 @@ async def update_blog_post(post_id: str, payload: BlogPostUpdate):
     update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
     next_title = str(existing.get("title") or "")
     next_content = str(existing.get("content") or "")
-    next_excerpt = (str(existing.get("excerpt")).strip() if existing.get("excerpt") is not None else None) or None
+    next_excerpt = (_strip_html_to_text(existing.get("excerpt")) if existing.get("excerpt") is not None else None) or None
     if "title" in update_data:
         update_data["title"] = str(update_data["title"]).strip()
         if not update_data["title"]:
@@ -2846,7 +2863,7 @@ async def update_blog_post(post_id: str, payload: BlogPostUpdate):
             raise HTTPException(status_code=400, detail="Content is required")
         next_content = update_data["content"]
     if "excerpt" in update_data:
-        update_data["excerpt"] = str(update_data["excerpt"]).strip() or None
+        update_data["excerpt"] = _strip_html_to_text(update_data["excerpt"]) or None
         next_excerpt = update_data["excerpt"]
     if "cover_image_url" in update_data:
         update_data["cover_image_url"] = str(update_data["cover_image_url"]).strip() or None
@@ -2855,7 +2872,8 @@ async def update_blog_post(post_id: str, payload: BlogPostUpdate):
     if "seo_title" in update_data:
         update_data["seo_title"] = str(update_data["seo_title"]).strip() or None
     if "seo_description" in update_data:
-        update_data["seo_description"] = str(update_data["seo_description"]).strip() or None
+        cleaned_seo = _strip_html_to_text(update_data["seo_description"])
+        update_data["seo_description"] = cleaned_seo or None
     if "cta_label" in update_data:
         update_data["cta_label"] = str(update_data["cta_label"]).strip() or None
     if "cta_url" in update_data:

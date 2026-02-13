@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import DOMPurify from 'dompurify';
 import { toast } from 'sonner';
 import { listBlogPosts, createBlogPost, updateBlogPost, deleteBlogPost } from '../utils/blogApi';
 
@@ -29,6 +30,28 @@ const toTagsArray = (value = '') =>
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+
+const HTML_TAG_REGEX = /<\/?[a-z][\s\S]*>/i;
+const ALLOWED_HTML_TAGS = [
+  'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ul', 'ol', 'li', 'blockquote', 'code', 'pre',
+  'a', 'img', 'hr'
+];
+
+const sanitizeBlogHtml = (value = '') => {
+  const raw = String(value || '');
+  const html = HTML_TAG_REGEX.test(raw) ? raw : raw.replace(/\n/g, '<br />');
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: ALLOWED_HTML_TAGS,
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'title'],
+  });
+};
+
+const stripBlogHtml = (value = '') =>
+  DOMPurify.sanitize(String(value || ''), { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -148,9 +171,13 @@ const AdminBlog = ({ user, logout, settings }) => {
   };
 
   const contentWordCount = String(formData.content || '')
+    .replace(/\s+/g, ' ')
     .trim()
-    .split(/\s+/)
-    .filter(Boolean).length;
+    ? stripBlogHtml(formData.content)
+      .split(/\s+/)
+      .filter(Boolean).length
+    : 0;
+  const previewHtml = useMemo(() => sanitizeBlogHtml(formData.content), [formData.content]);
   const estimatedReadMinutes = Math.max(1, Math.ceil(contentWordCount / 200));
 
   return (
@@ -242,15 +269,18 @@ const AdminBlog = ({ user, logout, settings }) => {
                       onChange={(e) => setFormData((prev) => ({ ...prev, content: e.target.value }))}
                       className="bg-white/10 border-white/20 text-white mt-1"
                       rows={14}
-                      placeholder="Write your full article here..."
+                      placeholder="Write your full article here... (HTML is supported)"
                     />
                   ) : (
-                    <div className="mt-1 rounded-lg border border-white/10 bg-black/30 p-4 text-white/90 whitespace-pre-wrap min-h-[280px]">
-                      {formData.content || 'Your preview will appear here...'}
-                    </div>
+                    <div
+                      className="blog-html-content mt-1 rounded-lg border border-white/10 bg-black/30 p-4 text-white/90 min-h-[280px]"
+                      dangerouslySetInnerHTML={{
+                        __html: previewHtml || '<p class="text-white/60">Your preview will appear here...</p>'
+                      }}
+                    />
                   )}
                   <p className="text-white/50 text-xs mt-2">
-                    Words: {contentWordCount} • Estimated reading time: {estimatedReadMinutes} min
+                    HTML supported (p, headings, lists, links, images, etc.) • Words: {contentWordCount} • Estimated reading time: {estimatedReadMinutes} min
                   </p>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -346,38 +376,41 @@ const AdminBlog = ({ user, logout, settings }) => {
                 <p className="text-white/70">No posts yet.</p>
               ) : (
                 <div className="space-y-3">
-                  {posts.map((post) => (
-                    <div key={post.id} className="rounded-lg border border-white/10 bg-white/5 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h3 className="text-white font-semibold">{post.title}</h3>
-                        <span className={`text-xs px-2 py-1 rounded-full ${post.published ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
-                          {post.published ? 'Published' : 'Draft'}
-                        </span>
+                  {posts.map((post) => {
+                    const listExcerpt = stripBlogHtml(post.excerpt || post.content || '');
+                    return (
+                      <div key={post.id} className="rounded-lg border border-white/10 bg-white/5 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-white font-semibold">{post.title}</h3>
+                          <span className={`text-xs px-2 py-1 rounded-full ${post.published ? 'bg-green-500/20 text-green-300' : 'bg-yellow-500/20 text-yellow-300'}`}>
+                            {post.published ? 'Published' : 'Draft'}
+                          </span>
+                        </div>
+                        <p className="text-white/60 text-xs mt-1">
+                          Updated: {formatDate(post.updated_at)} {post.published_at ? `• Published: ${formatDate(post.published_at)}` : ''}
+                        </p>
+                        <p className="text-white/50 text-xs mt-1">Slug: {post.slug || '-'}</p>
+                        <p className="text-white/75 text-sm mt-2 line-clamp-2">
+                          {listExcerpt || '-'}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          <Button type="button" size="sm" className="bg-white text-purple-700 hover:bg-gray-200" onClick={() => startEdit(post)}>
+                            Edit
+                          </Button>
+                          <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(post)}>
+                            Delete
+                          </Button>
+                          {post.published && (
+                            <Link to={`/blog/${post.slug || post.id}`} target="_blank" rel="noreferrer">
+                              <Button type="button" size="sm" variant="outline" className="border-white/30 text-white hover:bg-white/10">
+                                View
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
                       </div>
-                      <p className="text-white/60 text-xs mt-1">
-                        Updated: {formatDate(post.updated_at)} {post.published_at ? `• Published: ${formatDate(post.published_at)}` : ''}
-                      </p>
-                      <p className="text-white/50 text-xs mt-1">Slug: {post.slug || '-'}</p>
-                      <p className="text-white/75 text-sm mt-2 line-clamp-2">
-                        {post.excerpt || String(post.content || '').slice(0, 180)}
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-3">
-                        <Button type="button" size="sm" className="bg-white text-purple-700 hover:bg-gray-200" onClick={() => startEdit(post)}>
-                          Edit
-                        </Button>
-                        <Button type="button" size="sm" variant="destructive" onClick={() => handleDelete(post)}>
-                          Delete
-                        </Button>
-                        {post.published && (
-                          <Link to={`/blog/${post.slug || post.id}`} target="_blank" rel="noreferrer">
-                            <Button type="button" size="sm" variant="outline" className="border-white/30 text-white hover:bg-white/10">
-                              View
-                            </Button>
-                          </Link>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>

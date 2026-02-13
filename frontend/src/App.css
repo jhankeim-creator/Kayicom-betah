@@ -196,3 +196,62 @@ h1, h2, h3, h4, h5, h6 {
     transform: none;
   }
 }
+
+/* Blog HTML rendering */
+.blog-html-content {
+  color: rgba(255, 255, 255, 0.92);
+  line-height: 1.8;
+  word-break: break-word;
+}
+
+.blog-html-content h1,
+.blog-html-content h2,
+.blog-html-content h3,
+.blog-html-content h4,
+.blog-html-content h5,
+.blog-html-content h6 {
+  margin: 1.2rem 0 0.6rem;
+  line-height: 1.3;
+  color: #fff;
+}
+
+.blog-html-content p,
+.blog-html-content ul,
+.blog-html-content ol,
+.blog-html-content pre,
+.blog-html-content blockquote {
+  margin: 0.85rem 0;
+}
+
+.blog-html-content ul,
+.blog-html-content ol {
+  padding-left: 1.2rem;
+}
+
+.blog-html-content a {
+  color: #93c5fd;
+  text-decoration: underline;
+}
+
+.blog-html-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+}
+
+.blog-html-content blockquote {
+  border-left: 3px solid rgba(255, 255, 255, 0.3);
+  padding-left: 0.9rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.blog-html-content pre,
+.blog-html-content code {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 0.35rem;
+}
+
+.blog-html-content pre {
+  padding: 0.8rem;
+  overflow-x: auto;
+}
