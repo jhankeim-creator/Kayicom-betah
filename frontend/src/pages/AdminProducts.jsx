@@ -52,6 +52,8 @@ const AdminProducts = ({ user, logout, settings }) => {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
+    seo_title: '',
+    seo_description: '',
     category: 'topup',
     price: '',
     image_url: '',
@@ -271,7 +273,9 @@ const AdminProducts = ({ user, logout, settings }) => {
         ...formData,
         price: parseFloat(formData.price),
         subscription_duration_months: durationMonths,
-        variant_name: inferredVariantLabel
+        variant_name: inferredVariantLabel,
+        seo_title: (formData.seo_title || '').trim(),
+        seo_description: (formData.seo_description || '').trim()
       };
 
       if (parent) {
@@ -291,6 +295,8 @@ const AdminProducts = ({ user, logout, settings }) => {
         payload.giftcard_category = parent.giftcard_category || '';
         payload.giftcard_subcategory = parent.giftcard_subcategory || '';
         payload.is_subscription = parent.is_subscription || false;
+        payload.seo_title = (parent.seo_title || '').trim();
+        payload.seo_description = (parent.seo_description || '').trim();
       }
 
       if (editingProduct) {
@@ -320,6 +326,8 @@ const AdminProducts = ({ user, logout, settings }) => {
     setFormData({
       name: parent?.name || product.name,
       description: parent?.description || product.description,
+      seo_title: parent?.seo_title || product.seo_title || '',
+      seo_description: parent?.seo_description || product.seo_description || '',
       category: parent?.category || product.category,
       price: product.price?.toString?.() || '',
       image_url: parent?.image_url || product.image_url || '',
@@ -360,6 +368,8 @@ const AdminProducts = ({ user, logout, settings }) => {
     setFormData({
       name: '',
       description: '',
+      seo_title: '',
+      seo_description: '',
       category: defaultCategory,
       price: '',
       image_url: '',
@@ -425,6 +435,8 @@ const AdminProducts = ({ user, logout, settings }) => {
           .map((product) => [
             product.name,
             product.description,
+            product.seo_title,
+            product.seo_description,
             product.category,
             product.variant_name,
             product.region,
@@ -522,6 +534,8 @@ const AdminProducts = ({ user, logout, settings }) => {
                         is_variant: true,
                         name: parent?.name || '',
                         description: parent?.description || '',
+                        seo_title: parent?.seo_title || '',
+                        seo_description: parent?.seo_description || '',
                         category: parent?.category || defaultCategory,
                         image_url: parent?.image_url || '',
                         delivery_type: parent?.delivery_type || 'manual',
@@ -592,6 +606,41 @@ const AdminProducts = ({ user, logout, settings }) => {
                     rows={3}
                     disabled={isVariantForm}
                   />
+                </div>
+
+                <div>
+                  <Label htmlFor="seo_title" className="text-white">
+                    SEO Title
+                  </Label>
+                  <Input
+                    id="seo_title"
+                    value={formData.seo_title}
+                    onChange={(e) => handleChange('seo_title', e.target.value)}
+                    className="bg-white/10 border-white/20 text-white"
+                    placeholder="e.g., Buy Amazon Gift Card Online | KayiCom"
+                    disabled={isVariantForm}
+                  />
+                  <p className="text-white/60 text-xs mt-1">
+                    Recommended: around 50-60 characters.
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="seo_description" className="text-white">
+                    SEO Description
+                  </Label>
+                  <Textarea
+                    id="seo_description"
+                    value={formData.seo_description}
+                    onChange={(e) => handleChange('seo_description', e.target.value)}
+                    className="bg-white/10 border-white/20 text-white"
+                    rows={3}
+                    placeholder="Short product summary for Google results..."
+                    disabled={isVariantForm}
+                  />
+                  <p className="text-white/60 text-xs mt-1">
+                    Recommended: around 140-160 characters.
+                  </p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

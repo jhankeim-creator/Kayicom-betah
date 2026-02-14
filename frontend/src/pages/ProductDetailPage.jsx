@@ -17,6 +17,26 @@ const formatSubscriptionDurationLabel = (months) => {
   return `${value} ${value === 1 ? 'Month' : 'Months'}`;
 };
 
+const stripHtml = (value = '') => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+const truncateText = (value = '', limit = 160) => {
+  const clean = stripHtml(value);
+  if (clean.length <= limit) return clean;
+  return `${clean.slice(0, Math.max(0, limit - 3)).trim()}...`;
+};
+
+const deriveProductSeoTitle = (item) => {
+  const raw = String(item?.seo_title || '').trim() || String(item?.name || '').trim();
+  return raw || 'Product';
+};
+
+const deriveProductSeoDescription = (item) => {
+  const raw = String(item?.seo_description || '').trim() || String(item?.description || '').trim();
+  if (raw) return truncateText(raw, 160);
+  const fallbackName = String(item?.name || 'digital product').trim();
+  return truncateText(`Buy ${fallbackName} securely on KayiCom.`, 160);
+};
+
 const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
@@ -64,6 +84,64 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   };
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const selectedProduct = variants.find(v => v.id === selectedVariantId) || product;
+
+  useEffect(() => {
+    if (!selectedProduct) return undefined;
+
+    const previousTitle = document.title;
+    const nextTitle = deriveProductSeoTitle(selectedProduct);
+    document.title = `${nextTitle} | KayiCom`;
+
+    let createdDescriptionMeta = false;
+    let descriptionMeta = document.querySelector('meta[name="description"]');
+    const previousDescription = descriptionMeta?.getAttribute('content') || '';
+    if (!descriptionMeta) {
+      descriptionMeta = document.createElement('meta');
+      descriptionMeta.setAttribute('name', 'description');
+      document.head.appendChild(descriptionMeta);
+      createdDescriptionMeta = true;
+    }
+    descriptionMeta.setAttribute('content', deriveProductSeoDescription(selectedProduct));
+
+    const jsonLdScript = document.createElement('script');
+    jsonLdScript.type = 'application/ld+json';
+    jsonLdScript.id = 'product-seo-jsonld';
+    const productSchema = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: selectedProduct.name,
+      description: deriveProductSeoDescription(selectedProduct),
+      image: selectedProduct.image_url ? [selectedProduct.image_url] : undefined,
+      brand: {
+        '@type': 'Brand',
+        name: 'KayiCom',
+      },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: selectedProduct.currency || 'USD',
+        price: Number(selectedProduct.price || 0).toFixed(2),
+        availability: selectedProduct.stock_available
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+        url: `https://kayicom.com/product/${selectedProduct.id}`,
+      },
+    };
+    jsonLdScript.text = JSON.stringify(productSchema);
+    document.head.appendChild(jsonLdScript);
+
+    return () => {
+      document.title = previousTitle;
+      if (descriptionMeta) {
+        if (createdDescriptionMeta) {
+          descriptionMeta.remove();
+        } else {
+          descriptionMeta.setAttribute('content', previousDescription);
+        }
+      }
+      jsonLdScript.remove();
+    };
+  }, [selectedProduct]);
 
   if (loading) {
     return (
@@ -83,7 +161,6 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     );
   }
 
-  const selectedProduct = variants.find(v => v.id === selectedVariantId) || product;
   const selectedDurationLabel = (() => {
     if (selectedProduct?.subscription_duration_months) {
       return formatSubscriptionDurationLabel(selectedProduct.subscription_duration_months);

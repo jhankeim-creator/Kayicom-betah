@@ -242,6 +242,98 @@ def _derive_blog_seo_description(explicit_value: Optional[str], excerpt: Optiona
     return _derive_blog_excerpt(content, 160)
 
 
+PRODUCT_CATEGORY_LABELS = {
+    "giftcard": "Gift Cards",
+    "topup": "Game Top-Ups",
+    "subscription": "Subscriptions",
+    "service": "Digital Services",
+    "crypto": "Crypto",
+}
+
+
+def _compact_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", _strip_html_to_text(value)).strip()
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    cleaned = _compact_text(value)
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _format_product_category_label(value: Any) -> str:
+    key = str(value or "").strip().lower()
+    if not key:
+        return ""
+    if key in PRODUCT_CATEGORY_LABELS:
+        return PRODUCT_CATEGORY_LABELS[key]
+    return str(value).strip().replace("_", " ").title()
+
+
+def _derive_product_seo_title(explicit_value: Optional[str], product: Dict[str, Any]) -> str:
+    explicit_clean = _compact_text(explicit_value)
+    if explicit_clean:
+        return _truncate_text(explicit_clean, 70)
+
+    name = _compact_text(product.get("name") or "Digital Product")
+    variant_name = _compact_text(product.get("variant_name"))
+    region = _compact_text(product.get("region"))
+    category_label = _format_product_category_label(product.get("category"))
+
+    title_parts: List[str] = [name]
+    if variant_name and variant_name.lower() not in name.lower():
+        title_parts.append(variant_name)
+    elif region and region.lower() not in name.lower():
+        title_parts.append(region)
+    title = " - ".join([part for part in title_parts if part])
+
+    if category_label and category_label.lower() not in title.lower():
+        title = f"{title} | {category_label}"
+    return _truncate_text(f"{title} | KayiCom", 70)
+
+
+def _derive_product_seo_description(explicit_value: Optional[str], product: Dict[str, Any]) -> str:
+    explicit_clean = _compact_text(explicit_value)
+    if explicit_clean:
+        return _truncate_text(explicit_clean, 160)
+
+    name = _compact_text(product.get("name") or "digital product")
+    description = _compact_text(product.get("description") or "")
+    category_label = _format_product_category_label(product.get("category"))
+    currency = _compact_text(product.get("currency") or "USD") or "USD"
+    delivery_type = _compact_text(product.get("delivery_type") or "")
+    in_stock = bool(product.get("stock_available", True))
+
+    try:
+        price_value = float(product.get("price", 0) or 0)
+    except Exception:
+        price_value = 0.0
+
+    base_line = description or f"Buy {name} at KayiCom."
+    detail_parts: List[str] = []
+    if category_label:
+        detail_parts.append(category_label)
+    if price_value > 0:
+        detail_parts.append(f"Price: {currency} {price_value:.2f}")
+    if delivery_type:
+        detail_parts.append(f"{delivery_type.title()} delivery")
+    detail_parts.append("In stock" if in_stock else "Out of stock")
+
+    summary = base_line
+    if detail_parts:
+        summary = f"{summary} {' | '.join(detail_parts)}."
+    summary = f"{summary} Secure checkout on KayiCom."
+    return _truncate_text(summary, 160)
+
+
+def _normalize_product_doc(product: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(product or {})
+    normalized["seo_title"] = _derive_product_seo_title(normalized.get("seo_title"), normalized)
+    normalized["seo_description"] = _derive_product_seo_description(normalized.get("seo_description"), normalized)
+    return normalized
+
+
 async def _generate_unique_blog_slug(
     title: str,
     preferred_slug: Optional[str] = None,
@@ -305,6 +397,8 @@ class Product(BaseModel):
     giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
     is_subscription: bool = False  # Track if this triggers referral payout
     orders_count: int = 0  # Total purchased quantity for this product
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -330,6 +424,8 @@ class ProductCreate(BaseModel):
     giftcard_subcategory: Optional[str] = None
     is_subscription: bool = False
     orders_count: int = 0
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 class ProductUpdate(BaseModel):
@@ -354,6 +450,8 @@ class ProductUpdate(BaseModel):
     giftcard_subcategory: Optional[str] = None
     is_subscription: Optional[bool] = None
     orders_count: Optional[int] = None
+    seo_title: Optional[str] = None
+    seo_description: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
 
 # Order Models
@@ -835,6 +933,38 @@ async def _backfill_default_orders_count(limit: int = 5000) -> int:
             continue
         await db.products.update_one({"id": product.get("id")}, {"$set": {"orders_count": int(normalized)}})
         updated += 1
+    return updated
+
+
+async def _backfill_product_seo_fields(limit: int = 5000) -> int:
+    """Ensure existing products include normalized SEO title + description."""
+    updated = 0
+    try:
+        products = await db.products.find({}, {"_id": 0}).to_list(limit)
+    except Exception:
+        return 0
+
+    for product in products:
+        product_id = str(product.get("id") or "").strip()
+        if not product_id:
+            continue
+
+        normalized = _normalize_product_doc(product)
+        current_title = (_compact_text(product.get("seo_title")) if product.get("seo_title") is not None else "") or None
+        current_description = (_compact_text(product.get("seo_description")) if product.get("seo_description") is not None else "") or None
+
+        updates: Dict[str, Any] = {}
+        if normalized.get("seo_title") and normalized.get("seo_title") != current_title:
+            updates["seo_title"] = normalized["seo_title"]
+        if normalized.get("seo_description") and normalized.get("seo_description") != current_description:
+            updates["seo_description"] = normalized["seo_description"]
+
+        if not updates:
+            continue
+
+        await db.products.update_one({"id": product_id}, {"$set": updates})
+        updated += 1
+
     return updated
 
 
@@ -1661,6 +1791,8 @@ async def get_products(
                     {"variant_name": {"$regex": q, "$options": "i"}},
                     {"giftcard_category": {"$regex": q, "$options": "i"}},
                     {"giftcard_subcategory": {"$regex": q, "$options": "i"}},
+                    {"seo_title": {"$regex": q, "$options": "i"}},
+                    {"seo_description": {"$regex": q, "$options": "i"}},
                 ]
 
         products = await db.products.find(query, {"_id": 0}).to_list(1000)
@@ -1668,6 +1800,7 @@ async def get_products(
         validated_products: List[Dict[str, Any]] = []
         for product in products:
             try:
+                product = _normalize_product_doc(product)
                 created_at = product.get("created_at", datetime.now(timezone.utc))
                 if isinstance(created_at, str):
                     created_at = datetime.fromisoformat(created_at)
@@ -1696,6 +1829,8 @@ async def get_products(
                     "giftcard_subcategory": product.get("giftcard_subcategory"),
                     "is_subscription": product.get("is_subscription", False),
                     "orders_count": orders_count,
+                    "seo_title": product.get("seo_title"),
+                    "seo_description": product.get("seo_description"),
                     "metadata": product.get("metadata", {}),
                     "created_at": created_at,
                 }
@@ -1715,7 +1850,8 @@ async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    
+
+    product = _normalize_product_doc(product)
     if isinstance(product.get('created_at'), str):
         product['created_at'] = datetime.fromisoformat(product['created_at'])
     product["orders_count"] = _normalize_orders_count_for_product(product)
@@ -1725,6 +1861,9 @@ async def get_product(product_id: str):
 async def create_product(product_data: ProductCreate):
     product = Product(**product_data.model_dump())
     product.orders_count = _normalize_orders_count_for_product(product.model_dump())
+    normalized_product = _normalize_product_doc(product.model_dump())
+    product.seo_title = normalized_product.get("seo_title")
+    product.seo_description = normalized_product.get("seo_description")
     doc = product.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     
@@ -1758,11 +1897,21 @@ async def update_product(product_id: str, updates: ProductUpdate):
             update_data["orders_count"] = default_count
         else:
             update_data["orders_count"] = max(update_data["orders_count"], default_count)
+
+    merged_product = {**existing, **update_data}
+    normalized_merged = _normalize_product_doc(merged_product)
+    current_seo_title = (_compact_text(existing.get("seo_title")) if existing.get("seo_title") is not None else "") or None
+    current_seo_description = (_compact_text(existing.get("seo_description")) if existing.get("seo_description") is not None else "") or None
+    if normalized_merged.get("seo_title") != current_seo_title:
+        update_data["seo_title"] = normalized_merged.get("seo_title")
+    if normalized_merged.get("seo_description") != current_seo_description:
+        update_data["seo_description"] = normalized_merged.get("seo_description")
     
     if update_data:
         await db.products.update_one({"id": product_id}, {"$set": update_data})
     
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    updated = _normalize_product_doc(updated)
     if isinstance(updated.get('created_at'), str):
         updated['created_at'] = datetime.fromisoformat(updated['created_at'])
     updated["orders_count"] = _normalize_orders_count_for_product(updated)
@@ -4892,6 +5041,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                     "orders_count": _default_orders_count_for_product({**product_group, "id": parent_id}),
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
+                parent_product = _normalize_product_doc(parent_product)
                 await db.products.insert_one(parent_product)
 
                 # Create variant products
@@ -4920,6 +5070,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                         }
                         variant_product["subscription_duration_months"] = duration_map.get(variant["duration"])
 
+                    variant_product = _normalize_product_doc(variant_product)
                     await db.products.insert_one(variant_product)
                     total_added += 1
             else:
@@ -4931,6 +5082,7 @@ async def seed_demo_products_internal() -> Dict[str, Any]:
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 single_product["orders_count"] = _default_orders_count_for_product(single_product)
+                single_product = _normalize_product_doc(single_product)
                 await db.products.insert_one(single_product)
                 total_added += 1
 
@@ -5602,6 +5754,13 @@ async def startup_background_jobs():
             logging.info(f"Backfilled orders_count for {updated} product(s)")
     except Exception as e:
         logging.error(f"Failed to backfill product orders_count defaults: {e}")
+
+    try:
+        updated_seo = await _backfill_product_seo_fields()
+        if updated_seo:
+            logging.info(f"Backfilled SEO fields for {updated_seo} product(s)")
+    except Exception as e:
+        logging.error(f"Failed to backfill product SEO fields: {e}")
 
     if _order_auto_cancel_task is not None:
         try:

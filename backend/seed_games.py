@@ -4,12 +4,37 @@ import os
 from dotenv import load_dotenv
 import uuid
 from datetime import datetime, timezone
+import re
 
 load_dotenv('.env')
 
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+
+def _strip_html(value: str) -> str:
+    text = str(value or "")
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _truncate_text(value: str, limit: int) -> str:
+    clean = _strip_html(value)
+    if len(clean) <= limit:
+        return clean
+    return clean[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _apply_seo_fields(product: dict) -> dict:
+    name = _strip_html(product.get("name") or "Digital Product")
+    description = _strip_html(product.get("description") or "")
+    product["seo_title"] = _truncate_text(f"{name} | KayiCom", 70)
+    product["seo_description"] = _truncate_text(
+        description or f"Buy {name} securely on KayiCom.",
+        160,
+    )
+    return product
 
 # Popular games with their common top-up amounts and market prices
 GAME_PRODUCTS = [
@@ -204,6 +229,7 @@ async def seed_games():
                 },
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
+            product = _apply_seo_fields(product)
             
             await db.products.insert_one(product)
             total_added += 1
