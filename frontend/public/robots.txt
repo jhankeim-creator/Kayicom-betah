@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /wallet
+Disallow: /withdraw
+Disallow: /referral
+Disallow: /cart
+Disallow: /checkout
+Disallow: /track/
+
+Sitemap: https://kayicom.com/sitemap.xml
