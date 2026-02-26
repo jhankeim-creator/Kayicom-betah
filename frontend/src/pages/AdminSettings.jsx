@@ -1405,19 +1405,19 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             />
                           </div>
                           <div>
-                            <Label className="text-white/70 text-sm">Binance Pay API Key</Label>
+                            <Label className="text-white/70 text-sm">Binance API Key</Label>
                             <Input
-                              placeholder="API Key from Binance Merchant"
+                              placeholder="API Key from your Binance account"
                               value={formData.binance_pay_api_key || ""}
                               onChange={(e) => setFormData(prev => ({ ...prev, binance_pay_api_key: e.target.value }))}
                               className="bg-white/10 border-white/20 text-white mt-1"
                             />
                           </div>
                           <div>
-                            <Label className="text-white/70 text-sm">Binance Pay Secret Key</Label>
+                            <Label className="text-white/70 text-sm">Binance Secret Key</Label>
                             <Input
                               type="password"
-                              placeholder="Secret Key from Binance Merchant"
+                              placeholder="Secret Key from your Binance account"
                               value={formData.binance_pay_secret_key || ""}
                               onChange={(e) => setFormData(prev => ({ ...prev, binance_pay_secret_key: e.target.value }))}
                               className="bg-white/10 border-white/20 text-white mt-1"
@@ -1433,7 +1433,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               rows={2}
                             />
                           </div>
-                          <p className="text-white/40 text-xs">Get API credentials from <a href="https://merchant.binance.com" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">Binance Merchant Dashboard</a></p>
+                          <p className="text-white/40 text-xs">Binance &rarr; Account &rarr; <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">API Management</a> &rarr; Create API Key (enable "Pay" permission)</p>
                         </div>
                       </div>
 

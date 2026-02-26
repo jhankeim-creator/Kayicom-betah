@@ -2618,51 +2618,24 @@ async def check_plisio_status(invoice_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _binance_pay_signature(api_secret: str, timestamp: str, nonce: str, body: str) -> str:
+def _binance_api_sign(api_secret: str, query_string: str) -> str:
     import hmac
-    payload = f"{timestamp}\n{nonce}\n{body}\n"
-    return hmac.new(api_secret.encode(), payload.encode(), hashlib.sha512).hexdigest().upper()
+    return hmac.new(api_secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
 
-async def _binance_pay_query_order(api_key: str, api_secret: str, merchant_trade_no: str = None, prepay_id: str = None) -> dict:
-    import json as _json
-    import time
-    timestamp_ms = str(int(time.time() * 1000))
-    nonce = secrets.token_hex(16)
-    body_dict = {}
-    if merchant_trade_no:
-        body_dict["merchantTradeNo"] = merchant_trade_no
-    if prepay_id:
-        body_dict["prepayId"] = prepay_id
-    body = _json.dumps(body_dict)
-    sig = _binance_pay_signature(api_secret, timestamp_ms, nonce, body)
-    headers = {
-        "Content-Type": "application/json",
-        "BinancePay-Timestamp": timestamp_ms,
-        "BinancePay-Nonce": nonce,
-        "BinancePay-Certificate-SN": api_key,
-        "BinancePay-Signature": sig,
-    }
-    resp = requests.post("https://bpay.binanceapi.com/binancepay/openapi/v2/order/query", headers=headers, data=body, timeout=15)
-    return resp.json()
-
-
-async def _binance_pay_query_transfer(api_key: str, api_secret: str, transaction_id: str) -> dict:
-    import json as _json
-    import time
-    timestamp_ms = str(int(time.time() * 1000))
-    nonce = secrets.token_hex(16)
-    body_dict = {"transactionId": transaction_id}
-    body = _json.dumps(body_dict)
-    sig = _binance_pay_signature(api_secret, timestamp_ms, nonce, body)
-    headers = {
-        "Content-Type": "application/json",
-        "BinancePay-Timestamp": timestamp_ms,
-        "BinancePay-Nonce": nonce,
-        "BinancePay-Certificate-SN": api_key,
-        "BinancePay-Signature": sig,
-    }
-    resp = requests.post("https://bpay.binanceapi.com/binancepay/openapi/v2/order/query-by-transactionId", headers=headers, data=body, timeout=15)
+async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_time: int = None, end_time: int = None, limit: int = 100) -> dict:
+    import time as _time
+    timestamp = str(int(_time.time() * 1000))
+    params = {"timestamp": timestamp, "limit": str(limit)}
+    if start_time:
+        params["startTime"] = str(start_time)
+    if end_time:
+        params["endTime"] = str(end_time)
+    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    signature = _binance_api_sign(api_secret, query)
+    url = f"https://api.binance.com/sapi/v1/pay/transactions?{query}&signature={signature}"
+    headers = {"X-MBX-APIKEY": api_key}
+    resp = requests.get(url, headers=headers, timeout=15)
     return resp.json()
 
 
@@ -2677,7 +2650,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
     api_key = (settings or {}).get("binance_pay_api_key", "")
     api_secret = (settings or {}).get("binance_pay_secret_key", "")
     if not api_key or not api_secret:
-        raise HTTPException(status_code=400, detail="Binance Pay API credentials not configured. Contact admin.")
+        raise HTTPException(status_code=400, detail="Binance API credentials not configured. Contact admin.")
 
     order = await db.orders.find_one({"id": req.order_id})
     if not order:
@@ -2686,46 +2659,40 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
         return {"status": order["payment_status"], "message": "Order already processed"}
 
     binance_id = req.binance_order_id.strip()
+    order_amount = float(order.get("total_amount", 0))
     verified = False
-    binance_data = {}
+    matched_tx = {}
+
+    import time as _time
+    now_ms = int(_time.time() * 1000)
+    one_day_ms = 24 * 3600 * 1000
 
     try:
-        result = await _binance_pay_query_transfer(api_key, api_secret, binance_id)
-        logging.info(f"Binance Pay query-by-transactionId result: {result}")
-        if result.get("status") == "SUCCESS" and result.get("data"):
-            data = result["data"]
-            bp_status = (data.get("status") or "").upper()
-            if bp_status in ("SUCCESS", "PAID", "COMPLETED"):
-                verified = True
-                binance_data = data
+        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+        logging.info(f"Binance Pay transactions query status: code={result.get('code', 'N/A')}, count={len(result.get('data', []))}")
+
+        if result.get("code") == "000000" and result.get("data"):
+            for tx in result["data"]:
+                tx_order_id = str(tx.get("orderNumber", "")).strip()
+                tx_trans_id = str(tx.get("transactionId", "")).strip()
+                tx_payer_id = str(tx.get("payerInfo", {}).get("binanceId") or tx.get("payerId", "")).strip()
+
+                if binance_id in (tx_order_id, tx_trans_id):
+                    tx_amount = abs(float(tx.get("amount", 0)))
+                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+
+                    if tx_status in ("SUCCESS", "COMPLETED", "ACCEPTED") and tx_amount >= order_amount - 0.01:
+                        verified = True
+                        matched_tx = tx
+                        break
+        elif result.get("code") and result.get("code") != "000000":
+            logging.warning(f"Binance API error: {result.get('code')} - {result.get('message', '')}")
+            raise HTTPException(status_code=502, detail=f"Binance API error: {result.get('message', 'Unknown error')}")
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.warning(f"Binance Pay transactionId query failed: {e}")
-
-    if not verified:
-        try:
-            result2 = await _binance_pay_query_order(api_key, api_secret, merchant_trade_no=binance_id)
-            logging.info(f"Binance Pay query-by-merchantTradeNo result: {result2}")
-            if result2.get("status") == "SUCCESS" and result2.get("data"):
-                data = result2["data"]
-                bp_status = (data.get("status") or "").upper()
-                if bp_status in ("PAID", "SUCCESS", "COMPLETED"):
-                    verified = True
-                    binance_data = data
-        except Exception as e:
-            logging.warning(f"Binance Pay merchantTradeNo query failed: {e}")
-
-    if not verified:
-        try:
-            result3 = await _binance_pay_query_order(api_key, api_secret, prepay_id=binance_id)
-            logging.info(f"Binance Pay query-by-prepayId result: {result3}")
-            if result3.get("status") == "SUCCESS" and result3.get("data"):
-                data = result3["data"]
-                bp_status = (data.get("status") or "").upper()
-                if bp_status in ("PAID", "SUCCESS", "COMPLETED"):
-                    verified = True
-                    binance_data = data
-        except Exception as e:
-            logging.warning(f"Binance Pay prepayId query failed: {e}")
+        logging.warning(f"Binance Pay transactions query failed: {e}")
+        raise HTTPException(status_code=502, detail="Failed to connect to Binance API. Please try again.")
 
     if verified:
         await db.orders.update_one(
@@ -2735,7 +2702,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "order_status": "processing",
                 "transaction_id": binance_id,
                 "payment_proof_url": f"binance-pay-verified:{binance_id}",
-                "binance_pay_data": binance_data,
+                "binance_pay_data": matched_tx,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
         )
@@ -2744,8 +2711,8 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "Binance Pay Auto-Verified",
                 [
                     f"Order: {req.order_id[:8]}",
-                    f"Amount: ${order.get('total_amount', 0):.2f}",
-                    f"Binance ID: {binance_id}",
+                    f"Amount: ${order_amount:.2f}",
+                    f"Binance Order: {binance_id}",
                     f"User: {order.get('user_email', 'N/A')}",
                 ],
             )
