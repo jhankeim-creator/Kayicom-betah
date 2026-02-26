@@ -2623,20 +2623,50 @@ def _binance_api_sign(api_secret: str, query_string: str) -> str:
     return hmac.new(api_secret.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
 
-async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_time: int = None, end_time: int = None, limit: int = 100) -> dict:
+BINANCE_API_BASES = [
+    "https://api.binance.com",
+    "https://api1.binance.com",
+    "https://api2.binance.com",
+    "https://api3.binance.com",
+    "https://api4.binance.com",
+]
+
+
+async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_params: dict = None) -> dict:
     import time as _time
     timestamp = str(int(_time.time() * 1000))
-    params = {"timestamp": timestamp, "limit": str(limit)}
+    params = {"timestamp": timestamp}
+    if extra_params:
+        params.update(extra_params)
+    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    signature = _binance_api_sign(api_secret, query)
+    full_query = f"{query}&signature={signature}"
+    headers = {"X-MBX-APIKEY": api_key}
+
+    for base_url in BINANCE_API_BASES:
+        url = f"{base_url}{path}?{full_query}"
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            data = resp.json()
+            msg = str(data.get("msg") or data.get("message") or "")
+            if "restricted location" in msg.lower():
+                logging.info(f"Binance API restricted on {base_url}, trying next...")
+                continue
+            return data
+        except Exception as e:
+            logging.warning(f"Binance API call failed on {base_url}: {e}")
+            continue
+
+    return {"code": -1, "msg": "All Binance API endpoints returned restricted location error"}
+
+
+async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_time: int = None, end_time: int = None, limit: int = 100) -> dict:
+    params = {"limit": str(limit)}
     if start_time:
         params["startTime"] = str(start_time)
     if end_time:
         params["endTime"] = str(end_time)
-    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-    signature = _binance_api_sign(api_secret, query)
-    url = f"https://api.binance.com/sapi/v1/pay/transactions?{query}&signature={signature}"
-    headers = {"X-MBX-APIKEY": api_key}
-    resp = requests.get(url, headers=headers, timeout=15)
-    return resp.json()
+    return await _binance_api_call(api_key, api_secret, "/sapi/v1/pay/transactions", params)
 
 
 @api_router.get("/payments/binance-pay/debug-transactions")
@@ -2679,15 +2709,7 @@ async def debug_binance_transactions():
 
 
 async def _binance_get_c2c_orders(api_key: str, api_secret: str, trade_type: str = "BUY") -> dict:
-    import time as _time
-    timestamp = str(int(_time.time() * 1000))
-    params = {"timestamp": timestamp, "tradeType": trade_type}
-    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
-    signature = _binance_api_sign(api_secret, query)
-    url = f"https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?{query}&signature={signature}"
-    headers = {"X-MBX-APIKEY": api_key}
-    resp = requests.get(url, headers=headers, timeout=15)
-    return resp.json()
+    return await _binance_api_call(api_key, api_secret, "/sapi/v1/c2c/orderMatch/listUserOrderHistory", {"tradeType": trade_type})
 
 
 class BinancePayVerifyRequest(BaseModel):
