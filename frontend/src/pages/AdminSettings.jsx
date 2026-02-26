@@ -1433,6 +1433,16 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               rows={2}
                             />
                           </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Cloudflare Proxy URL (required)</Label>
+                            <Input
+                              placeholder="https://binance-proxy.your-account.workers.dev"
+                              value={formData.binance_pay_proxy_url || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, binance_pay_proxy_url: e.target.value }))}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                            <p className="text-white/30 text-xs mt-1">Deploy the Cloudflare Worker from /cloudflare-worker/binance-proxy.js</p>
+                          </div>
                           <p className="text-white/40 text-xs">Binance &rarr; Account &rarr; <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">API Management</a> &rarr; Create API Key (enable "Pay" permission)</p>
                         </div>
                       </div>

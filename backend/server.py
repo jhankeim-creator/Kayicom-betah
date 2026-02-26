@@ -450,6 +450,7 @@ class SiteSettings(BaseModel):
     plisio_api_key: Optional[str] = None
     binance_pay_api_key: Optional[str] = None
     binance_pay_secret_key: Optional[str] = None
+    binance_pay_proxy_url: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -546,6 +547,7 @@ class SettingsUpdate(BaseModel):
     plisio_api_key: Optional[str] = None
     binance_pay_api_key: Optional[str] = None
     binance_pay_secret_key: Optional[str] = None
+    binance_pay_proxy_url: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -2632,7 +2634,7 @@ BINANCE_API_BASES = [
 ]
 
 
-async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_params: dict = None) -> dict:
+async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_params: dict = None, proxy_url: str = None) -> dict:
     import time as _time
     timestamp = str(int(_time.time() * 1000))
     params = {"timestamp": timestamp}
@@ -2642,6 +2644,20 @@ async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_para
     signature = _binance_api_sign(api_secret, query)
     full_query = f"{query}&signature={signature}"
     headers = {"X-MBX-APIKEY": api_key}
+
+    # If proxy URL is set, use it first (Cloudflare Worker to bypass geo-restriction)
+    if proxy_url:
+        proxy_base = proxy_url.rstrip("/")
+        url = f"{proxy_base}/proxy{path}?{full_query}"
+        try:
+            resp = requests.get(url, headers=headers, timeout=20)
+            data = resp.json()
+            msg = str(data.get("msg") or data.get("message") or "")
+            if "restricted location" not in msg.lower():
+                return data
+            logging.info(f"Proxy also restricted, trying direct...")
+        except Exception as e:
+            logging.warning(f"Binance proxy call failed: {e}")
 
     for base_url in BINANCE_API_BASES:
         url = f"{base_url}{path}?{full_query}"
@@ -2657,16 +2673,16 @@ async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_para
             logging.warning(f"Binance API call failed on {base_url}: {e}")
             continue
 
-    return {"code": -1, "msg": "All Binance API endpoints returned restricted location error"}
+    return {"code": -1, "msg": "All Binance API endpoints returned restricted location error. Set up a Cloudflare Worker proxy."}
 
 
-async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_time: int = None, end_time: int = None, limit: int = 100) -> dict:
+async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_time: int = None, end_time: int = None, limit: int = 100, proxy_url: str = None) -> dict:
     params = {"limit": str(limit)}
     if start_time:
         params["startTime"] = str(start_time)
     if end_time:
         params["endTime"] = str(end_time)
-    return await _binance_api_call(api_key, api_secret, "/sapi/v1/pay/transactions", params)
+    return await _binance_api_call(api_key, api_secret, "/sapi/v1/pay/transactions", params, proxy_url=proxy_url)
 
 
 @api_router.get("/payments/binance-pay/debug-transactions")
@@ -2675,6 +2691,7 @@ async def debug_binance_transactions():
     settings = await db.settings.find_one({"id": "site_settings"})
     api_key = (settings or {}).get("binance_pay_api_key", "")
     api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    proxy_url = (settings or {}).get("binance_pay_proxy_url", "") or ""
     if not api_key or not api_secret:
         raise HTTPException(status_code=400, detail="Binance API credentials not configured")
 
@@ -2682,25 +2699,25 @@ async def debug_binance_transactions():
     now_ms = int(_time.time() * 1000)
     one_day_ms = 7 * 24 * 3600 * 1000
 
-    results = {}
+    results = {"proxy_url_configured": bool(proxy_url)}
 
-    # 1) Binance Pay transactions (last 7 days, no time filter issues)
+    # 1) Binance Pay transactions (last 7 days)
     try:
-        pay_result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+        pay_result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms, proxy_url=proxy_url)
         results["pay_transactions"] = {"raw_response": pay_result, "count": len(pay_result.get("data", []))}
     except Exception as e:
         results["pay_transactions"] = {"error": str(e)}
 
     # 2) Binance Pay without time filter
     try:
-        pay_no_time = await _binance_get_pay_transactions(api_key, api_secret, limit=20)
+        pay_no_time = await _binance_get_pay_transactions(api_key, api_secret, limit=20, proxy_url=proxy_url)
         results["pay_no_time_filter"] = {"raw_response": pay_no_time, "count": len(pay_no_time.get("data", []))}
     except Exception as e:
         results["pay_no_time_filter"] = {"error": str(e)}
 
-    # 3) C2C order history (in case customer used P2P)
+    # 3) C2C order history
     try:
-        c2c_result = await _binance_get_c2c_orders(api_key, api_secret)
+        c2c_result = await _binance_get_c2c_orders(api_key, api_secret, proxy_url=proxy_url)
         results["c2c_orders"] = {"raw_response": c2c_result, "count": len(c2c_result.get("data", []))}
     except Exception as e:
         results["c2c_orders"] = {"error": str(e)}
@@ -2708,8 +2725,8 @@ async def debug_binance_transactions():
     return results
 
 
-async def _binance_get_c2c_orders(api_key: str, api_secret: str, trade_type: str = "BUY") -> dict:
-    return await _binance_api_call(api_key, api_secret, "/sapi/v1/c2c/orderMatch/listUserOrderHistory", {"tradeType": trade_type})
+async def _binance_get_c2c_orders(api_key: str, api_secret: str, trade_type: str = "BUY", proxy_url: str = None) -> dict:
+    return await _binance_api_call(api_key, api_secret, "/sapi/v1/c2c/orderMatch/listUserOrderHistory", {"tradeType": trade_type}, proxy_url=proxy_url)
 
 
 class BinancePayVerifyRequest(BaseModel):
@@ -2722,6 +2739,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
     settings = await db.settings.find_one({"id": "site_settings"})
     api_key = (settings or {}).get("binance_pay_api_key", "")
     api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    proxy_url = (settings or {}).get("binance_pay_proxy_url", "") or ""
     if not api_key or not api_secret:
         raise HTTPException(status_code=400, detail="Binance API credentials not configured. Contact admin.")
 
@@ -2744,7 +2762,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
     one_day_ms = 24 * 3600 * 1000
 
     try:
-        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms, proxy_url=proxy_url)
         logging.info(f"Binance Pay transactions: code={result.get('code', 'N/A')}, count={len(result.get('data', []))}")
 
         if result.get("code") == "000000" and result.get("data"):
