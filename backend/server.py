@@ -448,6 +448,8 @@ class SiteSettings(BaseModel):
     secondary_color: str = "#8b5cf6"
     support_email: str = "support@kayicom.com"
     plisio_api_key: Optional[str] = None
+    binance_pay_api_key: Optional[str] = None
+    binance_pay_secret_key: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -542,6 +544,8 @@ class SettingsUpdate(BaseModel):
     secondary_color: Optional[str] = None
     support_email: Optional[str] = None
     plisio_api_key: Optional[str] = None
+    binance_pay_api_key: Optional[str] = None
+    binance_pay_secret_key: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -2613,6 +2617,145 @@ async def check_plisio_status(invoice_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+def _binance_pay_signature(api_secret: str, timestamp: str, nonce: str, body: str) -> str:
+    import hmac
+    payload = f"{timestamp}\n{nonce}\n{body}\n"
+    return hmac.new(api_secret.encode(), payload.encode(), hashlib.sha512).hexdigest().upper()
+
+
+async def _binance_pay_query_order(api_key: str, api_secret: str, merchant_trade_no: str = None, prepay_id: str = None) -> dict:
+    import json as _json
+    import time
+    timestamp_ms = str(int(time.time() * 1000))
+    nonce = secrets.token_hex(16)
+    body_dict = {}
+    if merchant_trade_no:
+        body_dict["merchantTradeNo"] = merchant_trade_no
+    if prepay_id:
+        body_dict["prepayId"] = prepay_id
+    body = _json.dumps(body_dict)
+    sig = _binance_pay_signature(api_secret, timestamp_ms, nonce, body)
+    headers = {
+        "Content-Type": "application/json",
+        "BinancePay-Timestamp": timestamp_ms,
+        "BinancePay-Nonce": nonce,
+        "BinancePay-Certificate-SN": api_key,
+        "BinancePay-Signature": sig,
+    }
+    resp = requests.post("https://bpay.binanceapi.com/binancepay/openapi/v2/order/query", headers=headers, data=body, timeout=15)
+    return resp.json()
+
+
+async def _binance_pay_query_transfer(api_key: str, api_secret: str, transaction_id: str) -> dict:
+    import json as _json
+    import time
+    timestamp_ms = str(int(time.time() * 1000))
+    nonce = secrets.token_hex(16)
+    body_dict = {"transactionId": transaction_id}
+    body = _json.dumps(body_dict)
+    sig = _binance_pay_signature(api_secret, timestamp_ms, nonce, body)
+    headers = {
+        "Content-Type": "application/json",
+        "BinancePay-Timestamp": timestamp_ms,
+        "BinancePay-Nonce": nonce,
+        "BinancePay-Certificate-SN": api_key,
+        "BinancePay-Signature": sig,
+    }
+    resp = requests.post("https://bpay.binanceapi.com/binancepay/openapi/v2/order/query-by-transactionId", headers=headers, data=body, timeout=15)
+    return resp.json()
+
+
+class BinancePayVerifyRequest(BaseModel):
+    order_id: str
+    binance_order_id: str
+
+
+@api_router.post("/payments/binance-pay/verify")
+async def verify_binance_pay(req: BinancePayVerifyRequest):
+    settings = await db.settings.find_one({"id": "site_settings"})
+    api_key = (settings or {}).get("binance_pay_api_key", "")
+    api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Binance Pay API credentials not configured. Contact admin.")
+
+    order = await db.orders.find_one({"id": req.order_id})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_status") in ("paid", "cancelled"):
+        return {"status": order["payment_status"], "message": "Order already processed"}
+
+    binance_id = req.binance_order_id.strip()
+    verified = False
+    binance_data = {}
+
+    try:
+        result = await _binance_pay_query_transfer(api_key, api_secret, binance_id)
+        logging.info(f"Binance Pay query-by-transactionId result: {result}")
+        if result.get("status") == "SUCCESS" and result.get("data"):
+            data = result["data"]
+            bp_status = (data.get("status") or "").upper()
+            if bp_status in ("SUCCESS", "PAID", "COMPLETED"):
+                verified = True
+                binance_data = data
+    except Exception as e:
+        logging.warning(f"Binance Pay transactionId query failed: {e}")
+
+    if not verified:
+        try:
+            result2 = await _binance_pay_query_order(api_key, api_secret, merchant_trade_no=binance_id)
+            logging.info(f"Binance Pay query-by-merchantTradeNo result: {result2}")
+            if result2.get("status") == "SUCCESS" and result2.get("data"):
+                data = result2["data"]
+                bp_status = (data.get("status") or "").upper()
+                if bp_status in ("PAID", "SUCCESS", "COMPLETED"):
+                    verified = True
+                    binance_data = data
+        except Exception as e:
+            logging.warning(f"Binance Pay merchantTradeNo query failed: {e}")
+
+    if not verified:
+        try:
+            result3 = await _binance_pay_query_order(api_key, api_secret, prepay_id=binance_id)
+            logging.info(f"Binance Pay query-by-prepayId result: {result3}")
+            if result3.get("status") == "SUCCESS" and result3.get("data"):
+                data = result3["data"]
+                bp_status = (data.get("status") or "").upper()
+                if bp_status in ("PAID", "SUCCESS", "COMPLETED"):
+                    verified = True
+                    binance_data = data
+        except Exception as e:
+            logging.warning(f"Binance Pay prepayId query failed: {e}")
+
+    if verified:
+        await db.orders.update_one(
+            {"id": req.order_id},
+            {"$set": {
+                "payment_status": "paid",
+                "order_status": "processing",
+                "transaction_id": binance_id,
+                "payment_proof_url": f"binance-pay-verified:{binance_id}",
+                "binance_pay_data": binance_data,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }}
+        )
+        try:
+            await _notify_admin_telegram(
+                "Binance Pay Auto-Verified",
+                [
+                    f"Order: {req.order_id[:8]}",
+                    f"Amount: ${order.get('total_amount', 0):.2f}",
+                    f"Binance ID: {binance_id}",
+                    f"User: {order.get('user_email', 'N/A')}",
+                ],
+            )
+        except Exception:
+            pass
+        return {"status": "paid", "message": "Payment verified automatically!", "verified": True}
+    else:
+        return {"status": "pending", "message": "Payment not found yet. Please check your Order ID and try again in a few minutes.", "verified": False}
+
+
 # ==================== SETTINGS ENDPOINTS ====================
 
 @api_router.get("/settings", response_model=SiteSettings)
@@ -2635,6 +2778,8 @@ async def get_settings():
     # Never expose secret keys to clients
     for secret_field in [
         "plisio_api_key",
+        "binance_pay_api_key",
+        "binance_pay_secret_key",
         "mtcgame_api_key",
         "gosplit_api_key",
         "z2u_api_key",

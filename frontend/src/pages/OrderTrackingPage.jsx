@@ -368,29 +368,12 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </Card>
           )}
 
-          {/* Binance Pay dedicated section */}
+          {/* Binance Pay auto-verify section */}
           {showManualProofForm && order.payment_method === 'binance_pay' && (
             <BinancePaySection
               order={order}
               settings={settings}
-              submitting={submitting}
-              onSubmitProof={async (binanceOrderId) => {
-                setSubmitting(true);
-                try {
-                  await axiosInstance.post('/payments/manual-proof', {
-                    order_id: orderId,
-                    transaction_id: binanceOrderId,
-                    payment_proof_url: `binance-pay-order:${binanceOrderId}`
-                  });
-                  toast.success('Payment verification submitted!');
-                  loadOrder();
-                } catch (error) {
-                  console.error('Error submitting Binance proof:', error);
-                  toast.error('Error verifying payment');
-                } finally {
-                  setSubmitting(false);
-                }
-              }}
+              onVerified={() => loadOrder()}
             />
           )}
 

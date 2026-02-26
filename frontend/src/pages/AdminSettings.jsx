@@ -1382,7 +1382,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                       <div className="bg-white/5 p-4 rounded-lg mb-4">
                         <div className="flex justify-between items-center mb-3">
                           <h4 className="text-white font-semibold flex items-center gap-2">
-                            <span>🟡</span> Binance Pay
+                            <span>🟡</span> Binance Pay (Auto Verify)
                           </h4>
                           <label className="flex items-center gap-2">
                             <input 
@@ -1396,24 +1396,44 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         </div>
                         <div className="space-y-2">
                           <div>
-                            <Label className="text-white/70 text-sm">Binance Pay ID</Label>
+                            <Label className="text-white/70 text-sm">Binance Pay UID</Label>
                             <Input
-                              placeholder="Your Binance Pay ID"
+                              placeholder="Your Binance Pay UID (e.g. 589353477)"
                               value={formData.payment_gateways?.binance_pay?.email || ""}
                               onChange={(e) => handlePaymentGatewayChange('binance_pay', 'email', e.target.value)}
                               className="bg-white/10 border-white/20 text-white mt-1"
                             />
                           </div>
                           <div>
+                            <Label className="text-white/70 text-sm">Binance Pay API Key</Label>
+                            <Input
+                              placeholder="API Key from Binance Merchant"
+                              value={formData.binance_pay_api_key || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, binance_pay_api_key: e.target.value }))}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Binance Pay Secret Key</Label>
+                            <Input
+                              type="password"
+                              placeholder="Secret Key from Binance Merchant"
+                              value={formData.binance_pay_secret_key || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, binance_pay_secret_key: e.target.value }))}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
                             <Label className="text-white/70 text-sm">Instructions</Label>
                             <Textarea
-                              placeholder="Send via Binance Pay"
+                              placeholder="Send USDT via Binance Pay. Auto-verified."
                               value={formData.payment_gateways?.binance_pay?.instructions || ""}
                               onChange={(e) => handlePaymentGatewayChange('binance_pay', 'instructions', e.target.value)}
                               className="bg-white/10 border-white/20 text-white mt-1"
                               rows={2}
                             />
                           </div>
+                          <p className="text-white/40 text-xs">Get API credentials from <a href="https://merchant.binance.com" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">Binance Merchant Dashboard</a></p>
                         </div>
                       </div>
 
