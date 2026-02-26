@@ -2641,7 +2641,7 @@ async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_tim
 
 @api_router.get("/payments/binance-pay/debug-transactions")
 async def debug_binance_transactions():
-    """Admin debug: show raw Binance Pay transaction history to identify correct field names."""
+    """Admin debug: show raw Binance API responses to identify correct field names."""
     settings = await db.settings.find_one({"id": "site_settings"})
     api_key = (settings or {}).get("binance_pay_api_key", "")
     api_secret = (settings or {}).get("binance_pay_secret_key", "")
@@ -2650,39 +2650,44 @@ async def debug_binance_transactions():
 
     import time as _time
     now_ms = int(_time.time() * 1000)
-    one_day_ms = 24 * 3600 * 1000
+    one_day_ms = 7 * 24 * 3600 * 1000
 
+    results = {}
+
+    # 1) Binance Pay transactions (last 7 days, no time filter issues)
     try:
-        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+        pay_result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+        results["pay_transactions"] = {"raw_response": pay_result, "count": len(pay_result.get("data", []))}
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Binance API error: {str(e)}")
+        results["pay_transactions"] = {"error": str(e)}
 
-    txs = result.get("data", [])
-    summary = []
-    for tx in txs:
-        summary.append({
-            "all_keys": list(tx.keys()),
-            "orderNumber": tx.get("orderNumber"),
-            "transactionId": tx.get("transactionId"),
-            "transId": tx.get("transId"),
-            "tradeId": tx.get("tradeId"),
-            "orderType": tx.get("orderType"),
-            "amount": tx.get("amount"),
-            "currency": tx.get("currency"),
-            "status": tx.get("status"),
-            "orderStatus": tx.get("orderStatus"),
-            "transactionTime": tx.get("transactionTime"),
-            "payerInfo": tx.get("payerInfo"),
-            "receiverInfo": tx.get("receiverInfo"),
-            "raw": tx,
-        })
+    # 2) Binance Pay without time filter
+    try:
+        pay_no_time = await _binance_get_pay_transactions(api_key, api_secret, limit=20)
+        results["pay_no_time_filter"] = {"raw_response": pay_no_time, "count": len(pay_no_time.get("data", []))}
+    except Exception as e:
+        results["pay_no_time_filter"] = {"error": str(e)}
 
-    return {
-        "api_response_code": result.get("code"),
-        "api_message": result.get("message"),
-        "total_transactions": len(txs),
-        "transactions": summary,
-    }
+    # 3) C2C order history (in case customer used P2P)
+    try:
+        c2c_result = await _binance_get_c2c_orders(api_key, api_secret)
+        results["c2c_orders"] = {"raw_response": c2c_result, "count": len(c2c_result.get("data", []))}
+    except Exception as e:
+        results["c2c_orders"] = {"error": str(e)}
+
+    return results
+
+
+async def _binance_get_c2c_orders(api_key: str, api_secret: str, trade_type: str = "BUY") -> dict:
+    import time as _time
+    timestamp = str(int(_time.time() * 1000))
+    params = {"timestamp": timestamp, "tradeType": trade_type}
+    query = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+    signature = _binance_api_sign(api_secret, query)
+    url = f"https://api.binance.com/sapi/v1/c2c/orderMatch/listUserOrderHistory?{query}&signature={signature}"
+    headers = {"X-MBX-APIKEY": api_key}
+    resp = requests.get(url, headers=headers, timeout=15)
+    return resp.json()
 
 
 class BinancePayVerifyRequest(BaseModel):
