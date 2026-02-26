@@ -4,6 +4,14 @@
   "outputDirectory": "build",
   "devCommand": "yarn start",
   "framework": "create-react-app",
+  "functions": {
+    "api/binance-proxy.js": {
+      "maxDuration": 30,
+      "memory": 128,
+      "runtime": "nodejs20.x"
+    }
+  },
+  "regions": ["sin1"],
   "rewrites": [
     {
       "source": "/((?!api/).*)",
