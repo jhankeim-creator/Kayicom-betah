@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Package, Clock, CheckCircle, AlertCircle, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
+import BinancePaySection from '../components/BinancePaySection';
 
 const OrderTrackingPage = ({ user, logout, settings }) => {
   const { orderId } = useParams();
@@ -367,8 +368,34 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </Card>
           )}
 
-          {/* Manual Payment Proof Upload */}
-          {showManualProofForm && (
+          {/* Binance Pay dedicated section */}
+          {showManualProofForm && order.payment_method === 'binance_pay' && (
+            <BinancePaySection
+              order={order}
+              settings={settings}
+              submitting={submitting}
+              onSubmitProof={async (binanceOrderId) => {
+                setSubmitting(true);
+                try {
+                  await axiosInstance.post('/payments/manual-proof', {
+                    order_id: orderId,
+                    transaction_id: binanceOrderId,
+                    payment_proof_url: `binance-pay-order:${binanceOrderId}`
+                  });
+                  toast.success('Payment verification submitted!');
+                  loadOrder();
+                } catch (error) {
+                  console.error('Error submitting Binance proof:', error);
+                  toast.error('Error verifying payment');
+                } finally {
+                  setSubmitting(false);
+                }
+              }}
+            />
+          )}
+
+          {/* Manual Payment Proof Upload (non-Binance methods) */}
+          {showManualProofForm && order.payment_method !== 'binance_pay' && (
             <Card className="glass-effect border-white/20" data-testid="payment-proof-form">
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold text-white mb-4 flex items-center">
