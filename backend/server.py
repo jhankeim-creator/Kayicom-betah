@@ -2645,15 +2645,15 @@ async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_para
     full_query = f"{query}&signature={signature}"
     headers = {"X-MBX-APIKEY": api_key}
 
-    # If proxy URL is set, use it first (Cloudflare Worker to bypass geo-restriction)
+    # If proxy URL is set, use it first (Vercel/Cloudflare to bypass geo-restriction)
     if proxy_url:
         proxy_base = proxy_url.rstrip("/")
-        url = f"{proxy_base}/proxy{path}?{full_query}"
+        url = f"{proxy_base}{path}?{full_query}"
         try:
             resp = requests.get(url, headers=headers, timeout=20)
             data = resp.json()
             msg = str(data.get("msg") or data.get("message") or "")
-            if "restricted location" not in msg.lower():
+            if "restricted location" not in msg.lower() and data.get("code") != -1:
                 return data
             logging.info(f"Proxy also restricted, trying direct...")
         except Exception as e:

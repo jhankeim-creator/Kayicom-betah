@@ -1,0 +1,12 @@
+{
+  "name": "cloudflare-worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "binance-proxy.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
