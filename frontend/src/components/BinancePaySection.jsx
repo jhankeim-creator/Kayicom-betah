@@ -9,39 +9,41 @@ import { axiosInstance } from '../App';
 const BinancePaySection = ({ order, settings, onVerified }) => {
   const [binanceOrderId, setBinanceOrderId] = useState('');
   const [copied, setCopied] = useState(false);
-  const [copiedAmount, setCopiedAmount] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState(null);
 
   const binanceUid = settings?.payment_gateways?.binance_pay?.email || '';
   const instructions = settings?.payment_gateways?.binance_pay?.instructions || '';
-  const exactAmount = order?.total_amount ? Number(order.total_amount).toFixed(2) : '0.00';
 
-  const handleCopy = async (text, setter) => {
+  const handleCopyUid = async () => {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(binanceUid);
     } catch {
       const el = document.createElement('textarea');
-      el.value = text;
+      el.value = binanceUid;
       document.body.appendChild(el);
       el.select();
       document.execCommand('copy');
       document.body.removeChild(el);
     }
-    setter(true);
-    toast.success('Copied!');
-    setTimeout(() => setter(false), 2000);
+    setCopied(true);
+    toast.success('UID copied!');
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleVerify = async () => {
+    const trimmed = (binanceOrderId || '').trim();
+    if (!trimmed) {
+      toast.error('Please enter your Binance Pay Order ID');
+      return;
+    }
     setVerifying(true);
     setVerifyResult(null);
     try {
-      const body = { order_id: order.id };
-      if (binanceOrderId.trim()) {
-        body.binance_order_id = binanceOrderId.trim();
-      }
-      const res = await axiosInstance.post('/payments/binance-pay/verify', body);
+      const res = await axiosInstance.post('/payments/binance-pay/verify', {
+        order_id: order.id,
+        binance_order_id: trimmed,
+      });
       const data = res.data;
       setVerifyResult(data);
       if (data.verified) {
@@ -81,7 +83,7 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
             </p>
           </div>
           <Button
-            onClick={() => handleCopy(binanceUid, setCopied)}
+            onClick={handleCopyUid}
             disabled={!binanceUid}
             className="w-full mt-3 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-semibold"
             data-testid="copy-uid-btn"
@@ -95,41 +97,14 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
         </CardContent>
       </Card>
 
-      {/* Exact Amount to Send */}
-      <Card className="glass-effect border-green-500/30 border-2">
-        <CardContent className="p-6">
-          <p className="text-green-300/80 text-xs uppercase tracking-wider mb-2 font-semibold text-center">
-            Send exactly this amount
-          </p>
-          <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4 text-center">
-            <p className="text-green-300 text-4xl md:text-5xl font-bold font-mono" data-testid="exact-amount">
-              {exactAmount} <span className="text-2xl">USDT</span>
-            </p>
-          </div>
-          <Button
-            onClick={() => handleCopy(exactAmount, setCopiedAmount)}
-            className="w-full mt-3 bg-green-500/20 hover:bg-green-500/30 text-green-300 border border-green-500/30 font-semibold"
-          >
-            {copiedAmount ? (
-              <><CheckCircle size={16} className="mr-2" /> Copied!</>
-            ) : (
-              <><Copy size={16} className="mr-2" /> Copy Amount</>
-            )}
-          </Button>
-          <p className="text-yellow-300/80 text-xs mt-2 text-center font-semibold">
-            The exact amount is required for automatic verification
-          </p>
-        </CardContent>
-      </Card>
-
       {/* Info Badges */}
       <div className="grid grid-cols-3 gap-3">
         <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
           <div className="flex items-center justify-center mb-1">
             <DollarSign size={14} className="text-white/50" />
           </div>
-          <p className="text-white/50 text-[10px] uppercase tracking-wider">Amount</p>
-          <p className="text-cyan-300 font-bold text-lg">${exactAmount}</p>
+          <p className="text-white/50 text-[10px] uppercase tracking-wider">Min. Amount</p>
+          <p className="text-cyan-300 font-bold text-lg">${order?.total_amount ? Number(order.total_amount).toFixed(2) : '1.00'}</p>
         </div>
         <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
           <div className="flex items-center justify-center mb-1">
@@ -147,13 +122,28 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
         </div>
       </div>
 
-      {/* Verify Button + Optional Order ID */}
+      {/* Order ID Input + Verify */}
       <Card className="glass-effect border-yellow-500/30">
         <CardContent className="p-6">
+          <h3 className="text-yellow-300 font-bold text-lg mb-4 flex items-center gap-2">
+            <ShieldCheck size={20} />
+            Binance Pay Order ID
+          </h3>
+          <Input
+            value={binanceOrderId}
+            onChange={(e) => setBinanceOrderId(e.target.value)}
+            className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-center text-lg py-6 font-mono"
+            placeholder="Enter your Binance Pay Order ID"
+            data-testid="binance-order-id-input"
+          />
+          <p className="text-white/40 text-xs mt-2">
+            Found in your Binance app &rarr; Pay &rarr; Order History
+          </p>
+
           <Button
             onClick={handleVerify}
-            disabled={verifying}
-            className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-6 text-lg rounded-xl"
+            disabled={verifying || !binanceOrderId.trim()}
+            className="w-full mt-4 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-black font-bold py-6 text-lg rounded-xl"
             data-testid="verify-payment-btn"
           >
             {verifying ? (
@@ -162,18 +152,6 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
               <><ShieldCheck size={20} className="mr-2" /> Verify Payment</>
             )}
           </Button>
-
-          {/* Optional Order ID */}
-          <div className="mt-4 pt-4 border-t border-white/10">
-            <p className="text-white/40 text-xs mb-2">Optional: Binance Pay Order ID (for faster matching)</p>
-            <Input
-              value={binanceOrderId}
-              onChange={(e) => setBinanceOrderId(e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/30 text-center text-sm py-2 font-mono"
-              placeholder="Found in Binance app → Pay → Order History"
-              data-testid="binance-order-id-input"
-            />
-          </div>
 
           {/* Verification Result */}
           {verifyResult && (
@@ -207,23 +185,23 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
           <ol className="space-y-3 text-white/70 text-sm">
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">1</span>
-              <span>Copy the <strong className="text-white">UID</strong> and <strong className="text-green-300">exact amount</strong> above</span>
+              <span>Send <strong className="text-white">USDT</strong> to the UID above via <strong className="text-white">Binance Pay</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">2</span>
-              <span>Open <strong className="text-white">Binance app &rarr; Pay &rarr; Send</strong></span>
+              <span>Open your <strong className="text-white">Binance app &rarr; Pay &rarr; Order History</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">3</span>
-              <span>Send exactly <strong className="text-green-300">{exactAmount} USDT</strong> to the UID</span>
+              <span>Copy the <strong className="text-white">Order ID</strong> from the transaction</span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">4</span>
-              <span>Come back here and click <strong className="text-yellow-300">Verify Payment</strong></span>
+              <span>Paste the Order ID above and click <strong className="text-white">Verify Payment</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/20 text-green-300 flex items-center justify-center text-xs font-bold">5</span>
-              <span>Payment is <strong className="text-green-300">verified automatically</strong> in seconds!</span>
+              <span>Payment is <strong className="text-green-300">verified automatically</strong> within <strong className="text-white">1-3 minutes</strong></span>
             </li>
           </ol>
           {instructions && (
