@@ -382,6 +382,7 @@ class Order(BaseModel):
     payment_method: str  # wallet, crypto_plisio, paypal, skrill, moncash, binance_pay, zelle, cashapp
     payment_status: str = "pending"  # pending, paid, failed, cancelled
     order_status: str = "pending"  # pending, processing, completed, cancelled
+    binance_pay_original_amount: Optional[float] = None
     payment_proof_url: Optional[str] = None
     transaction_id: Optional[str] = None
     plisio_invoice_id: Optional[str] = None
@@ -2168,6 +2169,13 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
 
     total = max(0.0, float(subtotal) - float(discount_amount))
 
+    # Binance Pay: add random cents (0.01-0.99) to make amount unique for auto-matching
+    binance_pay_exact_amount = None
+    if order_data.payment_method == "binance_pay":
+        import random
+        cents = random.randint(1, 99) / 100.0
+        binance_pay_exact_amount = round(total + cents, 2)
+
     order = Order(
         user_id=user_id,
         user_email=user_email,
@@ -2176,9 +2184,11 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
         discount_amount=discount_amount if discount_amount > 0 else None,
         coupon_code=coupon_code,
         coupon_usage_recorded=False if coupon_code else None,
-        total_amount=total,
+        total_amount=binance_pay_exact_amount if binance_pay_exact_amount else total,
         payment_method=order_data.payment_method
     )
+    if binance_pay_exact_amount:
+        order.binance_pay_original_amount = total
 
     # Wallet payment: instantly mark paid and deduct balance
     if order_data.payment_method == "wallet":
@@ -2641,7 +2651,7 @@ async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_tim
 
 class BinancePayVerifyRequest(BaseModel):
     order_id: str
-    binance_order_id: str
+    binance_order_id: Optional[str] = None
 
 
 @api_router.post("/payments/binance-pay/verify")
@@ -2658,8 +2668,8 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
     if order.get("payment_status") in ("paid", "cancelled"):
         return {"status": order["payment_status"], "message": "Order already processed"}
 
-    binance_id = req.binance_order_id.strip()
     order_amount = float(order.get("total_amount", 0))
+    binance_id = (req.binance_order_id or "").strip()
     verified = False
     matched_tx = {}
 
@@ -2669,22 +2679,31 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
 
     try:
         result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
-        logging.info(f"Binance Pay transactions query status: code={result.get('code', 'N/A')}, count={len(result.get('data', []))}")
+        logging.info(f"Binance Pay transactions: code={result.get('code', 'N/A')}, count={len(result.get('data', []))}")
 
         if result.get("code") == "000000" and result.get("data"):
             for tx in result["data"]:
-                tx_order_id = str(tx.get("orderNumber", "")).strip()
-                tx_trans_id = str(tx.get("transactionId", "")).strip()
-                tx_payer_id = str(tx.get("payerInfo", {}).get("binanceId") or tx.get("payerId", "")).strip()
+                tx_amount = abs(float(tx.get("amount", 0)))
+                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
 
-                if binance_id in (tx_order_id, tx_trans_id):
-                    tx_amount = abs(float(tx.get("amount", 0)))
-                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                    continue
 
-                    if tx_status in ("SUCCESS", "COMPLETED", "ACCEPTED") and tx_amount >= order_amount - 0.01:
+                # Match by unique amount (primary method)
+                if abs(tx_amount - order_amount) < 0.005:
+                    verified = True
+                    matched_tx = tx
+                    break
+
+                # Fallback: match by Order ID if provided
+                if binance_id:
+                    tx_order_id = str(tx.get("orderNumber", "")).strip()
+                    tx_trans_id = str(tx.get("transactionId", "")).strip()
+                    if binance_id in (tx_order_id, tx_trans_id):
                         verified = True
                         matched_tx = tx
                         break
+
         elif result.get("code") and result.get("code") != "000000":
             logging.warning(f"Binance API error: {result.get('code')} - {result.get('message', '')}")
             raise HTTPException(status_code=502, detail=f"Binance API error: {result.get('message', 'Unknown error')}")
@@ -2700,8 +2719,8 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             {"$set": {
                 "payment_status": "paid",
                 "order_status": "processing",
-                "transaction_id": binance_id,
-                "payment_proof_url": f"binance-pay-verified:{binance_id}",
+                "transaction_id": binance_id or f"amount-match:{order_amount}",
+                "payment_proof_url": f"binance-pay-verified:{matched_tx.get('transactionId', binance_id)}",
                 "binance_pay_data": matched_tx,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
@@ -2712,7 +2731,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 [
                     f"Order: {req.order_id[:8]}",
                     f"Amount: ${order_amount:.2f}",
-                    f"Binance Order: {binance_id}",
+                    f"Matched TX: {matched_tx.get('transactionId', 'N/A')}",
                     f"User: {order.get('user_email', 'N/A')}",
                 ],
             )
@@ -2720,7 +2739,11 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             pass
         return {"status": "paid", "message": "Payment verified automatically!", "verified": True}
     else:
-        return {"status": "pending", "message": "Payment not found yet. Please check your Order ID and try again in a few minutes.", "verified": False}
+        return {
+            "status": "pending",
+            "message": f"Payment of ${order_amount:.2f} USDT not found yet. Make sure you sent exactly ${order_amount:.2f} USDT, then try again.",
+            "verified": False,
+        }
 
 
 # ==================== SETTINGS ENDPOINTS ====================
