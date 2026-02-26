@@ -2648,7 +2648,7 @@ async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_para
     # If proxy URL is set, use it first (Vercel/Cloudflare to bypass geo-restriction)
     if proxy_url:
         proxy_base = proxy_url.rstrip("/")
-        url = f"{proxy_base}{path}?{full_query}"
+        url = f"{proxy_base}?endpoint={path}&{full_query}"
         try:
             resp = requests.get(url, headers=headers, timeout=20)
             data = resp.json()

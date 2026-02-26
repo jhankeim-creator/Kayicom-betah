@@ -20,18 +20,19 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
-  const { path, ...queryParams } = req.query;
-  if (!path) {
-    return res.status(400).json({ error: "Missing path parameter" });
+  const targetPath = req.query.endpoint || "";
+  if (!targetPath) {
+    return res.status(400).json({ error: "Missing endpoint parameter" });
   }
 
-  const targetPath = "/" + (Array.isArray(path) ? path.join("/") : path);
   const allowed = ALLOWED_PATHS.some((p) => targetPath.startsWith(p));
   if (!allowed) {
     return res.status(403).json({ error: "Path not allowed" });
   }
 
-  const qs = new URLSearchParams(queryParams).toString();
+  const params = { ...req.query };
+  delete params.endpoint;
+  const qs = new URLSearchParams(params).toString();
   const apiKey = req.headers["x-mbx-apikey"] || "";
 
   for (const base of BINANCE_BASES) {
@@ -57,6 +58,6 @@ export default async function handler(req, res) {
 
   return res.status(502).json({
     code: -1,
-    msg: "All Binance API endpoints returned restricted location error",
+    msg: "All Binance API endpoints restricted",
   });
 }

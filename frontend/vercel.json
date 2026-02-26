@@ -6,11 +6,7 @@
   "framework": "create-react-app",
   "rewrites": [
     {
-      "source": "/api/binance-proxy/:path*",
-      "destination": "/api/binance-proxy"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
