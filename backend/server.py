@@ -2639,6 +2639,52 @@ async def _binance_get_pay_transactions(api_key: str, api_secret: str, start_tim
     return resp.json()
 
 
+@api_router.get("/payments/binance-pay/debug-transactions")
+async def debug_binance_transactions():
+    """Admin debug: show raw Binance Pay transaction history to identify correct field names."""
+    settings = await db.settings.find_one({"id": "site_settings"})
+    api_key = (settings or {}).get("binance_pay_api_key", "")
+    api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Binance API credentials not configured")
+
+    import time as _time
+    now_ms = int(_time.time() * 1000)
+    one_day_ms = 24 * 3600 * 1000
+
+    try:
+        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Binance API error: {str(e)}")
+
+    txs = result.get("data", [])
+    summary = []
+    for tx in txs:
+        summary.append({
+            "all_keys": list(tx.keys()),
+            "orderNumber": tx.get("orderNumber"),
+            "transactionId": tx.get("transactionId"),
+            "transId": tx.get("transId"),
+            "tradeId": tx.get("tradeId"),
+            "orderType": tx.get("orderType"),
+            "amount": tx.get("amount"),
+            "currency": tx.get("currency"),
+            "status": tx.get("status"),
+            "orderStatus": tx.get("orderStatus"),
+            "transactionTime": tx.get("transactionTime"),
+            "payerInfo": tx.get("payerInfo"),
+            "receiverInfo": tx.get("receiverInfo"),
+            "raw": tx,
+        })
+
+    return {
+        "api_response_code": result.get("code"),
+        "api_message": result.get("message"),
+        "total_transactions": len(txs),
+        "transactions": summary,
+    }
+
+
 class BinancePayVerifyRequest(BaseModel):
     order_id: str
     binance_order_id: str
