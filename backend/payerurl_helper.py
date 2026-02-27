@@ -58,14 +58,16 @@ class PayerURLHelper:
             "type": "python",
         }
 
+        sorted_params = dict(sorted(params.items()))
+        body = urlencode(sorted_params)
         headers = {
             "Authorization": self._auth_header(params),
-            "Content-Type": "application/json",
+            "Content-Type": "application/x-www-form-urlencoded",
         }
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(self.API_URL, json=params, headers=headers)
+                resp = await client.post(self.API_URL, content=body, headers=headers)
                 data = resp.json()
                 logging.info(
                     "PayerURL create_payment response: status=%s, data=%s",
