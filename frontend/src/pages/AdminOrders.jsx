@@ -394,7 +394,12 @@ const AdminOrders = ({ user, logout, settings }) => {
                         
                         <div className="space-y-1 text-white/80 text-sm">
                           <p><strong>Customer:</strong> {order.user_email}</p>
-                          <p><strong>Payment Method:</strong> {order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' : order.payment_method}</p>
+                          <p><strong>Payment Method:</strong> {
+                            order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
+                            order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
+                            order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                            order.payment_method
+                          }</p>
                           <p><strong>Total:</strong> ${order.total_amount.toFixed(2)}</p>
                           <p><strong>Items:</strong> {order.items.length} product(s)</p>
                           <p><strong>Date:</strong> {new Date(order.created_at).toLocaleString('en-US')}</p>

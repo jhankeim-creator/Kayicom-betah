@@ -32,7 +32,8 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
 
   useEffect(() => {
     if (!order) return;
-    if (order.payment_method === 'crypto_plisio' && order.payment_status === 'paid') {
+    const autoVerifyMethods = ['crypto_plisio', 'payerurl'];
+    if (autoVerifyMethods.includes(order.payment_method) && order.payment_status === 'paid') {
       navigate(`/payment-success?type=order&id=${order.id}`, { replace: true });
       return;
     }
@@ -214,7 +215,12 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-white/80">Payment Method:</span>
-                  <span className="text-white font-semibold">{order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' : order.payment_method}</span>
+                  <span className="text-white font-semibold">{
+                    order.payment_method === 'crypto_plisio' ? 'Cryptocurrency (Plisio)' :
+                    order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
+                    order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                    order.payment_method
+                  }</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-white/80">Total:</span>
@@ -345,6 +351,47 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                       💡 You can pay with Bitcoin, Ethereum, USDT, and other cryptocurrencies.
                     </p>
                     <p className="text-white/70 text-sm mt-2">
+                      ⏱️ Your order will be automatically confirmed once payment is received.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* PayerURL Crypto Payment */}
+          {order.payment_method === 'payerurl' && order.payment_status === 'pending' && order.payerurl_payment_url && (
+            <Card className="glass-effect border-yellow-500/30 border-2" data-testid="payerurl-payment-card">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <Package className="text-yellow-400" size={28} />
+                  <h3 className="text-2xl font-bold text-yellow-400">Complete Your Crypto Payment</h3>
+                </div>
+
+                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-5 space-y-4">
+                  <p className="text-white/90 text-lg font-semibold">
+                    Payment Amount: <span className="text-yellow-300">${order.total_amount.toFixed(2)} USD</span>
+                  </p>
+
+                  <div className="space-y-3">
+                    <p className="text-white/80 text-sm">
+                      Click the button below to complete your crypto payment via PayerURL.
+                    </p>
+                    <a
+                      href={order.payerurl_payment_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 bg-yellow-500 hover:bg-yellow-600 text-black font-bold px-6 py-3 rounded-lg transition"
+                    >
+                      💰 Pay with Crypto
+                    </a>
+                  </div>
+
+                  <div className="border-t border-yellow-500/30 pt-4 mt-4 space-y-2">
+                    <p className="text-white/70 text-sm">
+                      💡 Supported: USDT, BTC, ETH, and other cryptocurrencies.
+                    </p>
+                    <p className="text-white/70 text-sm">
                       ⏱️ Your order will be automatically confirmed once payment is received.
                     </p>
                   </div>

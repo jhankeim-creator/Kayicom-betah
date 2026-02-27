@@ -263,7 +263,12 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
                               {order.payment_status}
                             </span>
                             <span className="px-2 py-1 rounded text-xs font-semibold bg-white/10 text-white/80">
-                              {order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' : order.payment_method}
+                              {
+                              order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
+                              order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
+                              order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                              order.payment_method
+                            }
                             </span>
                           </div>
                           <p className="text-white font-bold mt-1">${order.total_amount.toFixed(2)}</p>

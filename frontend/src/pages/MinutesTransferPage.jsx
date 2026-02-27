@@ -37,6 +37,7 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
   const enabledPaymentMethods = useMemo(() => {
     const methods = [{ value: 'wallet', label: 'Wallet Balance' }];
     methods.push({ value: 'crypto_plisio', label: 'Crypto (Automatic)' });
+    methods.push({ value: 'payerurl', label: 'Crypto (PayerURL)' });
     const gateways = settings?.payment_gateways || {};
     for (const key of Object.keys(gateways)) {
       if (gateways[key]?.enabled && key !== 'crypto_usdt') {
@@ -155,13 +156,18 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
       
       // Check if we got a valid response
       if (res && res.data) {
+        const transferData = res.data?.transfer;
+        if (paymentMethod === 'payerurl' && transferData?.payerurl_payment_url) {
+          toast.success('Redirecting to crypto payment...');
+          window.location.href = transferData.payerurl_payment_url;
+          return;
+        }
         toast.success('Mobile topup request created successfully!');
         setPaymentInfo(res.data?.payment_info || null);
-        const id = res.data?.transfer?.id;
+        const id = transferData?.id;
         setSelectedTransferId(id || null);
         setProofTxId('');
         setProofUrl('');
-        // Reset form
         setCountry('');
         setPhone('');
         setAmount('');
