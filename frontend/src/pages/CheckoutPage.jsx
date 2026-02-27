@@ -134,6 +134,9 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
       } else if (paymentMethod === 'payerurl' && order.payerurl_payment_url) {
         toast.success('Redirecting to crypto payment...');
         window.location.href = order.payerurl_payment_url;
+      } else if (paymentMethod === 'payerurl' && !order.payerurl_payment_url) {
+        toast.error('Crypto payment is temporarily unavailable. Please try another method or check your order.');
+        navigate(`/track/${order.id}`);
       } else {
         toast.success(paymentMethod === 'wallet' ? 'Paid with wallet successfully!' : 'Order created! Please submit your payment proof.');
         navigate(`/track/${order.id}`);

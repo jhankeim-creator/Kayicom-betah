@@ -32,8 +32,8 @@ const WalletPage = ({ user, logout, settings }) => {
 
   const enabledPaymentMethods = useMemo(() => {
     const methods = [];
-    // Wallet topup via crypto invoice
     methods.push({ value: 'crypto_plisio', label: 'Crypto (Automatic)' });
+    methods.push({ value: 'payerurl', label: 'Crypto (PayerURL)' });
     const gateways = settings?.payment_gateways || {};
     for (const key of Object.keys(gateways)) {
       if (gateways[key]?.enabled && key !== 'crypto_usdt') {
@@ -108,9 +108,15 @@ const WalletPage = ({ user, logout, settings }) => {
         `/wallet/topups?user_id=${userId}&user_email=${user.email}`,
         { amount: amt, payment_method: topupMethod }
       );
+      const topupData = res.data?.topup;
+      if (topupMethod === 'payerurl' && topupData?.payerurl_payment_url) {
+        toast.success('Redirecting to crypto payment...');
+        window.location.href = topupData.payerurl_payment_url;
+        return;
+      }
       toast.success('Topup created');
       setTopupAmount('');
-      setSelectedTopupId(res.data?.topup?.id || null);
+      setSelectedTopupId(topupData?.id || null);
       setProofTxId('');
       setProofUrl('');
       await loadAll();

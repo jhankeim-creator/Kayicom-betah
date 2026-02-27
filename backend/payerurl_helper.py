@@ -1,9 +1,10 @@
 import hashlib
 import hmac
 import base64
-import json
 import logging
-import requests
+from urllib.parse import urlencode
+
+import httpx
 
 
 class PayerURLHelper:
@@ -14,21 +15,20 @@ class PayerURLHelper:
         self.secret_key = secret_key.strip()
 
     def _sign(self, params: dict) -> str:
-        sorted_keys = sorted(params.keys())
-        values = "".join(str(params[k]) for k in sorted_keys)
-        sig = hmac.new(
+        sorted_params = dict(sorted(params.items()))
+        query_string = urlencode(sorted_params)
+        return hmac.new(
             self.secret_key.encode(),
-            values.encode(),
+            query_string.encode(),
             hashlib.sha256,
         ).hexdigest()
-        return sig
 
     def _auth_header(self, params: dict) -> str:
         sig = self._sign(params)
         token = base64.b64encode(f"{self.public_key}:{sig}".encode()).decode()
         return f"Bearer {token}"
 
-    def create_payment(
+    async def create_payment(
         self,
         order_id: str,
         amount: float,
@@ -55,6 +55,7 @@ class PayerURLHelper:
             "notify_url": notify_url,
             "cancel_url": cancel_url,
             "items": items,
+            "type": "python",
         }
 
         headers = {
@@ -62,10 +63,24 @@ class PayerURLHelper:
             "Content-Type": "application/json",
         }
 
-        resp = requests.post(self.API_URL, json=params, headers=headers, timeout=30)
-        data = resp.json()
-        logging.info(f"PayerURL create_payment response: status={resp.status_code}, data={data}")
-        return data
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(self.API_URL, json=params, headers=headers)
+                data = resp.json()
+                logging.info(
+                    "PayerURL create_payment response: status=%s, data=%s",
+                    resp.status_code,
+                    data,
+                )
+                if resp.status_code != 200:
+                    return {"success": False, "error": f"HTTP {resp.status_code}: {data}"}
+                return data
+        except httpx.TimeoutException:
+            logging.error("PayerURL create_payment timed out")
+            return {"success": False, "error": "Request timed out"}
+        except Exception as e:
+            logging.error("PayerURL create_payment error: %s", e)
+            return {"success": False, "error": str(e)}
 
     @staticmethod
     def verify_callback(public_key: str, secret_key: str, callback_data: dict) -> bool:
@@ -80,7 +95,19 @@ class PayerURLHelper:
             cb_public_key, cb_signature = parts
             if cb_public_key != public_key:
                 return False
-            return True
+
+            verify_params = {
+                k: v for k, v in callback_data.items() if k != "authStr"
+            }
+            sorted_params = dict(sorted(verify_params.items()))
+            query_string = urlencode(sorted_params)
+            expected_sig = hmac.new(
+                secret_key.encode(),
+                query_string.encode(),
+                hashlib.sha256,
+            ).hexdigest()
+
+            return hmac.compare_digest(cb_signature, expected_sig)
         except Exception as e:
-            logging.warning(f"PayerURL callback verification failed: {e}")
+            logging.warning("PayerURL callback verification failed: %s", e)
             return False
