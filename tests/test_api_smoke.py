@@ -300,6 +300,46 @@ def test_products_default_orders_count_is_above_1000(app_module):
     assert int(product.get("orders_count", 0)) > 1000
 
 
+def test_products_auto_generate_seo_fields(app_module):
+    app_module.db.products._docs.append(
+        {
+            "id": "p-seo-1",
+            "name": "Netflix Premium",
+            "description": "Stream movies and TV shows with fast activation.",
+            "category": "subscription",
+            "price": 12.0,
+            "currency": "USD",
+        }
+    )
+    client = TestClient(app_module.app)
+    r = client.get("/api/products")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    product = next(p for p in data if p["id"] == "p-seo-1")
+    assert isinstance(product.get("seo_title"), str) and product["seo_title"].strip()
+    assert isinstance(product.get("seo_description"), str) and product["seo_description"].strip()
+    assert len(product["seo_description"]) <= 160
+
+
+def test_products_search_q_matches_seo_fields(app_module):
+    app_module.db.products._docs.append(
+        {
+            "id": "p-seo-q-1",
+            "name": "Service Bundle",
+            "description": "General service",
+            "category": "service",
+            "price": 8.5,
+            "seo_title": "Best YouTube Premium Activation",
+            "seo_description": "Fast setup for YouTube Premium accounts.",
+        }
+    )
+    client = TestClient(app_module.app)
+    r = client.get("/api/products?q=youtube")
+    assert r.status_code == 200, r.text
+    ids = [item["id"] for item in r.json()]
+    assert "p-seo-q-1" in ids
+
+
 def test_paid_order_increments_product_orders_count_idempotently(app_module):
     app_module.db.products._docs.append(
         {"id": "p-sale-1", "name": "Steam", "description": "Gaming", "category": "giftcard", "price": 10.0}
