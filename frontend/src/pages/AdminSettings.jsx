@@ -1378,6 +1378,37 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         </div>
                       </div>
 
+                      {/* PayerURL Crypto */}
+                      <div className="bg-white/5 p-4 rounded-lg mb-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="text-white font-semibold flex items-center gap-2">
+                            <span>💰</span> PayerURL (Crypto Auto-Verify)
+                          </h4>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-white/70 text-sm">Public Key</Label>
+                            <Input
+                              placeholder="PayerURL Public Key"
+                              value={formData.payerurl_public_key || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, payerurl_public_key: e.target.value }))}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Secret Key</Label>
+                            <Input
+                              type="password"
+                              placeholder="PayerURL Secret Key"
+                              value={formData.payerurl_secret_key || ""}
+                              onChange={(e) => setFormData(prev => ({ ...prev, payerurl_secret_key: e.target.value }))}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <p className="text-white/40 text-xs">Get keys from <a href="https://dash.payerurl.com/profile/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">PayerURL Dashboard</a></p>
+                        </div>
+                      </div>
+
                       {/* Binance Pay */}
                       <div className="bg-white/5 p-4 rounded-lg mb-4">
                         <div className="flex justify-between items-center mb-3">

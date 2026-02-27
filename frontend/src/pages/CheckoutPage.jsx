@@ -131,6 +131,9 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         toast.success('Redirecting to payment...');
         openPlisioInvoice(invoiceUrl, order.plisio_invoice_id || order.id);
         navigate(`/track/${order.id}`);
+      } else if (paymentMethod === 'payerurl' && order.payerurl_payment_url) {
+        toast.success('Redirecting to crypto payment...');
+        window.location.href = order.payerurl_payment_url;
       } else {
         toast.success(paymentMethod === 'wallet' ? 'Paid with wallet successfully!' : 'Order created! Please submit your payment proof.');
         navigate(`/track/${order.id}`);
@@ -323,6 +326,20 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                       </div>
                     </label>
                   )}
+
+                  {/* PayerURL Crypto Payment */}
+                  <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
+                    paymentMethod === 'payerurl' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
+                  }`}>
+                    <RadioGroupItem value="payerurl" className="mt-1" />
+                    <div className="ml-4">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="text-yellow-400" size={20} />
+                        <span className="text-white font-semibold">Crypto (USDT, BTC, ETH)</span>
+                      </div>
+                      <p className="text-white/70 text-sm mt-1">Auto-verified - Instant delivery</p>
+                    </div>
+                  </label>
 
                   {settings?.payment_gateways?.binance_pay?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
