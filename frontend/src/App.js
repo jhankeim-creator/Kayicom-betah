@@ -40,6 +40,8 @@ import AdminBlog from './pages/AdminBlog';
 import AdminSellers from './pages/AdminSellers';
 import SellerApplyPage from './pages/SellerApplyPage';
 import SellerDashboard from './pages/SellerDashboard';
+import DisputeCenterPage from './pages/DisputeCenterPage';
+import MessagesPage from './pages/MessagesPage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/+$/, ''); // Remove trailing slashes
@@ -348,6 +350,24 @@ function App() {
             element={
               <ProtectedRoute>
                 <SellerDashboard user={user} logout={logout} settings={settings} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/disputes"
+            element={
+              <ProtectedRoute>
+                <DisputeCenterPage user={user} logout={logout} settings={settings} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute>
+                <MessagesPage user={user} logout={logout} settings={settings} />
               </ProtectedRoute>
             }
           />
