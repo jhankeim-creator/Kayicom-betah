@@ -27,9 +27,10 @@ mongod --dbpath /data/db --fork --logpath /tmp/mongod.log
 
 After MongoDB and backend are running:
 ```bash
-cd backend && python3 create_admin.py   # admin: Info.kayicom.com@gmx.fr / admin123
-cd backend && python3 seed_demo_products.py  # 25 demo products
+cd backend && MONGO_URL=mongodb://localhost:27017 python3 create_admin.py   # admin: Info.kayicom.com@gmx.fr / admin123
+cd backend && MONGO_URL=mongodb://localhost:27017 DB_NAME=kayicom python3 seed_demo_products.py  # 25 demo products
 ```
+Note: `seed_demo_products.py` requires `DB_NAME` env var (unlike `create_admin.py` which defaults to `kayicom`).
 
 ### Running tests
 
