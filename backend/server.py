@@ -531,6 +531,27 @@ class CouponUpdate(BaseModel):
     usage_limit: Optional[int] = None
     expires_at: Optional[datetime] = None
 
+# ==================== PRODUCT CODE MODELS (Auto-Delivery) ====================
+
+class ProductCode(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    product_id: str
+    code: str
+    status: str = "available"  # available, delivered, reserved
+    order_id: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    delivered_at: Optional[datetime] = None
+
+
+class ProductCodeAdd(BaseModel):
+    code: str
+
+
+class ProductCodeBulkAdd(BaseModel):
+    codes: List[str]
+
+
 # Payment Models
 class ManualPaymentProof(BaseModel):
     order_id: str
@@ -1955,6 +1976,102 @@ async def delete_product(product_id: str):
     return {"message": "Product deleted successfully"}
 
 
+# ==================== PRODUCT CODES ENDPOINTS (Auto-Delivery) ====================
+
+@api_router.get("/products/{product_id}/codes")
+async def get_product_codes(product_id: str, status: Optional[str] = None):
+    """List codes for a product (admin). Optional filter by status."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    query: Dict[str, Any] = {"product_id": product_id}
+    if status:
+        query["status"] = status
+    codes = await db.product_codes.find(query, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return codes
+
+
+@api_router.get("/products/{product_id}/codes/stats")
+async def get_product_codes_stats(product_id: str):
+    """Get code stats for a product."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    total = await db.product_codes.count_documents({"product_id": product_id})
+    available = await db.product_codes.count_documents({"product_id": product_id, "status": "available"})
+    delivered = await db.product_codes.count_documents({"product_id": product_id, "status": "delivered"})
+    reserved = await db.product_codes.count_documents({"product_id": product_id, "status": "reserved"})
+    return {"total": total, "available": available, "delivered": delivered, "reserved": reserved}
+
+
+@api_router.post("/products/{product_id}/codes")
+async def add_product_code(product_id: str, payload: ProductCodeAdd):
+    """Add a single code to a product. Rejects duplicates within the same product."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    code_text = payload.code.strip()
+    if not code_text:
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+    existing = await db.product_codes.find_one({"product_id": product_id, "code": code_text})
+    if existing:
+        raise HTTPException(status_code=409, detail="Duplicate code: this code already exists for this product")
+    doc = ProductCode(product_id=product_id, code=code_text).model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.product_codes.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.post("/products/{product_id}/codes/bulk")
+async def add_product_codes_bulk(product_id: str, payload: ProductCodeBulkAdd):
+    """Add multiple codes at once. Skips duplicates and returns summary."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    codes = [c.strip() for c in payload.codes if c.strip()]
+    if not codes:
+        raise HTTPException(status_code=400, detail="No valid codes provided")
+
+    input_dupes = len(codes) - len(set(codes))
+    unique_codes = list(dict.fromkeys(codes))
+
+    existing_cursor = db.product_codes.find(
+        {"product_id": product_id, "code": {"$in": unique_codes}},
+        {"code": 1, "_id": 0}
+    )
+    existing_codes = {doc["code"] async for doc in existing_cursor}
+
+    new_codes = [c for c in unique_codes if c not in existing_codes]
+    skipped = len(unique_codes) - len(new_codes)
+
+    if new_codes:
+        docs = []
+        for code_text in new_codes:
+            doc = ProductCode(product_id=product_id, code=code_text).model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            docs.append(doc)
+        await db.product_codes.insert_many(docs)
+
+    return {
+        "added": len(new_codes),
+        "skipped_duplicates": skipped + input_dupes,
+        "total_submitted": len(payload.codes),
+    }
+
+
+@api_router.delete("/products/{product_id}/codes/{code_id}")
+async def delete_product_code(product_id: str, code_id: str):
+    """Delete a code (only if still available, not yet delivered)."""
+    code_doc = await db.product_codes.find_one({"id": code_id, "product_id": product_id})
+    if not code_doc:
+        raise HTTPException(status_code=404, detail="Code not found")
+    if code_doc.get("status") == "delivered":
+        raise HTTPException(status_code=400, detail="Cannot delete a delivered code")
+    await db.product_codes.delete_one({"id": code_id, "product_id": product_id})
+    return {"message": "Code deleted"}
+
+
 # ==================== COUPON ENDPOINTS ====================
 
 def _normalize_coupon_code(code: str) -> str:
@@ -2437,6 +2554,13 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
             f"Payment status: {order.payment_status}",
         ],
     )
+
+    if order.payment_status == "paid":
+        try:
+            await _try_auto_deliver(order.id)
+        except Exception as e:
+            logging.error(f"Auto-delivery error on wallet payment: {e}")
+
     return order
 
 @api_router.get("/orders", response_model=List[Order])
@@ -2504,6 +2628,10 @@ async def update_order_status(
     # Record coupon usage once payment is marked as paid
     if payment_status == "paid":
         await _record_coupon_usage_if_needed(order_id)
+        try:
+            await _try_auto_deliver(order_id)
+        except Exception as e:
+            logging.error(f"Auto-delivery error on manual status update: {e}")
     await _record_product_orders_if_needed(order_id)
 
     # If order is completed, trigger referral payout check (idempotent)
@@ -2530,6 +2658,166 @@ async def update_order_status(
     )
     
     return {"message": "Order updated successfully"}
+
+
+# ==================== AUTO-DELIVERY LOGIC ====================
+
+async def _try_auto_deliver(order_id: str) -> bool:
+    """Attempt automatic delivery for an order whose payment is confirmed.
+
+    For each order item whose product has delivery_type == "automatic",
+    atomically reserve an available code from the product_codes collection.
+    If every automatic-delivery item gets a code, mark the order completed
+    and send the delivery email.  Returns True if auto-delivery succeeded.
+    """
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        return False
+
+    if order.get("order_status") == "completed":
+        return False
+
+    items = order.get("items", [])
+    if not items:
+        return False
+
+    reserved_codes: List[dict] = []
+    all_auto = True
+
+    for item in items:
+        product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
+        if not product:
+            all_auto = False
+            break
+
+        if product.get("delivery_type") != "automatic":
+            all_auto = False
+            break
+
+        qty = max(int(item.get("quantity", 1)), 1)
+        item_codes = []
+        for _ in range(qty):
+            code_doc = await db.product_codes.find_one_and_update(
+                {"product_id": product["id"], "status": "available"},
+                {"$set": {
+                    "status": "reserved",
+                    "order_id": order_id,
+                    "delivered_at": datetime.now(timezone.utc).isoformat(),
+                }},
+                return_document=True,
+            )
+            if not code_doc:
+                all_auto = False
+                break
+            item_codes.append(code_doc)
+
+        if not all_auto:
+            break
+        reserved_codes.append({
+            "product_id": product["id"],
+            "product_name": item.get("product_name", product.get("name", "")),
+            "quantity": qty,
+            "codes": item_codes,
+        })
+
+    if not all_auto or not reserved_codes:
+        for entry in reserved_codes:
+            for code_doc in entry["codes"]:
+                await db.product_codes.update_one(
+                    {"id": code_doc["id"], "status": "reserved", "order_id": order_id},
+                    {"$set": {"status": "available", "order_id": None, "delivered_at": None}},
+                )
+        return False
+
+    for entry in reserved_codes:
+        for code_doc in entry["codes"]:
+            await db.product_codes.update_one(
+                {"id": code_doc["id"]},
+                {"$set": {"status": "delivered"}},
+            )
+
+    delivery_items = []
+    all_details_parts = []
+    for entry in reserved_codes:
+        codes_text = "\n".join(c.get("code", "") for c in entry["codes"])
+        delivery_items.append({
+            "product_id": entry["product_id"],
+            "product_name": entry["product_name"],
+            "quantity": entry["quantity"],
+            "details": codes_text,
+        })
+        all_details_parts.append(f"{entry['product_name']}:\n{codes_text}")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one(
+        {"id": order_id},
+        {"$set": {
+            "delivery_info": {
+                "details": "\n\n".join(all_details_parts),
+                "items": delivery_items,
+                "delivered_at": now_iso,
+                "auto_delivered": True,
+            },
+            "order_status": "completed",
+            "payment_status": "paid",
+            "updated_at": now_iso,
+        }}
+    )
+
+    await _record_product_orders_if_needed(order_id)
+    updated_order = await _set_subscription_dates_if_needed(order_id)
+    if not updated_order:
+        updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    await _record_loyalty_credits_if_needed(order_id)
+    try:
+        await _maybe_send_subscription_emails(updated_order or order)
+    except Exception as e:
+        logging.error(f"Auto-delivery subscription email error: {e}")
+    try:
+        if updated_order:
+            await check_and_credit_referral(updated_order)
+    except Exception as e:
+        logging.error(f"Auto-delivery referral error: {e}")
+
+    try:
+        settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+        user_email = order.get("user_email")
+        if user_email:
+            items_html = ""
+            if delivery_items:
+                list_rows = "".join(
+                    f"<li><b>{i.get('product_name', 'Item')}:</b> "
+                    f"<pre style='background:#111827;color:#D1D5DB;padding:8px;border-radius:6px;white-space:pre-wrap;margin:6px 0'>{i.get('details')}</pre></li>"
+                    for i in delivery_items
+                )
+                items_html = f"<p><b>Your codes / credentials:</b></p><ul>{list_rows}</ul>"
+            html = (
+                f"<div style='font-family:Arial,sans-serif'>"
+                f"<h2>Your order has been delivered automatically!</h2>"
+                f"<p><b>Order:</b> {order_id}</p>"
+                f"{items_html}"
+                f"<p>Thank you for your purchase!</p>"
+                f"</div>"
+            )
+            _send_resend_email(settings, user_email, "Your delivery is ready - Auto Delivery", html)
+    except Exception as e:
+        logging.error(f"Auto-delivery email error: {e}")
+
+    try:
+        await _notify_admin_telegram(
+            "Auto-delivery completed",
+            [
+                f"Order: {order_id[:8]}",
+                f"Items: {len(delivery_items)}",
+                f"User: {order.get('user_email', 'N/A')}",
+            ],
+        )
+    except Exception:
+        pass
+
+    logging.info("Auto-delivery completed for order %s", order_id)
+    return True
+
 
 # Delivery Management Models
 class DeliveryItem(BaseModel):
@@ -2715,6 +3003,10 @@ async def plisio_callback(data: Dict[str, Any]):
             )
             await _record_coupon_usage_if_needed(order_id)
             await _record_product_orders_if_needed(order_id)
+            try:
+                await _try_auto_deliver(order_id)
+            except Exception as e:
+                logging.error(f"Auto-delivery error on Plisio callback: {e}")
             await _notify_admin_telegram(
                 "Crypto payment confirmed (order)",
                 [
@@ -2851,6 +3143,10 @@ async def payerurl_callback(request: Request):
                 "updated_at": now_iso,
             }}
         )
+        try:
+            await _try_auto_deliver(order_id)
+        except Exception as e:
+            logging.error(f"Auto-delivery error on PayerURL callback: {e}")
         try:
             await _notify_admin_telegram(
                 "PayerURL Payment Verified",
@@ -3114,6 +3410,10 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
         )
+        try:
+            await _try_auto_deliver(req.order_id)
+        except Exception as e:
+            logging.error(f"Auto-delivery error on Binance Pay: {e}")
         try:
             await _notify_admin_telegram(
                 "Binance Pay Auto-Verified",
