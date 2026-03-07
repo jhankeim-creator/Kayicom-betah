@@ -137,6 +137,37 @@ class AdminCategoryAccessReview(BaseModel):
     action: str  # approve or reject
 
 
+# ==================== SELLER OFFER MODELS ====================
+
+class SellerOfferCreate(BaseModel):
+    product_id: str
+    price: float
+    delivery_type: str = "automatic"
+    stock_available: bool = True
+
+
+# ==================== ESCROW / DISPUTE / MESSAGE MODELS ====================
+
+class EscrowConfirmRequest(BaseModel):
+    action: str  # confirm or dispute
+    reason: Optional[str] = None
+
+
+class DisputeMessageCreate(BaseModel):
+    content: str
+
+
+class AdminDisputeResolve(BaseModel):
+    resolution: str  # buyer_wins or seller_wins
+    reason: Optional[str] = None
+
+
+class MessageCreate(BaseModel):
+    order_id: str
+    receiver_id: str
+    content: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -167,6 +198,7 @@ ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT
 CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 _order_auto_cancel_task: Optional[asyncio.Task] = None
 _subscription_notification_task: Optional[asyncio.Task] = None
+_escrow_release_task: Optional[asyncio.Task] = None
 SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS = max(
     60,
     int(os.environ.get("SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS", "300")),
@@ -427,6 +459,8 @@ class Product(BaseModel):
     stock_available: bool = True
     delivery_type: str = "automatic"  # automatic or manual
     seller_id: Optional[str] = None  # null = admin product, set = seller product
+    product_status: str = "approved"  # approved, pending_review, rejected (seller products start as pending)
+    seller_offer_count: int = 0  # how many sellers offer this product
     subscription_duration_months: Optional[int] = None  # For subscriptions: 1-12 months
     subscription_auto_check: bool = False  # Auto-check if subscription is still valid
     variant_name: Optional[str] = None  # For variants like "100 Diamonds", "500 UC", etc
@@ -535,6 +569,15 @@ class Order(BaseModel):
     refunded_amount: Optional[float] = None
     subscription_start_date: Optional[datetime] = None
     subscription_end_date: Optional[datetime] = None  # For subscription orders
+    # Escrow fields
+    escrow_status: Optional[str] = None  # held, buyer_confirmed, released, disputed, refunded
+    escrow_held_at: Optional[datetime] = None
+    escrow_confirmed_at: Optional[datetime] = None
+    escrow_release_at: Optional[datetime] = None  # 3 days after buyer confirms
+    escrow_released_at: Optional[datetime] = None
+    dispute_id: Optional[str] = None
+    # Seller offer reference
+    seller_offer_id: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -1105,6 +1148,16 @@ async def _order_auto_cancel_worker():
         except Exception as e:
             logging.error(f"Order auto-cancel worker error: {e}")
         await asyncio.sleep(60)
+
+
+async def _escrow_release_worker():
+    """Periodically release escrow payments that passed the 3-day hold."""
+    while True:
+        try:
+            await _release_due_escrows()
+        except Exception as e:
+            logging.error(f"Escrow release worker error: {e}")
+        await asyncio.sleep(300)
 
 
 _DEFAULT_SITE_CRYPTO_SETTINGS = SiteSettings().crypto_settings or {}
@@ -2586,9 +2639,16 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
             except Exception as e:
                 logging.error(f"PayerURL error: {e}")
 
+    has_seller_items = any(item.seller_id for item in validated_items)
+    if has_seller_items:
+        order.escrow_status = "held"
+        order.escrow_held_at = datetime.now(timezone.utc)
+
     doc = order.model_dump()
     doc['created_at'] = doc['created_at'].isoformat()
     doc['updated_at'] = doc['updated_at'].isoformat()
+    if doc.get('escrow_held_at'):
+        doc['escrow_held_at'] = doc['escrow_held_at'].isoformat()
     
     await db.orders.insert_one(doc)
     await _record_product_orders_if_needed(order.id)
@@ -3598,6 +3658,7 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         stock_available=product.stock_available,
         delivery_type=product.delivery_type,
         seller_id=user_id,
+        product_status="pending_review",
         subscription_duration_months=product.subscription_duration_months,
         variant_name=product.variant_name,
         parent_product_id=product.parent_product_id,
@@ -3819,14 +3880,353 @@ async def admin_list_category_requests(status: Optional[str] = None):
     return requests
 
 
+# ==================== SELLER OFFERS ====================
+
+@api_router.get("/products/{product_id}/offers")
+async def get_product_offers(product_id: str):
+    """Get all seller offers for a catalog product, sorted by price."""
+    offers = await db.seller_offers.find(
+        {"product_id": product_id, "status": "active"},
+        {"_id": 0}
+    ).sort("price", 1).to_list(100)
+    for offer in offers:
+        seller = await db.users.find_one({"id": offer.get("seller_id")}, {"_id": 0, "password": 0, "password_hash": 0})
+        offer["seller_name"] = (seller or {}).get("seller_store_name", "Unknown")
+        offer["seller_rating"] = (seller or {}).get("seller_rating", None)
+        codes_available = await db.product_codes.count_documents({"product_id": product_id, "seller_id": offer.get("seller_id"), "status": "available"})
+        offer["codes_available"] = codes_available
+    return offers
+
+
+@api_router.post("/seller/offers")
+async def seller_create_offer(payload: SellerOfferCreate, user_id: str):
+    """Seller creates an offer for an existing catalog product."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user or user.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Not an approved seller")
+    product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    approved_cats = user.get("seller_approved_categories") or []
+    if product.get("category") not in approved_cats:
+        raise HTTPException(status_code=403, detail="Not approved for this category")
+    existing = await db.seller_offers.find_one({"product_id": payload.product_id, "seller_id": user_id, "status": "active"})
+    if existing:
+        raise HTTPException(status_code=409, detail="You already have an active offer for this product")
+    now = datetime.now(timezone.utc).isoformat()
+    offer = {
+        "id": str(uuid.uuid4()),
+        "product_id": payload.product_id,
+        "seller_id": user_id,
+        "seller_store_name": user.get("seller_store_name", ""),
+        "price": payload.price,
+        "delivery_type": payload.delivery_type,
+        "stock_available": payload.stock_available,
+        "status": "active",
+        "created_at": now,
+    }
+    await db.seller_offers.insert_one(offer)
+    count = await db.seller_offers.count_documents({"product_id": payload.product_id, "status": "active"})
+    await db.products.update_one({"id": payload.product_id}, {"$set": {"seller_offer_count": count}})
+    offer.pop("_id", None)
+    return offer
+
+
+@api_router.get("/seller/offers")
+async def seller_list_offers(user_id: str):
+    """List seller's own offers."""
+    offers = await db.seller_offers.find({"seller_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for offer in offers:
+        product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
+        offer["product_name"] = (product or {}).get("name", "Unknown")
+        offer["product_image"] = (product or {}).get("image_url")
+    return offers
+
+
+@api_router.delete("/seller/offers/{offer_id}")
+async def seller_delete_offer(offer_id: str, user_id: str):
+    """Seller removes their offer."""
+    offer = await db.seller_offers.find_one({"id": offer_id, "seller_id": user_id})
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    await db.seller_offers.update_one({"id": offer_id}, {"$set": {"status": "removed"}})
+    count = await db.seller_offers.count_documents({"product_id": offer["product_id"], "status": "active"})
+    await db.products.update_one({"id": offer["product_id"]}, {"$set": {"seller_offer_count": count}})
+    return {"message": "Offer removed"}
+
+
+# ==================== ESCROW SYSTEM ====================
+
+@api_router.post("/orders/{order_id}/escrow")
+async def escrow_action(order_id: str, payload: EscrowConfirmRequest, user_id: str):
+    """Customer confirms delivery or opens dispute."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("user_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not your order")
+    if order.get("escrow_status") not in ("held", None):
+        if order.get("escrow_status") == "held":
+            pass
+        else:
+            raise HTTPException(status_code=400, detail=f"Escrow already in state: {order.get('escrow_status')}")
+
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    if payload.action == "confirm":
+        release_at = now + timedelta(days=3)
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "escrow_status": "buyer_confirmed",
+            "escrow_confirmed_at": now_iso,
+            "escrow_release_at": release_at.isoformat(),
+            "updated_at": now_iso,
+        }})
+        return {"message": "Delivery confirmed. Seller payment will be released in 3 days.", "release_at": release_at.isoformat()}
+
+    elif payload.action == "dispute":
+        reason = (payload.reason or "").strip()
+        if not reason:
+            raise HTTPException(status_code=400, detail="Dispute reason required")
+        dispute = {
+            "id": str(uuid.uuid4()),
+            "order_id": order_id,
+            "buyer_id": order.get("user_id"),
+            "buyer_email": order.get("user_email"),
+            "seller_id": None,
+            "reason": reason,
+            "status": "open",
+            "messages": [{
+                "id": str(uuid.uuid4()),
+                "sender_id": user_id,
+                "sender_role": "buyer",
+                "content": reason,
+                "created_at": now_iso,
+            }],
+            "resolution": None,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        for item in order.get("items", []):
+            if item.get("seller_id"):
+                dispute["seller_id"] = item["seller_id"]
+                seller = await db.users.find_one({"id": item["seller_id"]}, {"_id": 0})
+                dispute["seller_email"] = (seller or {}).get("email")
+                break
+
+        await db.disputes.insert_one(dispute)
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "escrow_status": "disputed",
+            "dispute_id": dispute["id"],
+            "updated_at": now_iso,
+        }})
+        await _notify_admin_telegram("Dispute opened", [
+            f"Order: {order_id[:8]}",
+            f"Buyer: {order.get('user_email')}",
+            f"Reason: {reason[:100]}",
+        ])
+        return {"message": "Dispute opened", "dispute_id": dispute["id"]}
+    else:
+        raise HTTPException(status_code=400, detail="Action must be 'confirm' or 'dispute'")
+
+
+async def _release_due_escrows():
+    """Background: release escrow payments that have passed the 3-day hold."""
+    now = datetime.now(timezone.utc)
+    cursor = db.orders.find({
+        "escrow_status": "buyer_confirmed",
+        "escrow_release_at": {"$lte": now.isoformat()},
+    }, {"_id": 0})
+    async for order in cursor:
+        order_id = order.get("id")
+        await _credit_seller_earnings(order_id)
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "escrow_status": "released",
+            "escrow_released_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+        }})
+        logging.info("Escrow released for order %s", order_id)
+
+
+# ==================== DISPUTE CENTER ====================
+
+@api_router.get("/disputes")
+async def get_disputes(user_id: Optional[str] = None, role: Optional[str] = None, status: Optional[str] = None):
+    """Get disputes. For buyer, seller, or admin."""
+    query: Dict[str, Any] = {}
+    if user_id and role == "buyer":
+        query["buyer_id"] = user_id
+    elif user_id and role == "seller":
+        query["seller_id"] = user_id
+    if status:
+        query["status"] = status
+    disputes = await db.disputes.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return disputes
+
+
+@api_router.get("/disputes/{dispute_id}")
+async def get_dispute(dispute_id: str):
+    """Get dispute details."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    order = await db.orders.find_one({"id": dispute.get("order_id")}, {"_id": 0})
+    dispute["order"] = order
+    return dispute
+
+
+@api_router.post("/disputes/{dispute_id}/message")
+async def add_dispute_message(dispute_id: str, payload: DisputeMessageCreate, user_id: str):
+    """Add a message to a dispute (buyer, seller, or admin)."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if dispute.get("status") not in ("open", "in_review"):
+        raise HTTPException(status_code=400, detail="Dispute is closed")
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    sender_role = "admin" if (user or {}).get("role") == "admin" else ("seller" if user_id == dispute.get("seller_id") else "buyer")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    message = {
+        "id": str(uuid.uuid4()),
+        "sender_id": user_id,
+        "sender_role": sender_role,
+        "sender_name": (user or {}).get("full_name", "User"),
+        "content": payload.content.strip(),
+        "created_at": now_iso,
+    }
+    await db.disputes.update_one({"id": dispute_id}, {
+        "$push": {"messages": message},
+        "$set": {"updated_at": now_iso, "status": "in_review"},
+    })
+    return message
+
+
+@api_router.put("/disputes/{dispute_id}/resolve")
+async def admin_resolve_dispute(dispute_id: str, payload: AdminDisputeResolve):
+    """Admin resolves a dispute."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    order_id = dispute.get("order_id")
+
+    if payload.resolution == "buyer_wins":
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "escrow_status": "refunded",
+            "updated_at": now_iso,
+        }})
+        order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+        if order:
+            refund_amount = float(order.get("total_amount", 0))
+            await db.users.update_one({"id": order["user_id"]}, {"$inc": {"wallet_balance": refund_amount}})
+
+    elif payload.resolution == "seller_wins":
+        await db.orders.update_one({"id": order_id}, {"$set": {
+            "escrow_status": "released",
+            "escrow_released_at": now_iso,
+            "updated_at": now_iso,
+        }})
+        await _credit_seller_earnings(order_id)
+    else:
+        raise HTTPException(status_code=400, detail="Resolution must be 'buyer_wins' or 'seller_wins'")
+
+    await db.disputes.update_one({"id": dispute_id}, {"$set": {
+        "status": f"resolved_{payload.resolution}",
+        "resolution": payload.resolution,
+        "resolution_reason": payload.reason,
+        "resolved_at": now_iso,
+        "updated_at": now_iso,
+    }})
+    return {"message": f"Dispute resolved: {payload.resolution}"}
+
+
+# ==================== DIRECT MESSAGING ====================
+
+@api_router.post("/messages")
+async def send_message(payload: MessageCreate, user_id: str):
+    """Send a direct message to another user (linked to an order)."""
+    order = await db.orders.find_one({"id": payload.order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    sender = await db.users.find_one({"id": user_id}, {"_id": 0})
+    msg = {
+        "id": str(uuid.uuid4()),
+        "order_id": payload.order_id,
+        "sender_id": user_id,
+        "sender_name": (sender or {}).get("full_name", "User"),
+        "sender_role": (sender or {}).get("role", "customer"),
+        "receiver_id": payload.receiver_id,
+        "content": payload.content.strip(),
+        "read": False,
+        "created_at": now_iso,
+    }
+    await db.messages.insert_one(msg)
+    msg.pop("_id", None)
+    return msg
+
+
+@api_router.get("/messages")
+async def get_messages(user_id: str, order_id: Optional[str] = None):
+    """Get messages for a user, optionally filtered by order."""
+    query = {"$or": [{"sender_id": user_id}, {"receiver_id": user_id}]}
+    if order_id:
+        query["order_id"] = order_id
+    messages = await db.messages.find(query, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return messages
+
+
+@api_router.put("/messages/{message_id}/read")
+async def mark_message_read(message_id: str, user_id: str):
+    """Mark a message as read."""
+    await db.messages.update_one({"id": message_id, "receiver_id": user_id}, {"$set": {"read": True}})
+    return {"message": "Marked as read"}
+
+
+@api_router.get("/messages/unread-count")
+async def get_unread_count(user_id: str):
+    """Get count of unread messages."""
+    count = await db.messages.count_documents({"receiver_id": user_id, "read": False})
+    return {"unread": count}
+
+
+# ==================== PRODUCT APPROVAL ====================
+
+@api_router.put("/admin/products/{product_id}/approve")
+async def admin_approve_product(product_id: str, action: str = "approve"):
+    """Admin approves or rejects a seller product."""
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    new_status = "approved" if action == "approve" else "rejected"
+    await db.products.update_one({"id": product_id}, {"$set": {"product_status": new_status}})
+    return {"message": f"Product {new_status}"}
+
+
+@api_router.get("/admin/products/pending")
+async def admin_get_pending_products():
+    """Get products awaiting approval."""
+    products = await db.products.find({"product_status": "pending_review"}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    for p in products:
+        if p.get("seller_id"):
+            seller = await db.users.find_one({"id": p["seller_id"]}, {"seller_store_name": 1, "email": 1, "_id": 0})
+            p["seller_store_name"] = (seller or {}).get("seller_store_name")
+            p["seller_email"] = (seller or {}).get("email")
+    return products
+
+
 # ==================== SELLER EARNINGS CREDITING ====================
 
 async def _credit_seller_earnings(order_id: str):
-    """After order is completed, credit sellers for their items."""
+    """Credit sellers for their items. Respects escrow: only credits after release."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order or order.get("payment_status") != "paid":
         return
     if order.get("seller_earnings_credited"):
+        return
+    if order.get("escrow_status") and order.get("escrow_status") not in ("released", "buyer_confirmed"):
         return
     for item in order.get("items", []):
         product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
@@ -6939,6 +7339,10 @@ async def startup_background_jobs():
 
     if _subscription_notification_task is None:
         _subscription_notification_task = asyncio.create_task(_subscription_notifications_worker())
+
+    global _escrow_release_task
+    if _escrow_release_task is None:
+        _escrow_release_task = asyncio.create_task(_escrow_release_worker())
 
 
 @app.on_event("shutdown")

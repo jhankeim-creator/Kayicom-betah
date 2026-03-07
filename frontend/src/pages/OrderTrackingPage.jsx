@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Clock, CheckCircle, AlertCircle, Upload } from 'lucide-react';
+import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageSquare, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import BinancePaySection from '../components/BinancePaySection';
@@ -270,6 +270,82 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                 <p className="text-white/60 text-xs mt-3">
                   💡 Please save this information. Contact support if you have any issues.
                 </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Escrow Actions */}
+          {order.escrow_status === 'held' && order.order_status === 'completed' && (
+            <Card className="glass-effect border-yellow-500/30 border-2">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <ShieldCheck className="text-yellow-400" size={28} />
+                  <h3 className="text-xl font-bold text-yellow-400">Payment in Escrow</h3>
+                </div>
+                <p className="text-white/70 text-sm mb-4">
+                  Your payment is held securely. Please confirm if the delivery is correct, or open a dispute if there's an issue.
+                </p>
+                <div className="flex gap-3">
+                  <Button className="flex-1 bg-green-600 text-white" onClick={async () => {
+                    try {
+                      await axiosInstance.post(`/orders/${order.id}/escrow?user_id=${order.user_id}`, { action: 'confirm' });
+                      toast.success('Delivery confirmed! Seller payment will release in 3 days.');
+                      window.location.reload();
+                    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+                  }}>
+                    <CheckCircle size={18} className="mr-2" /> Confirm Delivery
+                  </Button>
+                  <Button variant="outline" className="flex-1 border-red-400 text-red-400" onClick={async () => {
+                    const reason = prompt('Describe the issue:');
+                    if (!reason) return;
+                    try {
+                      await axiosInstance.post(`/orders/${order.id}/escrow?user_id=${order.user_id}`, { action: 'dispute', reason });
+                      toast.success('Dispute opened');
+                      window.location.reload();
+                    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+                  }}>
+                    <AlertTriangle size={18} className="mr-2" /> Open Dispute
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {order.escrow_status === 'buyer_confirmed' && (
+            <Card className="glass-effect border-green-500/20">
+              <CardContent className="p-4 text-center">
+                <p className="text-green-300">Delivery confirmed. Seller payment releases on {order.escrow_release_at ? new Date(order.escrow_release_at).toLocaleDateString() : '3 days'}.</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {order.escrow_status === 'disputed' && (
+            <Card className="glass-effect border-red-500/20">
+              <CardContent className="p-4 flex items-center justify-between">
+                <p className="text-red-300">Dispute is open. Our team will review it.</p>
+                <Button size="sm" onClick={() => window.location.href = '/disputes'} className="bg-red-600 text-white text-xs">
+                  <AlertTriangle size={14} className="mr-1" /> View Dispute
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Message Seller */}
+          {order.items?.some(i => i.seller_id) && order.payment_status === 'paid' && (
+            <Card className="glass-effect border-cyan-500/20">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="text-cyan-400" size={20} />
+                  <span className="text-white text-sm">Contact the seller about this order</span>
+                </div>
+                <Button size="sm" onClick={() => {
+                  const sellerId = order.items.find(i => i.seller_id)?.seller_id;
+                  if (sellerId) {
+                    window.location.href = `/messages?order=${order.id}&seller=${sellerId}`;
+                  }
+                }} className="bg-cyan-600 text-white text-xs">
+                  <MessageSquare size={14} className="mr-1" /> Message
+                </Button>
               </CardContent>
             </Card>
           )}
