@@ -10,8 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Package, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Key } from 'lucide-react';
 import { toast } from 'sonner';
+import ProductCodesManager from '../components/ProductCodesManager';
 
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service'];
@@ -77,6 +78,8 @@ const AdminProducts = ({ user, logout, settings }) => {
   const [showVariantMode, setShowVariantMode] = useState(false);
   const [parentProduct, setParentProduct] = useState(null);
   const [expandedGroups, setExpandedGroups] = useState({});
+  const [codesProduct, setCodesProduct] = useState(null);
+  const [codesDialogOpen, setCodesDialogOpen] = useState(false);
 
   const categoryOptions = (() => {
     const fromSettings = (settings?.product_categories || []).map(normalizeCategoryValue);
@@ -1062,6 +1065,15 @@ const AdminProducts = ({ user, logout, settings }) => {
                         <Button
                           size="sm"
                           variant="outline"
+                          onClick={() => { setCodesProduct(product); setCodesDialogOpen(true); }}
+                          className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10 px-3 sm:px-2 py-2 sm:py-1.5"
+                          title="Manage delivery codes"
+                        >
+                          <Key size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
                           onClick={() => handleDelete(product.id)}
                           className="border-red-400 text-red-400 hover:bg-red-400/10 px-3 sm:px-2 py-2 sm:py-1.5"
                           data-testid={`delete-${product.id}`}
@@ -1122,6 +1134,12 @@ const AdminProducts = ({ user, logout, settings }) => {
           </div>
         )}
       </div>
+
+      <ProductCodesManager
+        product={codesProduct}
+        open={codesDialogOpen}
+        onOpenChange={(open) => { setCodesDialogOpen(open); if (!open) setCodesProduct(null); }}
+      />
 
       <Footer settings={settings} />
     </div>
