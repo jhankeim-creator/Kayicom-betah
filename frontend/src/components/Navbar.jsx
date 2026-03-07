@@ -106,6 +106,20 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                       📲 Topup Mobile
                     </Link>
                   </DropdownMenuItem>
+                  {/* Seller link */}
+                  {user?.seller_status === 'approved' || user?.role === 'seller' ? (
+                    <DropdownMenuItem asChild>
+                      <Link to="/seller" className="cursor-pointer text-cyan-300 hover:text-cyan-400">
+                        🏪 Seller Dashboard
+                      </Link>
+                    </DropdownMenuItem>
+                  ) : user?.role !== 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/seller/apply" className="cursor-pointer text-cyan-300 hover:text-cyan-400">
+                        🏪 Become a Seller
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   {/* Mobile only - show nav items in dropdown */}
                   <div className="lg:hidden">
                     <DropdownMenuItem asChild>

@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle, FileText } from 'lucide-react';
+import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle, FileText, Store } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AdminDashboard = ({ user, logout, settings }) => {
@@ -123,6 +123,16 @@ const AdminDashboard = ({ user, logout, settings }) => {
                   <Users className="mx-auto mb-4 text-white" size={48} />
                   <h3 className="text-xl font-bold text-white mb-2">Manage Customers</h3>
                   <p className="text-white/70">Search and manage customer accounts</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link to="/admin/sellers">
+              <Card className="glass-effect border-white/20 hover:border-cyan-500/40 transition cursor-pointer">
+                <CardContent className="p-8 text-center">
+                  <Store className="mx-auto mb-4 text-cyan-400" size={48} />
+                  <h3 className="text-xl font-bold text-white mb-2">Manage Sellers</h3>
+                  <p className="text-white/70">Review KYC, approve sellers, manage categories</p>
                 </CardContent>
               </Card>
             </Link>

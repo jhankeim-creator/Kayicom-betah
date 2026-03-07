@@ -66,7 +66,7 @@ class User(UserBase):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     customer_id: str = Field(default_factory=lambda: "")
-    role: str = "customer"  # customer or admin
+    role: str = "customer"  # customer, seller, or admin
     referral_code: str = Field(default_factory=lambda: str(uuid.uuid4())[:8].upper())
     referred_by: Optional[str] = None  # referral_code of referrer
     referral_balance: float = 0.0  # Balance from referrals
@@ -75,6 +75,20 @@ class User(UserBase):
     is_blocked: bool = False
     blocked_at: Optional[datetime] = None
     blocked_reason: Optional[str] = None
+    # Seller fields
+    seller_status: Optional[str] = None  # pending_kyc, kyc_submitted, approved, rejected
+    seller_store_name: Optional[str] = None
+    seller_bio: Optional[str] = None
+    seller_kyc_document_url: Optional[str] = None
+    seller_kyc_selfie_url: Optional[str] = None
+    seller_kyc_submitted_at: Optional[datetime] = None
+    seller_kyc_reviewed_at: Optional[datetime] = None
+    seller_kyc_rejection_reason: Optional[str] = None
+    seller_approved_categories: Optional[List[str]] = None  # categories admin approved
+    seller_commission_rate: float = 10.0  # default 10% commission to platform
+    seller_balance: float = 0.0  # earnings available for withdrawal
+    seller_total_earned: float = 0.0
+    seller_total_orders: int = 0
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -93,6 +107,34 @@ async def _generate_unique_customer_id() -> str:
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+# ==================== SELLER MODELS ====================
+
+class SellerApplicationRequest(BaseModel):
+    store_name: str
+    bio: Optional[str] = None
+
+
+class SellerKYCSubmit(BaseModel):
+    document_url: str
+    selfie_url: str
+
+
+class SellerCategoryAccessRequest(BaseModel):
+    categories: List[str]
+
+
+class AdminSellerReview(BaseModel):
+    action: str  # approve or reject
+    reason: Optional[str] = None
+    commission_rate: Optional[float] = None
+
+
+class AdminCategoryAccessReview(BaseModel):
+    user_id: str
+    categories: List[str]
+    action: str  # approve or reject
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -384,6 +426,7 @@ class Product(BaseModel):
     image_url: Optional[str] = None
     stock_available: bool = True
     delivery_type: str = "automatic"  # automatic or manual
+    seller_id: Optional[str] = None  # null = admin product, set = seller product
     subscription_duration_months: Optional[int] = None  # For subscriptions: 1-12 months
     subscription_auto_check: bool = False  # Auto-check if subscription is still valid
     variant_name: Optional[str] = None  # For variants like "100 Diamonds", "500 UC", etc
@@ -411,6 +454,7 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     stock_available: bool = True
     delivery_type: str = "automatic"
+    seller_id: Optional[str] = None
     subscription_duration_months: Optional[int] = None
     subscription_auto_check: bool = False
     variant_name: Optional[str] = None
@@ -462,6 +506,7 @@ class OrderItem(BaseModel):
     price: float
     player_id: Optional[str] = None  # For topup products
     credentials: Optional[Dict[str, str]] = None  # For subscription/services (email/password, etc)
+    seller_id: Optional[str] = None  # Track which seller owns this item
 
 class Order(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -1701,7 +1746,10 @@ async def login(credentials: LoginRequest):
         "email": user['email'],
         "username": user.get('username', user.get('full_name', 'User')),
         "role": user['role'],
-        "is_blocked": bool(user.get("is_blocked", False))
+        "is_blocked": bool(user.get("is_blocked", False)),
+        "seller_status": user.get("seller_status"),
+        "seller_store_name": user.get("seller_store_name"),
+        "seller_approved_categories": user.get("seller_approved_categories"),
     }
 
 
@@ -2427,6 +2475,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
                 price=price,
                 player_id=item.player_id,
                 credentials=item.credentials,
+                seller_id=product.get("seller_id"),
             )
         )
     
@@ -2646,6 +2695,7 @@ async def update_order_status(
                 logging.error(f"Subscription email check error: {e}")
             await check_and_credit_referral(order)
             await _record_loyalty_credits_if_needed(order_id)
+            await _credit_seller_earnings(order_id)
 
     await _notify_admin_telegram(
         "Order status updated",
@@ -2769,6 +2819,7 @@ async def _try_auto_deliver(order_id: str) -> bool:
     if not updated_order:
         updated_order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     await _record_loyalty_credits_if_needed(order_id)
+    await _credit_seller_earnings(order_id)
     try:
         await _maybe_send_subscription_emails(updated_order or order)
     except Exception as e:
@@ -2881,6 +2932,7 @@ async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
 
     # Award loyalty credits once order is completed+paid
     await _record_loyalty_credits_if_needed(order_id)
+    await _credit_seller_earnings(order_id)
 
     # Send delivery email (includes expiry if subscription)
     try:
@@ -3433,6 +3485,366 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             "message": "Payment not found yet. Please check your Order ID and try again in a few minutes.",
             "verified": False,
         }
+
+
+# ==================== SELLER ENDPOINTS ====================
+
+@api_router.post("/seller/apply")
+async def seller_apply(payload: SellerApplicationRequest, user_id: str):
+    """Customer applies to become a seller."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Admins cannot apply as sellers")
+    if user.get("seller_status") in ("kyc_submitted", "approved"):
+        raise HTTPException(status_code=400, detail="Already applied or approved")
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "seller_status": "pending_kyc",
+        "seller_store_name": payload.store_name.strip(),
+        "seller_bio": (payload.bio or "").strip() or None,
+    }})
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    return updated
+
+
+@api_router.post("/seller/kyc")
+async def seller_kyc_submit(payload: SellerKYCSubmit, user_id: str):
+    """Submit KYC documents (ID photo + selfie)."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("seller_status") not in ("pending_kyc", "rejected"):
+        raise HTTPException(status_code=400, detail="KYC not expected at this stage")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"id": user_id}, {"$set": {
+        "seller_status": "kyc_submitted",
+        "seller_kyc_document_url": payload.document_url.strip(),
+        "seller_kyc_selfie_url": payload.selfie_url.strip(),
+        "seller_kyc_submitted_at": now,
+        "seller_kyc_rejection_reason": None,
+    }})
+    await _notify_admin_telegram("New seller KYC submission", [
+        f"User: {user.get('email')}",
+        f"Store: {user.get('seller_store_name', 'N/A')}",
+    ])
+    return {"message": "KYC submitted for review"}
+
+
+@api_router.get("/seller/profile")
+async def seller_profile(user_id: str):
+    """Get seller profile and stats."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    product_count = await db.products.count_documents({"seller_id": user_id})
+    return {**user, "product_count": product_count}
+
+
+@api_router.post("/seller/category-request")
+async def seller_request_categories(payload: SellerCategoryAccessRequest, user_id: str):
+    """Seller requests access to sell in specific categories."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("seller_status") != "approved":
+        raise HTTPException(status_code=400, detail="Only approved sellers can request categories")
+    cats = [c.strip() for c in payload.categories if c.strip()]
+    if not cats:
+        raise HTTPException(status_code=400, detail="No categories provided")
+    now = datetime.now(timezone.utc).isoformat()
+    request_doc = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "user_email": user.get("email"),
+        "store_name": user.get("seller_store_name"),
+        "requested_categories": cats,
+        "status": "pending",
+        "created_at": now,
+    }
+    await db.seller_category_requests.insert_one(request_doc)
+    await _notify_admin_telegram("Seller category access request", [
+        f"Seller: {user.get('email')}",
+        f"Categories: {', '.join(cats)}",
+    ])
+    return {"message": "Category access request submitted"}
+
+
+@api_router.get("/seller/products")
+async def seller_get_products(user_id: str):
+    """Get products owned by a seller."""
+    products = await db.products.find({"seller_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(1000)
+    return products
+
+
+@api_router.post("/seller/products")
+async def seller_create_product(product: ProductCreate, user_id: str):
+    """Seller creates a product within their approved categories."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Seller not approved")
+    approved = user.get("seller_approved_categories") or []
+    if product.category not in approved:
+        raise HTTPException(status_code=403, detail=f"Not approved to sell in category: {product.category}")
+    new_product = Product(
+        name=product.name,
+        description=product.description,
+        category=product.category,
+        price=product.price,
+        currency=product.currency,
+        image_url=product.image_url,
+        stock_available=product.stock_available,
+        delivery_type=product.delivery_type,
+        seller_id=user_id,
+        subscription_duration_months=product.subscription_duration_months,
+        variant_name=product.variant_name,
+        parent_product_id=product.parent_product_id,
+        requires_player_id=product.requires_player_id,
+        player_id_label=product.player_id_label,
+        requires_credentials=product.requires_credentials,
+        credential_fields=product.credential_fields,
+        region=product.region,
+        giftcard_category=product.giftcard_category,
+        giftcard_subcategory=product.giftcard_subcategory,
+        is_subscription=product.is_subscription,
+    )
+    doc = new_product.model_dump()
+    doc["created_at"] = doc["created_at"].isoformat()
+    await db.products.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api_router.put("/seller/products/{product_id}")
+async def seller_update_product(product_id: str, updates: ProductUpdate, user_id: str):
+    """Seller updates their own product."""
+    product = await db.products.find_one({"id": product_id, "seller_id": user_id}, {"_id": 0})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found or not owned by you")
+    if updates.category:
+        user = await db.users.find_one({"id": user_id}, {"_id": 0})
+        approved = (user or {}).get("seller_approved_categories") or []
+        if updates.category not in approved:
+            raise HTTPException(status_code=403, detail=f"Not approved for category: {updates.category}")
+    update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
+    update_data.pop("seller_id", None)
+    update_data.pop("orders_count", None)
+    if update_data:
+        await db.products.update_one({"id": product_id, "seller_id": user_id}, {"$set": update_data})
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0})
+    return updated
+
+
+@api_router.delete("/seller/products/{product_id}")
+async def seller_delete_product(product_id: str, user_id: str):
+    """Seller deletes their own product."""
+    product = await db.products.find_one({"id": product_id, "seller_id": user_id})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found or not owned by you")
+    await db.products.delete_one({"id": product_id, "seller_id": user_id})
+    return {"message": "Product deleted"}
+
+
+@api_router.get("/seller/orders")
+async def seller_get_orders(user_id: str):
+    """Get orders containing seller's products."""
+    seller_product_ids = [
+        p["id"] async for p in db.products.find({"seller_id": user_id}, {"id": 1, "_id": 0})
+    ]
+    if not seller_product_ids:
+        return []
+    orders = await db.orders.find(
+        {"items.product_id": {"$in": seller_product_ids}, "payment_status": "paid"},
+        {"_id": 0}
+    ).sort("created_at", -1).to_list(500)
+    for order in orders:
+        order["seller_items"] = [
+            item for item in order.get("items", [])
+            if item.get("product_id") in seller_product_ids
+        ]
+        order["seller_earnings"] = sum(
+            float(item.get("price", 0)) * int(item.get("quantity", 1))
+            for item in order["seller_items"]
+        )
+    return orders
+
+
+@api_router.get("/seller/earnings")
+async def seller_get_earnings(user_id: str):
+    """Get seller earnings summary."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    commission = float(user.get("seller_commission_rate", 10.0))
+    return {
+        "balance": float(user.get("seller_balance", 0.0)),
+        "total_earned": float(user.get("seller_total_earned", 0.0)),
+        "total_orders": int(user.get("seller_total_orders", 0)),
+        "commission_rate": commission,
+    }
+
+
+@api_router.post("/seller/withdraw")
+async def seller_request_withdrawal(user_id: str, amount: float):
+    """Seller requests a withdrawal from their balance."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Not an approved seller")
+    balance = float(user.get("seller_balance", 0.0))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    if amount > balance:
+        raise HTTPException(status_code=400, detail="Insufficient seller balance")
+    now = datetime.now(timezone.utc).isoformat()
+    withdrawal = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "user_email": user.get("email"),
+        "store_name": user.get("seller_store_name"),
+        "amount": amount,
+        "status": "pending",
+        "type": "seller_withdrawal",
+        "created_at": now,
+    }
+    await db.withdrawals.insert_one(withdrawal)
+    await db.users.update_one({"id": user_id}, {"$inc": {"seller_balance": -amount}})
+    await _notify_admin_telegram("Seller withdrawal request", [
+        f"Seller: {user.get('email')}",
+        f"Amount: ${amount:.2f}",
+    ])
+    return {"message": "Withdrawal request submitted", "withdrawal_id": withdrawal["id"]}
+
+
+# ==================== ADMIN SELLER MANAGEMENT ====================
+
+@api_router.get("/admin/sellers")
+async def admin_list_sellers(status: Optional[str] = None):
+    """List all seller applications/profiles."""
+    query: Dict[str, Any] = {"seller_status": {"$ne": None}}
+    if status:
+        query["seller_status"] = status
+    sellers = await db.users.find(query, {"_id": 0, "password": 0, "password_hash": 0}).sort("created_at", -1).to_list(500)
+    for seller in sellers:
+        seller["product_count"] = await db.products.count_documents({"seller_id": seller["id"]})
+    return sellers
+
+
+@api_router.get("/admin/sellers/{user_id}")
+async def admin_get_seller(user_id: str):
+    """Get detailed seller info."""
+    user = await db.users.find_one({"id": user_id, "seller_status": {"$ne": None}}, {"_id": 0, "password": 0, "password_hash": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Seller not found")
+    user["product_count"] = await db.products.count_documents({"seller_id": user_id})
+    user["products"] = await db.products.find({"seller_id": user_id}, {"_id": 0}).to_list(100)
+    return user
+
+
+@api_router.put("/admin/sellers/{user_id}/review")
+async def admin_review_seller(user_id: str, review: AdminSellerReview):
+    """Admin approve or reject a seller application."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    now = datetime.now(timezone.utc).isoformat()
+    if review.action == "approve":
+        updates: Dict[str, Any] = {
+            "role": "seller",
+            "seller_status": "approved",
+            "seller_kyc_reviewed_at": now,
+            "seller_kyc_rejection_reason": None,
+        }
+        if review.commission_rate is not None:
+            updates["seller_commission_rate"] = review.commission_rate
+        await db.users.update_one({"id": user_id}, {"$set": updates})
+    elif review.action == "reject":
+        await db.users.update_one({"id": user_id}, {"$set": {
+            "seller_status": "rejected",
+            "seller_kyc_reviewed_at": now,
+            "seller_kyc_rejection_reason": review.reason or "Application rejected",
+        }})
+    else:
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    return updated
+
+
+@api_router.put("/admin/sellers/{user_id}/categories")
+async def admin_update_seller_categories(user_id: str, review: AdminCategoryAccessReview):
+    """Admin approve or modify seller's allowed categories."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if review.action == "approve":
+        existing = user.get("seller_approved_categories") or []
+        merged = list(set(existing + review.categories))
+        await db.users.update_one({"id": user_id}, {"$set": {"seller_approved_categories": merged}})
+        await db.seller_category_requests.update_many(
+            {"user_id": user_id, "status": "pending"},
+            {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    elif review.action == "reject":
+        await db.seller_category_requests.update_many(
+            {"user_id": user_id, "status": "pending"},
+            {"$set": {"status": "rejected", "reviewed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+    else:
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    return updated
+
+
+@api_router.put("/admin/sellers/{user_id}/commission")
+async def admin_set_seller_commission(user_id: str, rate: float):
+    """Admin sets seller's commission rate."""
+    if rate < 0 or rate > 100:
+        raise HTTPException(status_code=400, detail="Commission rate must be 0-100")
+    await db.users.update_one({"id": user_id}, {"$set": {"seller_commission_rate": rate}})
+    return {"message": f"Commission rate set to {rate}%"}
+
+
+@api_router.get("/admin/seller-category-requests")
+async def admin_list_category_requests(status: Optional[str] = None):
+    """List pending category access requests."""
+    query: Dict[str, Any] = {}
+    if status:
+        query["status"] = status
+    else:
+        query["status"] = "pending"
+    requests = await db.seller_category_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return requests
+
+
+# ==================== SELLER EARNINGS CREDITING ====================
+
+async def _credit_seller_earnings(order_id: str):
+    """After order is completed, credit sellers for their items."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order or order.get("payment_status") != "paid":
+        return
+    if order.get("seller_earnings_credited"):
+        return
+    for item in order.get("items", []):
+        product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
+        if not product or not product.get("seller_id"):
+            continue
+        seller_id = product["seller_id"]
+        seller = await db.users.find_one({"id": seller_id}, {"_id": 0})
+        if not seller or seller.get("seller_status") != "approved":
+            continue
+        commission_rate = float(seller.get("seller_commission_rate", 10.0))
+        item_total = float(item.get("price", 0)) * int(item.get("quantity", 1))
+        seller_share = item_total * (1.0 - commission_rate / 100.0)
+        await db.users.update_one({"id": seller_id}, {"$inc": {
+            "seller_balance": seller_share,
+            "seller_total_earned": seller_share,
+            "seller_total_orders": 1,
+        }})
+    await db.orders.update_one({"id": order_id}, {"$set": {"seller_earnings_credited": True}})
 
 
 # ==================== SETTINGS ENDPOINTS ====================
