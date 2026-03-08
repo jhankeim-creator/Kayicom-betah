@@ -44,7 +44,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
   }, [sellerId]);
 
   if (loading) return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
       <div className="container mx-auto px-4 py-20 text-center"><p className="text-white/60">Loading store...</p></div>
       <Footer settings={settings} />
@@ -52,7 +52,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
   );
 
   if (!store) return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
       <div className="container mx-auto px-4 py-20 text-center"><p className="text-white/60">Store not found</p></div>
       <Footer settings={settings} />
@@ -68,41 +68,53 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
     filtered = filtered.filter(o => (o.product_name || '').toLowerCase().includes(q));
   }
 
+  const successRate = store.total_orders > 0 ? Math.min(100, Math.round((store.total_orders / (store.total_orders + 1)) * 100)) : 0;
+
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
       <div className="container mx-auto px-4 py-8">
         {/* Store Header */}
-        <div className="glass-effect rounded-xl p-8 mb-8">
-          <div className="flex flex-col md:flex-row md:items-center gap-6">
-            <div className="w-20 h-20 bg-gradient-to-br from-cyan-500 to-purple-500 rounded-2xl flex items-center justify-center flex-shrink-0">
-              <Store className="text-white" size={40} />
+        <div className="rounded-xl bg-[#141414] border border-white/5 p-6 md:p-8 mb-8">
+          <div className="flex flex-col md:flex-row md:items-center gap-5">
+            <div className="w-16 h-16 md:w-20 md:h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl flex items-center justify-center flex-shrink-0">
+              <Store className="text-white" size={32} />
             </div>
             <div className="flex-1">
-              <h1 className="text-3xl font-bold text-white">{store.store_name}</h1>
-              {store.bio && <p className="text-white/60 mt-1 max-w-2xl">{store.bio}</p>}
-              <div className="flex flex-wrap items-center gap-4 mt-3">
+              <h1 className="text-2xl md:text-3xl font-bold text-white">{store.store_name}</h1>
+              {store.bio && <p className="text-white/50 mt-1 text-sm max-w-2xl">{store.bio}</p>}
+
+              {/* Reputation Stats */}
+              <div className="flex flex-wrap items-center gap-4 mt-4">
                 {store.rating > 0 && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 bg-yellow-500/10 border border-yellow-500/20 rounded-lg px-3 py-1.5">
                     <StarRating rating={store.rating} />
                     <span className="text-yellow-400 font-bold text-sm">{store.rating.toFixed(1)}</span>
-                    <span className="text-white/40 text-sm">({store.review_count} reviews)</span>
+                    <span className="text-white/30 text-xs">({store.review_count})</span>
                   </div>
                 )}
-                <div className="flex items-center gap-1 text-white/50 text-sm">
-                  <ShoppingCart size={14} /> {store.total_orders} orders completed
+                <div className="flex items-center gap-1.5 bg-green-500/10 border border-green-500/20 rounded-lg px-3 py-1.5">
+                  <span className="text-green-400 text-sm font-bold">{successRate}%</span>
+                  <span className="text-white/40 text-xs">Success</span>
+                </div>
+                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
+                  <ShoppingCart size={14} className="text-white/40" />
+                  <span className="text-white/70 text-sm font-semibold">{store.total_orders}</span>
+                  <span className="text-white/40 text-xs">Sales</span>
                 </div>
                 {store.member_since && (
-                  <div className="flex items-center gap-1 text-white/50 text-sm">
-                    <Calendar size={14} /> Member since {store.member_since}
+                  <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5">
+                    <Calendar size={14} className="text-white/40" />
+                    <span className="text-white/40 text-xs">Since {store.member_since}</span>
                   </div>
                 )}
               </div>
+
               <div className="flex flex-wrap gap-2 mt-3">
                 {store.categories.map(c => {
                   const meta = getCatMeta(c);
                   const Icon = meta.icon;
-                  return <Badge key={c} className={`${meta.badge} flex items-center gap-1`}><Icon size={12} /> {meta.label}</Badge>;
+                  return <Badge key={c} className={`${meta.badge} flex items-center gap-1 text-xs`}><Icon size={10} /> {meta.label}</Badge>;
                 })}
               </div>
             </div>
@@ -142,7 +154,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
           {filtered.map(offer => {
             const meta = getCatMeta(offer.product_category || '');
             return (
-              <Card key={offer.id} className="glass-effect border-white/20 hover:border-white/40 transition cursor-pointer"
+              <Card key={offer.id} className="bg-[#141414] border border-white/5 hover:border-white/40 transition cursor-pointer"
                 onClick={() => window.location.href = `/product/${offer.product_slug || offer.product_id}`}>
                 <CardContent className="p-4">
                   {offer.product_image && (
@@ -171,7 +183,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
             </h2>
             <div className="space-y-3">
               {reviews.map(review => (
-                <Card key={review.id} className="glass-effect border-white/10">
+                <Card key={review.id} className="bg-[#141414] border border-white/5">
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start">
                       <div>

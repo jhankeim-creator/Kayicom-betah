@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageSquare, AlertTriangle } from 'lucide-react';
+import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageSquare, AlertTriangle, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import BinancePaySection from '../components/BinancePaySection';
@@ -23,6 +23,10 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
   const [submitting, setSubmitting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [now, setNow] = useState(Date.now());
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
+  const [reviewSubmitted, setReviewSubmitted] = useState(false);
 
   useEffect(() => {
     if (orderId) {
@@ -595,6 +599,61 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                 </div>
               </CardContent>
             </Card>
+          )}
+
+          {/* Leave a Review for Seller */}
+          {order.payment_status === 'paid' && order.items?.some(i => i.seller_id) && !reviewSubmitted && (
+            <Card className="glass-effect border-yellow-500/20">
+              <CardContent className="p-5">
+                <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
+                  <Star className="text-yellow-400" size={20} /> Rate Your Seller
+                </h3>
+                <div className="flex gap-1 mb-3">
+                  {[1, 2, 3, 4, 5].map(i => (
+                    <button key={i} onClick={() => setReviewRating(i)} className="p-1">
+                      <Star size={28} className={i <= reviewRating ? 'text-yellow-400 fill-yellow-400' : 'text-white/20'} />
+                    </button>
+                  ))}
+                  {reviewRating > 0 && <span className="text-yellow-400 font-bold ml-2 self-center">{reviewRating}/5</span>}
+                </div>
+                <Textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  placeholder="Share your experience with this seller (optional)..."
+                  className="bg-white/5 border-white/10 text-white mb-3 text-sm"
+                  rows={3}
+                />
+                <Button
+                  disabled={reviewRating === 0 || reviewSubmitting}
+                  onClick={async () => {
+                    const sellerId = order.items.find(i => i.seller_id)?.seller_id;
+                    if (!sellerId || reviewRating === 0) return;
+                    setReviewSubmitting(true);
+                    try {
+                      await axiosInstance.post(`/reviews?user_id=${user?.user_id || user?.id}`, {
+                        order_id: order.id, seller_id: sellerId, rating: reviewRating,
+                        comment: reviewComment.trim() || null,
+                      });
+                      toast.success('Review submitted! Thank you.');
+                      setReviewSubmitted(true);
+                    } catch (e) {
+                      const msg = e.response?.data?.detail || 'Error submitting review';
+                      if (msg.includes('already reviewed')) { setReviewSubmitted(true); toast.info('Already reviewed'); }
+                      else toast.error(msg);
+                    } finally { setReviewSubmitting(false); }
+                  }}
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-lg"
+                >
+                  {reviewSubmitting ? 'Submitting...' : 'Submit Review'}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+          {reviewSubmitted && (
+            <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
+              <CheckCircle className="text-green-400 mx-auto mb-2" size={28} />
+              <p className="text-green-300 font-semibold text-sm">Thank you for your review!</p>
+            </div>
           )}
 
           {/* Payment Proof Display */}

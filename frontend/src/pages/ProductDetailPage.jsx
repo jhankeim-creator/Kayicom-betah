@@ -176,7 +176,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
 
   if (loading) {
     return (
-      <div className="min-h-screen gradient-bg">
+      <div className="min-h-screen bg-[#0a0a0a]">
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
         <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Loading...</div>
       </div>
@@ -185,7 +185,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
 
   if (!product) {
     return (
-      <div className="min-h-screen gradient-bg">
+      <div className="min-h-screen bg-[#0a0a0a]">
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
         <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Product not found</div>
       </div>
@@ -215,7 +215,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   };
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
       <div className="container mx-auto px-4 py-12">
@@ -290,7 +290,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
 
             {/* Variant selector */}
             {variants.length > 1 && (
-              <div className="mb-6 glass-effect p-6 rounded-lg">
+              <div className="mb-6 rounded-xl bg-[#141414] border border-white/5 p-5">
                 <h3 className="text-xl font-bold mb-3">Choose an option</h3>
                 <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white">
@@ -308,7 +308,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
             )}
 
             {/* Quantity & Add to Cart */}
-            <div className="glass-effect p-6 rounded-lg">
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-5">
               <div className="flex items-center gap-4 mb-6">
                 <label className="text-lg font-semibold">Quantity:</label>
                 <div className="flex items-center gap-2">
@@ -353,7 +353,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
             </div>
 
             {/* Delivery Info */}
-            <div className="mt-6 glass-effect p-6 rounded-lg">
+            <div className="mt-6 rounded-xl bg-[#141414] border border-white/5 p-5">
               <h3 className="text-xl font-bold mb-3">Delivery Information</h3>
               <ul className="space-y-2 text-white/80">
                 {selectedProduct.delivery_type === 'automatic' ? (
@@ -388,33 +388,43 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
 
             {/* Seller Offers */}
             {sellerOffers.length > 0 && (
-              <div className="mt-6 glass-effect p-6 rounded-lg">
-                <h3 className="text-xl font-bold mb-3">Also available from sellers</h3>
-                <div className="space-y-2">
+              <div className="mt-6 rounded-xl bg-[#141414] border border-white/5 p-5">
+                <h3 className="text-lg font-bold text-white mb-4">Available from Sellers</h3>
+                <div className="space-y-3">
                   {sellerOffers.map(offer => (
-                    <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-white/20 transition">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <a href={`/store/${offer.seller_id}`} className="text-green-300 font-semibold text-sm hover:underline">
+                    <div key={offer.id} className="p-4 rounded-lg bg-white/5 border border-white/10 hover:border-green-500/30 transition">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <a href={`/store/${offer.seller_id}`} className="text-green-400 font-semibold text-sm hover:underline">
                             {offer.seller_name || offer.seller_store_name || 'Seller'}
                           </a>
-                          {offer.seller_rating > 0 && (
-                            <span className="text-yellow-400 text-xs">★ {Number(offer.seller_rating).toFixed(1)}</span>
-                          )}
+                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                            {offer.seller_rating > 0 && (
+                              <span className="flex items-center gap-1 text-xs">
+                                <span className="text-yellow-400">{'★'.repeat(Math.round(offer.seller_rating))}</span>
+                                <span className="text-yellow-400 font-bold">{Number(offer.seller_rating).toFixed(1)}</span>
+                              </span>
+                            )}
+                            <span className="text-white/30 text-xs">
+                              {offer.delivery_type === 'automatic' ? '⚡ Instant' : '📦 Manual'}
+                            </span>
+                            {offer.codes_available > 0 && (
+                              <span className="text-green-400/70 text-xs">{offer.codes_available} in stock</span>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? '⚡ Instant delivery' : '📦 Manual delivery'}</p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <p className="text-green-300 font-bold">${Number(offer.price).toFixed(2)}</p>
-                        <button
-                          onClick={() => {
-                            const sellerProduct = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || offer.seller_store_name || 'Seller', _offer_id: offer.id };
-                            addToCart(sellerProduct, 1);
-                          }}
-                          className="px-3 py-1.5 bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-medium rounded-lg hover:opacity-90 transition whitespace-nowrap"
-                        >
-                          Buy from seller
-                        </button>
+                        <div className="flex flex-col items-end gap-2">
+                          <p className="text-green-400 font-bold text-lg">${Number(offer.price).toFixed(2)}</p>
+                          <button
+                            onClick={() => {
+                              const sellerProduct = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || offer.seller_store_name || 'Seller', _offer_id: offer.id };
+                              addToCart(sellerProduct, 1);
+                            }}
+                            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-black text-xs font-bold rounded-lg transition whitespace-nowrap"
+                          >
+                            Buy Now
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
