@@ -38,7 +38,7 @@ const deriveProductSeoDescription = (item) => {
 };
 
 const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
-  const { id } = useParams();
+  const { slug } = useParams();
   const [product, setProduct] = useState(null);
   const [variants, setVariants] = useState([]);
   const [sellerOffers, setSellerOffers] = useState([]);
@@ -48,17 +48,17 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
 
   useEffect(() => {
     loadProduct();
-  }, [id]);
+  }, [slug]);
 
   const loadProduct = async () => {
     try {
-      const response = await axiosInstance.get(`/products/${id}`);
+      const response = await axiosInstance.get(`/products/${slug}`);
       const p = response.data;
       setProduct(p);
 
       // Load seller offers
       try {
-        const offersRes = await axiosInstance.get(`/products/${id}/offers`);
+        const offersRes = await axiosInstance.get(`/products/${slug}/offers`);
         setSellerOffers(Array.isArray(offersRes.data) ? offersRes.data : []);
       } catch { setSellerOffers([]); }
 
@@ -393,13 +393,29 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 <div className="space-y-2">
                   {sellerOffers.map(offer => (
                     <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-white/20 transition">
-                      <div>
-                        <a href={`/store/${offer.seller_id}`} className="text-cyan-300 font-semibold text-sm hover:underline">
-                          {offer.seller_store_name || 'Seller'}
-                        </a>
-                        <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? 'Instant delivery' : 'Manual delivery'}</p>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <a href={`/store/${offer.seller_id}`} className="text-cyan-300 font-semibold text-sm hover:underline">
+                            {offer.seller_name || offer.seller_store_name || 'Seller'}
+                          </a>
+                          {offer.seller_rating > 0 && (
+                            <span className="text-yellow-400 text-xs">★ {Number(offer.seller_rating).toFixed(1)}</span>
+                          )}
+                        </div>
+                        <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? '⚡ Instant delivery' : '📦 Manual delivery'}</p>
                       </div>
-                      <p className="text-cyan-300 font-bold">${Number(offer.price).toFixed(2)}</p>
+                      <div className="flex items-center gap-3">
+                        <p className="text-cyan-300 font-bold">${Number(offer.price).toFixed(2)}</p>
+                        <button
+                          onClick={() => {
+                            const sellerProduct = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || offer.seller_store_name || 'Seller', _offer_id: offer.id };
+                            addToCart(sellerProduct, 1);
+                          }}
+                          className="px-3 py-1.5 bg-gradient-to-r from-pink-500 to-purple-500 text-white text-xs font-medium rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                        >
+                          Buy from seller
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

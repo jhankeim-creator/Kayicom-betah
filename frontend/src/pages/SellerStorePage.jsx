@@ -106,7 +106,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
             const meta = getCatMeta(offer.product_category || '');
             return (
               <Card key={offer.id} className="glass-effect border-white/20 hover:border-white/40 transition cursor-pointer"
-                onClick={() => window.location.href = `/product/${offer.product_id}`}>
+                onClick={() => window.location.href = `/product/${offer.product_slug || offer.product_id}`}>
                 <CardContent className="p-4">
                   {offer.product_image && (
                     <img src={offer.product_image} alt="" className="w-full h-40 rounded-lg object-cover mb-3" />
