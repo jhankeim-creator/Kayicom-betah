@@ -55,7 +55,7 @@ class PayerURLHelper:
             "notify_url": notify_url,
             "cancel_url": cancel_url,
             "items": items,
-            "type": "python",
+            "type": "purl",
         }
 
         sorted_params = dict(sorted(params.items()))

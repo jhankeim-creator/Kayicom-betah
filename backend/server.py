@@ -2657,11 +2657,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
             try:
                 from payerurl_helper import PayerURLHelper
                 payer = PayerURLHelper(pub_key, sec_key)
-                api_base = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = os.environ.get("BACKEND_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = f"http://localhost:{os.environ.get('PORT', '8000')}"
+                callback_url = _resolve_payerurl_callback_url()
                 result = await payer.create_payment(
                     order_id=order.id,
                     amount=total,
@@ -2669,7 +2665,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
                     customer_name=user_doc.get("full_name", "Customer"),
                     customer_email=user_email,
                     redirect_url=f"{frontend_url}/payment-success?type=order&id={order.id}",
-                    notify_url=f"{api_base}/api/payments/payerurl-callback",
+                    notify_url=callback_url,
                     cancel_url=f"{frontend_url}/track/{order.id}",
                     items=", ".join(i.product_name for i in validated_items),
                 )
@@ -3239,6 +3235,21 @@ async def plisio_callback(data: Dict[str, Any]):
     return {"status": "ok"}
 
 
+def _resolve_payerurl_callback_url() -> str:
+    """Resolve the public callback URL for PayerURL webhooks."""
+    explicit = os.environ.get("PAYERURL_CALLBACK_URL", "").strip().rstrip("/")
+    if explicit:
+        return explicit
+    for env_key in ("BACKEND_URL", "RENDER_EXTERNAL_URL", "RAILWAY_PUBLIC_DOMAIN"):
+        val = os.environ.get(env_key, "").strip().rstrip("/")
+        if val and "localhost" not in val:
+            if not val.startswith("http"):
+                val = f"https://{val}"
+            return f"{val}/api/payments/payerurl-callback"
+    port = os.environ.get("PORT", "8000")
+    return f"http://localhost:{port}/api/payments/payerurl-callback"
+
+
 @api_router.post("/payments/payerurl-callback")
 async def payerurl_callback(request: Request):
     """Handle PayerURL webhook callback when payment is completed."""
@@ -3271,14 +3282,6 @@ async def payerurl_callback(request: Request):
             logging.warning("PayerURL callback auth failed for order %s", order_id)
             return {"status": "error", "message": "Auth failed"}
 
-    order = await db.orders.find_one({"id": order_id})
-    if not order:
-        logging.warning("PayerURL callback: order %s not found", order_id)
-        return {"status": "error", "message": "Order not found"}
-
-    if order.get("payment_status") == "paid":
-        return {"status": "ok", "message": "Already paid"}
-
     if status_code not in ("2", "200", "success", "completed", "paid"):
         logging.info("PayerURL: %s status_code=%s (not completed)", order_id, status_code)
         return {"status": "ok"}
@@ -3286,7 +3289,11 @@ async def payerurl_callback(request: Request):
     now_iso = datetime.now(timezone.utc).isoformat()
     tx_id = transaction_id or f"payerurl:{order_id}"
 
+    # Try orders first
+    order = await db.orders.find_one({"id": order_id})
     if order:
+        if order.get("payment_status") == "paid":
+            return {"status": "ok", "message": "Already paid"}
         await db.orders.update_one(
             {"id": order_id},
             {"$set": {
@@ -6135,11 +6142,7 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
             try:
                 from payerurl_helper import PayerURLHelper
                 payer = PayerURLHelper(pub_key, sec_key)
-                api_base = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = os.environ.get("BACKEND_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = f"http://localhost:{os.environ.get('PORT', '8000')}"
+                callback_url = _resolve_payerurl_callback_url()
                 result = await payer.create_payment(
                     order_id=topup_id,
                     amount=float(topup.amount),
@@ -6147,7 +6150,7 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
                     customer_name=user_doc.get("full_name", "Customer"),
                     customer_email=user_email,
                     redirect_url=f"{frontend_url}/payment-success?type=wallet_topup&id={topup_id}",
-                    notify_url=f"{api_base}/api/payments/payerurl-callback",
+                    notify_url=callback_url,
                     cancel_url=f"{frontend_url}/wallet",
                     items=f"Wallet Topup ${float(topup.amount):.2f}",
                 )
@@ -6477,11 +6480,7 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
             try:
                 from payerurl_helper import PayerURLHelper
                 payer = PayerURLHelper(pub_key, sec_key)
-                api_base = os.environ.get("RENDER_EXTERNAL_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = os.environ.get("BACKEND_URL", "").rstrip("/")
-                if not api_base or "localhost" in api_base:
-                    api_base = f"http://localhost:{os.environ.get('PORT', '8000')}"
+                callback_url = _resolve_payerurl_callback_url()
                 result = await payer.create_payment(
                     order_id=transfer_id,
                     amount=float(doc["total_amount"]),
@@ -6489,7 +6488,7 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
                     customer_name=user_doc.get("full_name", "Customer"),
                     customer_email=user_email,
                     redirect_url=f"{frontend_url}/payment-success?type=minutes_transfer&id={transfer_id}",
-                    notify_url=f"{api_base}/api/payments/payerurl-callback",
+                    notify_url=callback_url,
                     cancel_url=f"{frontend_url}/minutes",
                     items=f"Mobile Topup {country} {phone}",
                 )
