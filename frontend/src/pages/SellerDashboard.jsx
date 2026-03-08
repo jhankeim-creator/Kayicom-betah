@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench } from 'lucide-react';
+import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench, Package } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CATEGORY_META = {
@@ -34,9 +34,18 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [withdrawalInfo, setWithdrawalInfo] = useState({ methods: [], fee_percent: 0, fee_fixed: 0, min_amount: 5 });
   const [productRequests, setProductRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [myProducts, setMyProducts] = useState([]);
   const [codesProduct, setCodesProduct] = useState(null);
   const [codesOpen, setCodesOpen] = useState(false);
   const [catRequest, setCatRequest] = useState('');
+
+  // Add/edit product dialog
+  const [productDialog, setProductDialog] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(null);
+  const [productForm, setProductForm] = useState({
+    name: '', description: '', category: '', price: '', image_url: '',
+    stock_available: true, delivery_type: 'automatic', variant_name: '', region: '',
+  });
 
   // Offer create dialog
   const [offerDialog, setOfferDialog] = useState(false);
@@ -66,18 +75,20 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [earnRes, offersRes, orderRes, wInfoRes, reqRes] = await Promise.all([
+      const [earnRes, offersRes, orderRes, wInfoRes, reqRes, prodRes] = await Promise.all([
         axiosInstance.get(`/seller/earnings?user_id=${user.id}`),
         axiosInstance.get(`/seller/offers?user_id=${user.id}`),
         axiosInstance.get(`/seller/orders?user_id=${user.id}`),
         axiosInstance.get('/seller/withdrawal-info'),
         axiosInstance.get(`/seller/product-requests?user_id=${user.id}`),
+        axiosInstance.get(`/seller/products?user_id=${user.id}`),
       ]);
       setEarnings(earnRes.data);
       setMyOffers(offersRes.data);
       setOrders(orderRes.data);
       setWithdrawalInfo(wInfoRes.data);
       setProductRequests(reqRes.data);
+      setMyProducts(prodRes.data || []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   }, [user?.id]);
@@ -148,6 +159,56 @@ const SellerDashboard = ({ user, logout, settings }) => {
     } catch (err) { toast.error('Error removing offer'); }
   };
 
+  const resetProductForm = () => {
+    setProductForm({ name: '', description: '', category: approvedCategories[0] || '', price: '', image_url: '', stock_available: true, delivery_type: 'automatic', variant_name: '', region: '' });
+    setEditingProduct(null);
+  };
+
+  const handleProductSubmit = async () => {
+    if (!productForm.name || !productForm.price || !productForm.category) {
+      toast.error('Fill name, price and category'); return;
+    }
+    try {
+      const payload = { ...productForm, price: parseFloat(productForm.price) };
+      if (editingProduct) {
+        await axiosInstance.put(`/seller/products/${editingProduct.id}?user_id=${user.id}`, payload);
+        toast.success('Product updated');
+      } else {
+        await axiosInstance.post(`/seller/products?user_id=${user.id}`, payload);
+        toast.success('Product created — pending admin review');
+      }
+      setProductDialog(false); resetProductForm(); loadData();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error saving product'); }
+  };
+
+  const handleEditProduct = (product) => {
+    setEditingProduct(product);
+    setProductForm({
+      name: product.name, description: product.description || '', category: product.category,
+      price: String(product.price), image_url: product.image_url || '',
+      stock_available: product.stock_available ?? true, delivery_type: product.delivery_type || 'automatic',
+      variant_name: product.variant_name || '', region: product.region || '',
+    });
+    setProductDialog(true);
+  };
+
+  const handleDeleteProduct = async (id) => {
+    if (!window.confirm('Delete this product?')) return;
+    try {
+      await axiosInstance.delete(`/seller/products/${id}?user_id=${user.id}`);
+      toast.success('Product deleted'); loadData();
+    } catch (err) { toast.error('Error deleting'); }
+  };
+
+  const uploadImage = async (file) => {
+    if (!file || file.size > 5 * 1024 * 1024) { toast.error('Max 5MB'); return null; }
+    try {
+      const data = new FormData(); data.append('file', file);
+      const res = await axiosInstance.post('/upload/image', data, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return res.data?.url || null;
+    } catch { toast.error('Upload failed'); return null; }
+  };
+
   const handleProductRequest = async () => {
     if (!reqForm.product_name || !reqForm.description || !reqForm.category) {
       toast.error('Fill in product name, description and category'); return;
@@ -188,6 +249,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const tabs = [
     { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={16} /> },
     { id: 'offers', label: 'My Offers', icon: <Tag size={16} /> },
+    { id: 'products', label: 'My Products', icon: <Package size={16} /> },
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={16} /> },
     { id: 'earnings', label: 'Earnings', icon: <DollarSign size={16} /> },
   ];
@@ -384,6 +446,57 @@ const SellerDashboard = ({ user, logout, settings }) => {
           </div>
         )}
 
+        {/* ===== MY PRODUCTS TAB ===== */}
+        {tab === 'products' && (
+          <div>
+            <Button className="bg-gradient-to-r from-pink-500 to-blue-500 text-white mb-4"
+              onClick={() => { resetProductForm(); setProductDialog(true); }}>
+              <Plus size={18} className="mr-2" /> Add Product
+            </Button>
+            <p className="text-white/40 text-xs mb-4">Your own products (need admin approval before they appear in the store)</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {myProducts.map(p => {
+                const meta = getCatMeta(p.category);
+                const status = p.product_status || 'pending_review';
+                return (
+                  <Card key={p.id} className="glass-effect border-white/20">
+                    <CardContent className="p-4">
+                      <div className="flex gap-3 mb-3">
+                        {p.image_url && <img src={p.image_url} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
+                        <div className="min-w-0 flex-1">
+                          <h3 className="text-white font-bold text-sm truncate">{p.name}</h3>
+                          <div className="flex gap-1 mt-1 flex-wrap">
+                            <Badge className={`${meta.badge} text-xs`}>{meta.label}</Badge>
+                            <Badge className={status === 'approved' ? 'bg-green-500/20 text-green-300' : status === 'rejected' ? 'bg-red-500/20 text-red-300' : 'bg-yellow-500/20 text-yellow-300'}>
+                              {status.replace('_', ' ')}
+                            </Badge>
+                          </div>
+                          <p className="text-cyan-300 font-bold mt-1">${Number(p.price).toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleEditProduct(p)}
+                          className="flex-1 border-white/20 text-white hover:bg-white/10 text-xs">
+                          <Edit2 size={12} className="mr-1" /> Edit
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => { setCodesProduct(p); setCodesOpen(true); }}
+                          className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10 px-2">
+                          <Key size={12} />
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => handleDeleteProduct(p.id)}
+                          className="border-red-400 text-red-400 hover:bg-red-400/10 px-2">
+                          <Trash2 size={12} />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+              {myProducts.length === 0 && <p className="text-white/40 col-span-full text-center py-8">No products yet. Add your first product!</p>}
+            </div>
+          </div>
+        )}
+
         {/* ===== ORDERS TAB ===== */}
         {tab === 'orders' && (
           <div className="space-y-3">
@@ -550,6 +663,51 @@ const SellerDashboard = ({ user, logout, settings }) => {
             )}
             <div><Label className="text-white">Notes</Label><Textarea value={reqForm.notes} onChange={(e) => setReqForm(p => ({ ...p, notes: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} placeholder="Additional info..." /></div>
             <Button onClick={handleProductRequest} className="w-full bg-purple-600 text-white">Submit Request</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Product Dialog */}
+      <Dialog open={productDialog} onOpenChange={(o) => { setProductDialog(o); if (!o) resetProductForm(); }}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto bg-gray-900 border-white/20">
+          <DialogHeader><DialogTitle className="text-white">{editingProduct ? 'Edit Product' : 'New Product'}</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div><Label className="text-white">Name *</Label><Input value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} className="bg-white/10 border-white/20 text-white" /></div>
+            <div><Label className="text-white">Description</Label><Textarea value={productForm.description} onChange={(e) => setProductForm(p => ({ ...p, description: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-white">Category *</Label>
+                <Select value={productForm.category} onValueChange={(v) => setProductForm(p => ({ ...p, category: v }))}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{approvedCategories.map(c => <SelectItem key={c} value={c}>{getCatMeta(c).label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-white">Price *</Label><Input type="number" step="0.01" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} className="bg-white/10 border-white/20 text-white" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-white">Delivery</Label>
+                <Select value={productForm.delivery_type} onValueChange={(v) => setProductForm(p => ({ ...p, delivery_type: v }))}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="flex items-center gap-2 pt-6">
+                <Checkbox checked={productForm.stock_available} onCheckedChange={(v) => setProductForm(p => ({ ...p, stock_available: v }))} />
+                <Label className="text-white text-sm">In Stock</Label>
+              </div>
+            </div>
+            <div><Label className="text-white">Variant Name</Label><Input value={productForm.variant_name} onChange={(e) => setProductForm(p => ({ ...p, variant_name: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="e.g. US - $25" /></div>
+            <div><Label className="text-white">Region</Label><Input value={productForm.region} onChange={(e) => setProductForm(p => ({ ...p, region: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="US, EU, etc." /></div>
+            <div>
+              <Label className="text-white">Image</Label>
+              <Input value={productForm.image_url} onChange={(e) => setProductForm(p => ({ ...p, image_url: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="URL or upload below" />
+              <Input type="file" accept="image/*" className="bg-white/10 border-white/20 text-white mt-2 cursor-pointer"
+                onChange={async (e) => { const url = await uploadImage(e.target.files?.[0]); if (url) setProductForm(p => ({ ...p, image_url: url })); }} />
+            </div>
+            <Button onClick={handleProductSubmit} className="w-full bg-white text-purple-600 hover:bg-gray-100">
+              {editingProduct ? 'Update' : 'Create Product'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
