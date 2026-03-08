@@ -166,6 +166,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     ? order.delivery_info.items.filter((item) => item?.details && String(item.details).trim())
     : [];
   const hasDeliveryInfo = order.delivery_info && (deliveryDetails || deliveryItems.length > 0);
+  const autoDeliveryFailed = order.auto_delivery_failed_reason && !hasDeliveryInfo;
   const manualPaymentMethods = ['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'];
   const isManualPayment = manualPaymentMethods.includes(order.payment_method);
   const proofSubmitted = Boolean(order.payment_proof_url);
@@ -229,6 +230,21 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Auto-delivery failure notice */}
+          {autoDeliveryFailed && (
+            <Card className="glass-effect border-orange-500/30 border-2">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-2">
+                  <AlertTriangle className="text-orange-400" size={24} />
+                  <h3 className="text-lg font-bold text-orange-400">Automatic delivery pending</h3>
+                </div>
+                <p className="text-white/70 text-sm">
+                  {order.auto_delivery_failed_reason}. Our team will process your order manually.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Delivery Information - Shows when order is completed */}
           {hasDeliveryInfo && (

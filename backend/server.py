@@ -613,6 +613,7 @@ class Order(BaseModel):
     dispute_id: Optional[str] = None
     # Seller offer reference
     seller_offer_id: Optional[str] = None
+    auto_delivery_failed_reason: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -630,10 +631,11 @@ class Coupon(BaseModel):
     code: str
     discount_type: str  # percent or fixed
     discount_value: float
+    max_discount_amount: Optional[float] = None
     active: bool = True
     min_order_amount: float = 0.0
-    usage_limit: Optional[int] = None
-    max_uses_per_user: Optional[int] = None
+    usage_limit: int = 1
+    max_uses_per_user: int = 1
     used_count: int = 0
     user_usage: dict = Field(default_factory=dict)
     expires_at: Optional[datetime] = None
@@ -643,15 +645,17 @@ class CouponCreate(BaseModel):
     code: str
     discount_type: str  # percent or fixed
     discount_value: float
+    max_discount_amount: Optional[float] = None
     active: bool = True
     min_order_amount: float = 0.0
-    usage_limit: Optional[int] = None
-    max_uses_per_user: Optional[int] = None
+    usage_limit: int = 1
+    max_uses_per_user: int = 1
     expires_at: Optional[datetime] = None
 
 class CouponUpdate(BaseModel):
     discount_type: Optional[str] = None
     discount_value: Optional[float] = None
+    max_discount_amount: Optional[float] = None
     active: Optional[bool] = None
     min_order_amount: Optional[float] = None
     usage_limit: Optional[int] = None
@@ -2283,10 +2287,15 @@ def _calculate_discount(coupon: dict, subtotal: float) -> float:
     if value <= 0:
         return 0.0
     if discount_type == "percent":
-        return max(0.0, min(subtotal, subtotal * (value / 100.0)))
-    if discount_type == "fixed":
-        return max(0.0, min(subtotal, value))
-    return 0.0
+        discount = max(0.0, min(subtotal, subtotal * (value / 100.0)))
+    elif discount_type == "fixed":
+        discount = max(0.0, min(subtotal, value))
+    else:
+        return 0.0
+    max_discount = coupon.get("max_discount_amount")
+    if max_discount is not None and float(max_discount) > 0:
+        discount = min(discount, float(max_discount))
+    return discount
 
 async def _record_coupon_usage_if_needed(order_id: str):
     """Increment coupon usage (global + per-user) once per paid order."""
@@ -2457,6 +2466,7 @@ async def validate_coupon(code: str, amount: float, user_id: Optional[str] = Non
         "total_after_discount": float(amount) - discount,
         "remaining_uses": remaining_global,
         "remaining_user_uses": remaining_user,
+        "max_discount_amount": coupon.get("max_discount_amount"),
     }
 
 @api_router.get("/coupons", response_model=List[Coupon])
@@ -2490,6 +2500,7 @@ async def create_coupon(data: CouponCreate):
         code=code,
         discount_type=data.discount_type,
         discount_value=float(data.discount_value),
+        max_discount_amount=float(data.max_discount_amount) if data.max_discount_amount is not None else None,
         active=bool(data.active),
         min_order_amount=float(data.min_order_amount or 0.0),
         usage_limit=data.usage_limit,
@@ -2746,10 +2757,20 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
     )
 
     if order.payment_status == "paid":
+        await _record_coupon_usage_if_needed(order.id)
         try:
             await _try_auto_deliver(order.id)
         except Exception as e:
             logging.error(f"Auto-delivery error on wallet payment: {e}")
+        fresh = await db.orders.find_one({"id": order.id}, {"_id": 0})
+        if fresh:
+            for dt_field in ("created_at", "updated_at", "refunded_at",
+                             "subscription_start_date", "subscription_end_date",
+                             "escrow_held_at", "escrow_confirmed_at",
+                             "escrow_release_at", "escrow_released_at"):
+                if isinstance(fresh.get(dt_field), str):
+                    fresh[dt_field] = datetime.fromisoformat(fresh[dt_field])
+            return fresh
 
     return order
 
@@ -2874,15 +2895,18 @@ async def _try_auto_deliver(order_id: str) -> bool:
 
     reserved_codes: List[dict] = []
     all_auto = True
+    fail_reason = None
 
     for item in items:
         product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
         if not product:
             all_auto = False
+            fail_reason = f"Product not found: {item.get('product_id')}"
             break
 
         if product.get("delivery_type") != "automatic":
             all_auto = False
+            fail_reason = f"Product '{product.get('name', '')}' has delivery_type='{product.get('delivery_type', 'manual')}', not automatic"
             break
 
         qty = max(int(item.get("quantity", 1)), 1)
@@ -2899,6 +2923,7 @@ async def _try_auto_deliver(order_id: str) -> bool:
             )
             if not code_doc:
                 all_auto = False
+                fail_reason = f"No available codes for product '{product.get('name', '')}' (needed {qty}, got {len(item_codes)})"
                 break
             item_codes.append(code_doc)
 
@@ -2918,6 +2943,12 @@ async def _try_auto_deliver(order_id: str) -> bool:
                     {"id": code_doc["id"], "status": "reserved", "order_id": order_id},
                     {"$set": {"status": "available", "order_id": None, "delivered_at": None}},
                 )
+        if fail_reason:
+            logging.warning("Auto-delivery failed for order %s: %s", order_id, fail_reason)
+            await db.orders.update_one(
+                {"id": order_id},
+                {"$set": {"auto_delivery_failed_reason": fail_reason}},
+            )
         return False
 
     for entry in reserved_codes:
