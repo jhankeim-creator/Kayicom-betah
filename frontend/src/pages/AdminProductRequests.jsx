@@ -51,9 +51,9 @@ const AdminProductRequests = ({ user, logout, settings }) => {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Package className="text-cyan-400" /> Product Requests
+            <Package className="text-green-400" /> Product Requests
           </h1>
-          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             Admin Home
           </Button>
         </div>
@@ -61,7 +61,7 @@ const AdminProductRequests = ({ user, logout, settings }) => {
         <div className="flex gap-2 mb-6">
           {filters.map(f => (
             <Button key={f} size="sm" onClick={() => setFilter(f)}
-              className={`${filter === f ? 'bg-pink-500' : 'bg-white/10'} text-white text-xs capitalize`}>
+              className={`${filter === f ? 'bg-green-500' : 'bg-white/10'} text-white text-xs capitalize`}>
               {f} {filter === f && `(${requests.length})`}
             </Button>
           ))}
@@ -78,9 +78,9 @@ const AdminProductRequests = ({ user, logout, settings }) => {
                       <h3 className="text-white font-bold">{r.product_name}</h3>
                       <p className="text-white/50 text-sm">{r.description?.slice(0, 100)}</p>
                       <div className="flex gap-2 mt-2 flex-wrap">
-                        <Badge className="bg-cyan-500/20 text-cyan-300">{r.category}</Badge>
-                        {r.giftcard_category && <Badge className="bg-purple-500/20 text-purple-300">{r.giftcard_category}</Badge>}
-                        {r.giftcard_subcategory && <Badge className="bg-pink-500/20 text-pink-300">{r.giftcard_subcategory}</Badge>}
+                        <Badge className="bg-cyan-500/20 text-green-300">{r.category}</Badge>
+                        {r.giftcard_category && <Badge className="bg-green-500/20 text-purple-300">{r.giftcard_category}</Badge>}
+                        {r.giftcard_subcategory && <Badge className="bg-green-500/20 text-green-300">{r.giftcard_subcategory}</Badge>}
                         {r.suggested_price && <Badge className="bg-green-500/20 text-green-300">${r.suggested_price}</Badge>}
                       </div>
                       <p className="text-white/40 text-xs mt-2">

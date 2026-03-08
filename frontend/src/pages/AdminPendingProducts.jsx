@@ -45,7 +45,7 @@ const AdminPendingProducts = ({ user, logout, settings }) => {
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
             <Clock className="text-yellow-400" /> Pending Products
           </h1>
-          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             Admin Home
           </Button>
         </div>
@@ -112,7 +112,7 @@ const AdminPendingProducts = ({ user, logout, settings }) => {
                   <div><p className="text-white/50 text-xs">Description</p><p className="text-white text-sm">{selectedProduct.description}</p></div>
                 )}
                 {selectedProduct.seller_store_name && (
-                  <div className="p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+                  <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
                     <p className="text-purple-300 text-sm">Submitted by: <strong>{selectedProduct.seller_store_name}</strong> ({selectedProduct.seller_email})</p>
                   </div>
                 )}

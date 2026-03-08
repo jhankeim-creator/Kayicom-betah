@@ -183,7 +183,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
         <div className="container mx-auto px-4 py-20 text-center">
           <h2 className="text-2xl text-white mb-4">You must login to continue</h2>
-          <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} className="bg-white text-purple-600 hover:bg-gray-100">
+          <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} className="bg-white text-green-600 hover:bg-gray-100">
             Login
           </Button>
         </div>
@@ -251,7 +251,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     <RadioGroupItem value="crypto_plisio" className="mt-1" />
                     <div className="ml-4">
                       <div className="flex items-center gap-2">
-                        <Wallet className="text-cyan-400" size={20} />
+                        <Wallet className="text-green-400" size={20} />
                         <span className="text-white font-semibold">Cryptocurrency (Automatic)</span>
                       </div>
                       <p className="text-white/70 text-sm mt-1">Bitcoin, Ethereum, USDT - Instant delivery</p>
@@ -261,12 +261,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                   {/* Manual Payment Methods - Only show enabled ones */}
                   {settings?.payment_gateways?.paypal?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'paypal' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'paypal' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="paypal" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">PayPal</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -279,12 +279,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.airtm?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'airtm' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'airtm' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="airtm" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">AirTM</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -297,12 +297,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.skrill?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'skrill' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'skrill' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="skrill" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">Skrill</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -315,12 +315,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.moncash?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'moncash' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'moncash' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="moncash" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">MonCash</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -347,12 +347,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.binance_pay?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'binance_pay' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'binance_pay' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="binance_pay" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">Binance Pay</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -365,12 +365,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.zelle?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'zelle' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'zelle' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="zelle" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">Zelle</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -383,12 +383,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
 
                   {settings?.payment_gateways?.cashapp?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'cashapp' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                      paymentMethod === 'cashapp' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                     }`}>
                       <RadioGroupItem value="cashapp" className="mt-1" />
                       <div className="ml-4">
                         <div className="flex items-center gap-2">
-                          <CreditCard className="text-pink-400" size={20} />
+                          <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">CashApp</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
@@ -421,7 +421,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
               {needsPlayerIds && (
                 <div className="mt-6 border-t border-white/20 pt-6">
                   <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                    <Gamepad2 className="text-cyan-400" size={24} />
+                    <Gamepad2 className="text-green-400" size={24} />
                     Player IDs Required
                   </h3>
                   <div className="space-y-4">
@@ -528,7 +528,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     type="button"
                     onClick={applyCoupon}
                     disabled={applyingCoupon}
-                    className="bg-white text-purple-600 hover:bg-gray-100"
+                    className="bg-white text-green-600 hover:bg-gray-100"
                   >
                     {applyingCoupon ? 'Applying...' : 'Apply'}
                   </Button>
@@ -541,7 +541,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
               </div>
 
               <Button
-                className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg"
+                className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg"
                 onClick={handleCheckout}
                 disabled={loading || (paymentMethod === 'wallet' && walletBalance !== null && walletBalance + 1e-9 < total)}
                 data-testid="place-order-btn"

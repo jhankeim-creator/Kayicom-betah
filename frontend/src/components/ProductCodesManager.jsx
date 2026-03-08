@@ -117,7 +117,7 @@ const ProductCodesManager = ({ product, open, onOpenChange }) => {
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-gray-900 border-white/20 w-[95vw] sm:w-full">
         <DialogHeader>
           <DialogTitle className="text-white text-lg flex items-center gap-2">
-            <Key size={20} className="text-cyan-400" />
+            <Key size={20} className="text-green-400" />
             Manage Codes — {product?.name}
           </DialogTitle>
         </DialogHeader>
@@ -166,7 +166,7 @@ const ProductCodesManager = ({ product, open, onOpenChange }) => {
               variant="outline"
               size="sm"
               onClick={() => setShowBulk(!showBulk)}
-              className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10 text-xs"
+              className="border-cyan-400 text-green-300 hover:bg-cyan-400/10 text-xs"
             >
               <Upload size={14} className="mr-1" /> {showBulk ? 'Hide' : 'Bulk Add'}
             </Button>
@@ -174,7 +174,7 @@ const ProductCodesManager = ({ product, open, onOpenChange }) => {
 
           {/* Bulk add */}
           {showBulk && (
-            <div className="p-3 bg-cyan-500/10 border border-cyan-500/30 rounded-lg space-y-2">
+            <div className="p-3 bg-cyan-500/10 border border-green-500/30 rounded-lg space-y-2">
               <Label className="text-white text-sm">Paste codes (one per line)</Label>
               <div className="flex items-center gap-2 text-xs text-yellow-300">
                 <AlertCircle size={14} />
@@ -205,7 +205,7 @@ const ProductCodesManager = ({ product, open, onOpenChange }) => {
               key={f}
               size="sm"
               onClick={() => setFilter(f)}
-              className={`text-xs ${filter === f ? 'bg-pink-500 text-white' : 'bg-white/10 text-white/70'}`}
+              className={`text-xs ${filter === f ? 'bg-green-500 text-white' : 'bg-white/10 text-white/70'}`}
             >
               {f === 'all' ? 'All' : f.charAt(0).toUpperCase() + f.slice(1)}
             </Button>

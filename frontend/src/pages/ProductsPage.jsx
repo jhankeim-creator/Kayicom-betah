@@ -245,7 +245,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
 
   const renderProductCard = (product) => (
     <Card key={product.id} className="product-card overflow-hidden bg-white/10 backdrop-blur-lg border-white/20 hover:border-white/40" data-testid={`product-card-${product.id}`}>
-      <div className="h-48 bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+      <div className="h-48 bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
         {product.image_url ? (
           <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
         ) : (
@@ -271,7 +271,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
         <div className="flex items-center justify-between text-white/60 text-xs mb-3">
           <span>{Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders</span>
           {product._variant_count > 1 ? <span>{product._variant_count} options</span> : (
-            <span className="text-cyan-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
+            <span className="text-green-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -282,7 +282,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
           </Link>
           <Button 
             size="sm" 
-            className="bg-white text-purple-600 hover:bg-gray-100"
+            className="bg-white text-green-600 hover:bg-gray-100"
             onClick={() => {
               addToCart(product);
               toast.success('Product added to cart');
@@ -321,7 +321,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
             placeholder="Search products..."
           />
           <div className="flex gap-2 justify-center mt-3">
-            <Button type="button" className="bg-white text-purple-600 hover:bg-gray-100" onClick={loadProducts}>
+            <Button type="button" className="bg-white text-green-600 hover:bg-gray-100" onClick={loadProducts}>
               Search
             </Button>
             <Button
@@ -346,7 +346,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
               onClick={() => setSelectedCategory(cat.value)}
               variant={selectedCategory === cat.value ? 'default' : 'outline'}
               className={selectedCategory === cat.value 
-                ? 'bg-white text-purple-600 hover:bg-gray-100' 
+                ? 'bg-white text-green-600 hover:bg-gray-100' 
                 : 'border-white text-white hover:bg-white/10'
               }
               data-testid={`filter-${cat.value || 'all'}`}

@@ -557,7 +557,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
             <h1 className="text-3xl font-bold text-white" data-testid="settings-title">Site Settings</h1>
             <Button 
               onClick={() => window.location.href = '/admin'}
-              className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-6 py-3"
+              className="bg-green-500 text-white px-6 py-3"
             >
               🏠 Admin Home
             </Button>
@@ -889,7 +889,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                           variant="outline"
                           onClick={handleTelegramTest}
                           disabled={testingTelegram}
-                          className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10"
+                          className="border-cyan-400 text-green-300 hover:bg-cyan-400/10"
                         >
                           {testingTelegram ? 'Sending test...' : 'Send Test Telegram Message'}
                         </Button>
@@ -1120,7 +1120,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                                     <Button
                                       type="button"
                                       onClick={() => addGiftcardSubcategory(item?.name)}
-                                      className="border-cyan-400 text-cyan-400 hover:bg-cyan-400/10"
+                                      className="border-cyan-400 text-green-400 hover:bg-cyan-400/10"
                                       variant="outline"
                                       data-testid={`add-giftcard-subcategory-${categoryKey}`}
                                     >
@@ -1557,7 +1557,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                       </div>
 
                       {/* Crypto Exchange Manual Payments */}
-                      <div className="bg-white/5 p-4 rounded-lg mb-4 border border-cyan-500/20">
+                      <div className="bg-white/5 p-4 rounded-lg mb-4 border border-green-500/20">
                         <h4 className="text-white font-semibold flex items-center gap-2 mb-3">
                           <span>🔄</span> Crypto Exchange Manual Payments
                         </h4>
@@ -1728,7 +1728,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         </div>
                       </div>
 
-                      <Button type="submit" className="w-full bg-white text-purple-600 hover:bg-gray-100">
+                      <Button type="submit" className="w-full bg-white text-green-600 hover:bg-gray-100">
                         Save Payment Settings
                       </Button>
                     </div>

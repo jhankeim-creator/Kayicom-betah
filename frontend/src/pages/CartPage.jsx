@@ -21,7 +21,7 @@ const CartPage = ({ user, logout, cart, removeFromCart, updateCartQuantity, sett
             <ShoppingBag className="mx-auto mb-6 text-white" size={80} />
             <h2 className="text-2xl text-white mb-4">Your cart is empty</h2>
             <Link to="/products">
-              <Button className="bg-white text-purple-600 hover:bg-gray-100" data-testid="continue-shopping-btn">
+              <Button className="bg-white text-green-600 hover:bg-gray-100" data-testid="continue-shopping-btn">
                 Continue Shopping
               </Button>
             </Link>
@@ -34,7 +34,7 @@ const CartPage = ({ user, logout, cart, removeFromCart, updateCartQuantity, sett
                 <Card key={item.product.id} className="glass-effect border-white/20" data-testid={`cart-item-${item.product.id}`}>
                   <CardContent className="p-6">
                     <div className="flex items-center gap-6">
-                      <div className="w-24 h-24 bg-gradient-to-br from-purple-400 to-pink-400 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-emerald-500 rounded-lg flex items-center justify-center flex-shrink-0">
                         {item.product.image_url ? (
                           <img src={item.product.image_url} alt={item.product.name} className="w-full h-full object-cover rounded-lg" />
                         ) : (
@@ -109,7 +109,7 @@ const CartPage = ({ user, logout, cart, removeFromCart, updateCartQuantity, sett
                   </div>
 
                   <Link to="/checkout">
-                    <Button className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg" data-testid="checkout-btn">
+                    <Button className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg" data-testid="checkout-btn">
                       Checkout
                     </Button>
                   </Link>

@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input';
 import { Store, ShoppingCart, Gift, Gamepad2, Tv, Wrench, Tag, Star, Search, Calendar } from 'lucide-react';
 
 const CATEGORY_META = {
-  giftcard: { label: 'Gift Cards', icon: Gift, badge: 'bg-pink-500/20 text-pink-300' },
+  giftcard: { label: 'Gift Cards', icon: Gift, badge: 'bg-green-500/20 text-green-300' },
   topup: { label: 'Game Top-Up', icon: Gamepad2, badge: 'bg-blue-500/20 text-blue-300' },
-  subscription: { label: 'Subscriptions', icon: Tv, badge: 'bg-purple-500/20 text-purple-300' },
+  subscription: { label: 'Subscriptions', icon: Tv, badge: 'bg-green-500/20 text-purple-300' },
   service: { label: 'Services', icon: Wrench, badge: 'bg-green-500/20 text-green-300' },
 };
 
@@ -121,7 +121,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
           </div>
           <div className="flex gap-2 overflow-x-auto">
             <Button size="sm" onClick={() => setFilter('all')}
-              className={`${filter === 'all' ? 'bg-white text-purple-600' : 'bg-white/10 text-white'} text-xs`}>
+              className={`${filter === 'all' ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs`}>
               All ({offers.length})
             </Button>
             {categories.map(c => {
@@ -129,7 +129,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
               const Icon = meta.icon;
               return (
                 <Button key={c} size="sm" onClick={() => setFilter(c)}
-                  className={`${filter === c ? 'bg-white text-purple-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
+                  className={`${filter === c ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
                   <Icon size={12} /> {meta.label} ({offers.filter(o => o.product_category === c).length})
                 </Button>
               );
@@ -151,7 +151,7 @@ const SellerStorePage = ({ user, logout, settings, addToCart }) => {
                   <h3 className="text-white font-bold text-sm truncate">{offer.product_name}</h3>
                   <Badge className={`${meta.badge} text-xs mt-1`}>{meta.label}</Badge>
                   <div className="flex justify-between items-center mt-3">
-                    <p className="text-cyan-300 font-bold text-lg">${Number(offer.price).toFixed(2)}</p>
+                    <p className="text-green-300 font-bold text-lg">${Number(offer.price).toFixed(2)}</p>
                     <Badge className={offer.stock_available ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
                       {offer.stock_available ? 'In Stock' : 'Out'}
                     </Badge>

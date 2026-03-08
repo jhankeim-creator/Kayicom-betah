@@ -23,7 +23,7 @@ const NOTIF_COLORS = {
   new_review: 'text-yellow-400',
   seller_approved: 'text-green-400',
   seller_rejected: 'text-red-400',
-  category_approved: 'text-cyan-400',
+  category_approved: 'text-green-400',
   category_rejected: 'text-red-400',
   order_delivered: 'text-blue-400',
   default: 'text-white/60',
@@ -80,9 +80,9 @@ const NotificationsPage = ({ user, logout, settings }) => {
       <div className="container mx-auto px-4 py-8 max-w-3xl">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Bell className="text-cyan-400" /> Notifications
+            <Bell className="text-green-400" /> Notifications
             {unreadCount > 0 && (
-              <Badge className="bg-pink-500 text-white">{unreadCount} new</Badge>
+              <Badge className="bg-green-500 text-white">{unreadCount} new</Badge>
             )}
           </h1>
           {unreadCount > 0 && (

@@ -117,7 +117,7 @@ const SellerApplyPage = ({ user, logout, settings }) => {
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
       <div className="container mx-auto px-4 py-12 max-w-2xl">
         <h1 className="text-3xl font-bold text-white mb-2 flex items-center gap-3">
-          <Store className="text-cyan-400" /> Become a Seller
+          <Store className="text-green-400" /> Become a Seller
         </h1>
         <p className="text-white/60 mb-8">Sell your digital products on KayiCom</p>
 
@@ -127,7 +127,7 @@ const SellerApplyPage = ({ user, logout, settings }) => {
               {/* Section 1: Personal Information */}
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
-                  <User className="text-cyan-400" size={20} /> Personal Information
+                  <User className="text-green-400" size={20} /> Personal Information
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="md:col-span-2">
@@ -175,7 +175,7 @@ const SellerApplyPage = ({ user, logout, settings }) => {
               {/* Section 2: Store Information */}
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
-                  <Store className="text-purple-400" size={20} /> Store Information
+                  <Store className="text-green-400" size={20} /> Store Information
                 </h2>
                 <div className="space-y-4">
                   <div>

@@ -188,7 +188,7 @@ const WithdrawPage = ({ user, logout, settings }) => {
                       </label>
 
                       <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                        method === 'paypal' ? 'border-pink-400 bg-pink-400/10' : 'border-white/20 hover:border-white/40'
+                        method === 'paypal' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
                       }`}>
                         <RadioGroupItem value="paypal" className="mt-1" />
                         <div className="ml-4">
@@ -266,7 +266,7 @@ const WithdrawPage = ({ user, logout, settings }) => {
                 <Button
                   onClick={handleWithdraw}
                   disabled={loading || balance < 5}
-                  className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg"
+                  className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg"
                 >
                   {loading ? 'Processing...' : 'Submit Withdrawal Request'}
                 </Button>

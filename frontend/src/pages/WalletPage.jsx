@@ -228,7 +228,7 @@ const WalletPage = ({ user, logout, settings }) => {
                         <Button
                           onClick={doConvertCredits}
                           disabled={converting}
-                          className="bg-white text-purple-600 hover:bg-gray-100"
+                          className="bg-white text-green-600 hover:bg-gray-100"
                         >
                           {converting ? '...' : 'Convert'}
                         </Button>
@@ -274,7 +274,7 @@ const WalletPage = ({ user, logout, settings }) => {
                   <Button
                     onClick={createTopup}
                     disabled={creatingTopup}
-                    className="w-full bg-white text-purple-600 hover:bg-gray-100"
+                    className="w-full bg-white text-green-600 hover:bg-gray-100"
                   >
                     {creatingTopup ? 'Creating...' : 'Create Topup'}
                   </Button>

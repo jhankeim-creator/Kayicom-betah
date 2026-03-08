@@ -328,7 +328,7 @@ const AdminOrders = ({ user, logout, settings }) => {
               <h1 className="text-4xl md:text-5xl font-bold text-white" data-testid="orders-title">Manage Orders</h1>
               <Button 
                 onClick={() => window.location.href = '/admin'}
-                className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-6 py-3"
+                className="bg-green-500 text-white px-6 py-3"
               >
                 🏠 Admin Home
               </Button>
@@ -414,7 +414,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
+                                className="border-green-400 text-green-400 hover:bg-green-400/10"
                                 onClick={() => {
                                   setSelectedProofUrl(order.payment_proof_url);
                                   setProofZoom(1);
@@ -429,7 +429,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                                 <img 
                                   src={order.payment_proof_url} 
                                   alt="Payment proof thumbnail" 
-                                  className="h-12 w-12 object-cover rounded border border-pink-400/30 cursor-pointer hover:border-pink-400/60 transition"
+                                  className="h-12 w-12 object-cover rounded border border-green-400/30 cursor-pointer hover:border-green-400/60 transition"
                                   onClick={() => {
                                     setSelectedProofUrl(order.payment_proof_url);
                                     setProofZoom(1);
@@ -458,15 +458,15 @@ const AdminOrders = ({ user, logout, settings }) => {
                               
                               {/* Player ID */}
                               {item.player_id && (
-                                <div className="mt-2 p-2 bg-cyan-500/10 border border-cyan-500/20 rounded">
-                                  <p className="text-cyan-300 text-xs font-semibold mb-1">Player ID:</p>
+                                <div className="mt-2 p-2 bg-cyan-500/10 border border-green-500/20 rounded">
+                                  <p className="text-green-300 text-xs font-semibold mb-1">Player ID:</p>
                                   <p className="text-white text-sm font-mono">{item.player_id}</p>
                                 </div>
                               )}
                               
                               {/* Credentials */}
                               {item.credentials && Object.keys(item.credentials).length > 0 && (
-                                <div className="mt-2 p-2 bg-purple-500/10 border border-purple-500/20 rounded">
+                                <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded">
                                   <p className="text-purple-300 text-xs font-semibold mb-1">Account Credentials:</p>
                                   <div className="space-y-1">
                                     {Object.entries(item.credentials).map(([key, value]) => (
@@ -483,8 +483,8 @@ const AdminOrders = ({ user, logout, settings }) => {
                         </div>
 
                         {subscriptionMeta && (
-                          <div className="mt-3 p-3 bg-cyan-500/10 border border-cyan-500/30 rounded">
-                            <p className="text-cyan-300 text-sm font-semibold mb-1">Subscription</p>
+                          <div className="mt-3 p-3 bg-cyan-500/10 border border-green-500/30 rounded">
+                            <p className="text-green-300 text-sm font-semibold mb-1">Subscription</p>
                             <p className="text-white/70 text-xs">
                               Ends: {subscriptionMeta.end.toLocaleString('en-US')}
                             </p>
@@ -783,7 +783,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                     href={selectedProofUrl} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-pink-400 hover:underline"
+                    className="text-green-400 hover:underline"
                   >
                     Open proof in new tab
                   </a>
@@ -827,7 +827,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                   </Button>
                   <Button
                     variant="outline"
-                    className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
+                    className="border-green-400 text-green-400 hover:bg-green-400/10"
                     onClick={() => {
                       openPaymentProof(selectedProofUrl, { filename: 'payment-proof.png', action: 'open' });
                     }}

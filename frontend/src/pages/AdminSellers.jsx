@@ -104,9 +104,9 @@ const AdminSellers = ({ user, logout, settings }) => {
       <div className="container mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Users className="text-cyan-400" /> Manage Sellers
+            <Users className="text-green-400" /> Manage Sellers
           </h1>
-          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+          <Button onClick={() => window.location.href = '/admin'} className="bg-gradient-to-r from-green-500 to-green-600 text-white">
             Admin Home
           </Button>
         </div>
@@ -144,7 +144,7 @@ const AdminSellers = ({ user, logout, settings }) => {
         <div className="flex gap-2 mb-6 overflow-x-auto">
           {filters.map(f => (
             <Button key={f} size="sm" onClick={() => setFilter(f)}
-              className={`${filter === f ? 'bg-pink-500' : 'bg-white/10'} text-white text-xs whitespace-nowrap`}>
+              className={`${filter === f ? 'bg-green-500' : 'bg-white/10'} text-white text-xs whitespace-nowrap`}>
               {f === 'all' ? 'All' : f.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
               {f !== 'all' && ` (${sellers.filter(s => f === 'all' || s.seller_status === f).length})`}
             </Button>
@@ -174,7 +174,7 @@ const AdminSellers = ({ user, logout, settings }) => {
                   {seller.seller_approved_categories?.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {seller.seller_approved_categories.map(c => (
-                        <Badge key={c} className="bg-cyan-500/10 text-cyan-300 text-xs">{c}</Badge>
+                        <Badge key={c} className="bg-cyan-500/10 text-green-300 text-xs">{c}</Badge>
                       ))}
                     </div>
                   )}
@@ -190,14 +190,14 @@ const AdminSellers = ({ user, logout, settings }) => {
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-gray-900 border-white/20">
             <DialogHeader>
               <DialogTitle className="text-white flex items-center gap-2">
-                <ShieldCheck className="text-cyan-400" /> Seller Review — {selectedSeller?.seller_store_name}
+                <ShieldCheck className="text-green-400" /> Seller Review — {selectedSeller?.seller_store_name}
               </DialogTitle>
             </DialogHeader>
             {selectedSeller && (
               <div className="space-y-4 py-2">
                 {/* Personal Information */}
                 <div>
-                  <p className="text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-2">Personal Information</p>
+                  <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">Personal Information</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div><p className="text-white/50 text-xs">Email</p><p className="text-white text-sm">{selectedSeller.email}</p></div>
                     <div><p className="text-white/50 text-xs">Name</p><p className="text-white text-sm">{selectedSeller.full_name}</p></div>
@@ -278,7 +278,7 @@ const AdminSellers = ({ user, logout, settings }) => {
                   <div className="flex gap-2 mt-1">
                     <Input type="number" value={commission} onChange={(e) => setCommission(e.target.value)}
                       className="bg-white/10 border-white/20 text-white w-24" />
-                    <Button size="sm" onClick={handleSetCommission} className="bg-purple-600 text-white text-xs">Set</Button>
+                    <Button size="sm" onClick={handleSetCommission} className="bg-green-600 text-white text-xs">Set</Button>
                   </div>
                 </div>
 
@@ -287,7 +287,7 @@ const AdminSellers = ({ user, logout, settings }) => {
                   <Label className="text-white text-sm">Approved Categories</Label>
                   <div className="flex flex-wrap gap-1 mt-1 mb-2">
                     {(selectedSeller.seller_approved_categories || []).map(c => (
-                      <Badge key={c} className="bg-cyan-500/20 text-cyan-300">{c}</Badge>
+                      <Badge key={c} className="bg-cyan-500/20 text-green-300">{c}</Badge>
                     ))}
                     {!(selectedSeller.seller_approved_categories || []).length && <span className="text-white/40 text-xs">None</span>}
                   </div>

@@ -223,7 +223,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
           {/* Product Image */}
           <div className="" data-testid="product-image">
             <Card className="overflow-hidden bg-white/10 backdrop-blur-lg border-white/20">
-              <div className="aspect-square bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center">
+              <div className="aspect-square bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
                 {product.image_url ? (
                   <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
                 ) : (
@@ -255,7 +255,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 {Math.max(0, Math.floor(totalOrdersCount))} orders
               </p>
               {!selectedProduct.seller_id && (
-                <span className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">by KayiCom</span>
+                <span className="text-xs bg-cyan-500/20 text-green-300 px-2 py-0.5 rounded-full">by KayiCom</span>
               )}
             </div>
 
@@ -341,7 +341,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </div>
                 <Button
                   size="lg"
-                  className="w-full bg-white text-purple-600 hover:bg-gray-100 text-lg py-6"
+                  className="w-full bg-white text-green-600 hover:bg-gray-100 text-lg py-6"
                   onClick={handleAddToCart}
                   disabled={!selectedProduct.stock_available}
                   data-testid="add-to-cart-btn"
@@ -395,7 +395,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                     <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-white/20 transition">
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <a href={`/store/${offer.seller_id}`} className="text-cyan-300 font-semibold text-sm hover:underline">
+                          <a href={`/store/${offer.seller_id}`} className="text-green-300 font-semibold text-sm hover:underline">
                             {offer.seller_name || offer.seller_store_name || 'Seller'}
                           </a>
                           {offer.seller_rating > 0 && (
@@ -405,13 +405,13 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                         <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? '⚡ Instant delivery' : '📦 Manual delivery'}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <p className="text-cyan-300 font-bold">${Number(offer.price).toFixed(2)}</p>
+                        <p className="text-green-300 font-bold">${Number(offer.price).toFixed(2)}</p>
                         <button
                           onClick={() => {
                             const sellerProduct = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || offer.seller_store_name || 'Seller', _offer_id: offer.id };
                             addToCart(sellerProduct, 1);
                           }}
-                          className="px-3 py-1.5 bg-gradient-to-r from-pink-500 to-purple-500 text-white text-xs font-medium rounded-lg hover:opacity-90 transition whitespace-nowrap"
+                          className="px-3 py-1.5 bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-medium rounded-lg hover:opacity-90 transition whitespace-nowrap"
                         >
                           Buy from seller
                         </button>

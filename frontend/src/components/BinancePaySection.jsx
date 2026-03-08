@@ -69,7 +69,7 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
           <Zap size={16} />
           Binance Pay · Auto Verify
         </span>
-        <span className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-semibold text-sm">
+        <span className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-cyan-500/20 border border-green-500/40 text-green-300 font-semibold text-sm">
           <Zap size={16} />
           C2C / P2P · Auto Verify
         </span>
@@ -108,21 +108,21 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
             <DollarSign size={14} className="text-white/50" />
           </div>
           <p className="text-white/50 text-[10px] uppercase tracking-wider">Min. Amount</p>
-          <p className="text-cyan-300 font-bold text-lg">${order?.total_amount ? Number(order.total_amount).toFixed(2) : '1.00'}</p>
+          <p className="text-green-300 font-bold text-lg">${order?.total_amount ? Number(order.total_amount).toFixed(2) : '1.00'}</p>
         </div>
         <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
           <div className="flex items-center justify-center mb-1">
             <Clock size={14} className="text-white/50" />
           </div>
           <p className="text-white/50 text-[10px] uppercase tracking-wider">Verify Within</p>
-          <p className="text-cyan-300 font-bold text-lg">20 min</p>
+          <p className="text-green-300 font-bold text-lg">20 min</p>
         </div>
         <div className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
           <div className="flex items-center justify-center mb-1">
             <Zap size={14} className="text-white/50" />
           </div>
           <p className="text-white/50 text-[10px] uppercase tracking-wider">Processing</p>
-          <p className="text-cyan-300 font-bold text-lg">1-3 min</p>
+          <p className="text-green-300 font-bold text-lg">1-3 min</p>
         </div>
       </div>
 

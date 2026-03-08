@@ -109,7 +109,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-4xl font-bold text-white">Wallet Topups</h1>
-            <Button onClick={() => (window.location.href = '/admin')} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+            <Button onClick={() => (window.location.href = '/admin')} className="bg-green-500 text-white">
               🏠 Admin Home
             </Button>
           </div>
@@ -189,7 +189,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
+                                className="border-green-400 text-green-400 hover:bg-green-400/10"
                                 onClick={() => {
                                   setSelectedProofUrl(t.payment_proof_url);
                                   setProofZoom(1);
@@ -203,7 +203,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                                 <img 
                                   src={t.payment_proof_url} 
                                   alt="Payment proof thumbnail" 
-                                  className="h-12 w-12 object-cover rounded border border-pink-400/30 cursor-pointer hover:border-pink-400/60 transition"
+                                  className="h-12 w-12 object-cover rounded border border-green-400/30 cursor-pointer hover:border-green-400/60 transition"
                                   onClick={() => {
                                     setSelectedProofUrl(t.payment_proof_url);
                                     setProofZoom(1);
@@ -225,7 +225,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                               href={t.plisio_invoice_url} 
                               target="_blank" 
                               rel="noopener noreferrer" 
-                              className="text-cyan-300 text-sm hover:underline"
+                              className="text-green-300 text-sm hover:underline"
                             >
                               🔗 View Invoice
                             </a>
@@ -286,7 +286,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                     href={selectedProofUrl} 
                     target="_blank" 
                     rel="noopener noreferrer" 
-                    className="text-pink-400 hover:underline"
+                    className="text-green-400 hover:underline"
                   >
                     Open proof in new tab
                   </a>
@@ -330,7 +330,7 @@ const AdminWalletTopups = ({ user, logout, settings }) => {
                   </Button>
                   <Button
                     variant="outline"
-                    className="border-pink-400 text-pink-400 hover:bg-pink-400/10"
+                    className="border-green-400 text-green-400 hover:bg-green-400/10"
                     onClick={() => {
                       openPaymentProof(selectedProofUrl, { filename: 'payment-proof.png', action: 'open' });
                     }}

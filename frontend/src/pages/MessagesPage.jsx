@@ -72,7 +72,7 @@ const MessagesPage = ({ user, logout, settings }) => {
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <h1 className="text-3xl font-bold text-white mb-6 flex items-center gap-3">
-          <MessageSquare className="text-cyan-400" /> Messages
+          <MessageSquare className="text-green-400" /> Messages
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -83,7 +83,7 @@ const MessagesPage = ({ user, logout, settings }) => {
             )}
             {conversations.map(conv => (
               <Card key={conv.orderId}
-                className={`cursor-pointer transition ${selectedOrderId === conv.orderId ? 'border-cyan-500' : 'border-white/20'} glass-effect hover:border-white/40`}
+                className={`cursor-pointer transition ${selectedOrderId === conv.orderId ? 'border-green-500' : 'border-white/20'} glass-effect hover:border-white/40`}
                 onClick={() => selectConversation(conv)}>
                 <CardContent className="p-3">
                   <div className="flex justify-between items-center">

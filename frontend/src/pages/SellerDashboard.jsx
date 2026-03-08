@@ -16,9 +16,9 @@ import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, 
 import { toast } from 'sonner';
 
 const CATEGORY_META = {
-  giftcard: { label: 'Gift Cards', icon: Gift, color: 'from-pink-500/20 to-red-500/20 border-pink-500/30', badge: 'bg-pink-500/20 text-pink-300' },
+  giftcard: { label: 'Gift Cards', icon: Gift, color: 'from-green-500/20 to-emerald-500/20 border-green-500/30', badge: 'bg-green-500/20 text-green-300' },
   topup: { label: 'Game Top-Up', icon: Gamepad2, color: 'from-blue-500/20 to-cyan-500/20 border-blue-500/30', badge: 'bg-blue-500/20 text-blue-300' },
-  subscription: { label: 'Subscriptions', icon: Tv, color: 'from-purple-500/20 to-violet-500/20 border-purple-500/30', badge: 'bg-purple-500/20 text-purple-300' },
+  subscription: { label: 'Subscriptions', icon: Tv, color: 'from-purple-500/20 to-violet-500/20 border-green-500/30', badge: 'bg-green-500/20 text-purple-300' },
   service: { label: 'Services', icon: Wrench, color: 'from-green-500/20 to-emerald-500/20 border-green-500/30', badge: 'bg-green-500/20 text-green-300' },
 };
 
@@ -294,7 +294,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
         <div className="flex justify-between items-center mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-              <Store className="text-cyan-400" /> Seller Dashboard
+              <Store className="text-green-400" /> Seller Dashboard
             </h1>
             <p className="text-white/60 mt-1">{user?.seller_store_name || 'My Store'}</p>
           </div>
@@ -305,15 +305,15 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
         {/* Welcome guide for new sellers */}
         {myOffers.length === 0 && myProducts.length === 0 && !loading && (
-          <Card className="glass-effect border-cyan-500/30 mb-6">
+          <Card className="glass-effect border-green-500/30 mb-6">
             <CardContent className="p-6">
               <h3 className="text-white font-bold text-lg mb-2">🎉 Welcome to your Seller Dashboard!</h3>
               <p className="text-white/60 text-sm mb-4">Start earning by following these simple steps:</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { step: '1', title: 'Request Categories', text: 'Use the form above to request access to categories like Gift Cards, Game Top-Up, Subscriptions, or Services.', color: 'text-cyan-300', bg: 'bg-cyan-500/10' },
-                  { step: '2', title: 'Browse & Sell', text: 'Go to the Marketplace tab, find products, and click "Sell This Product" to create your offer with your own price.', color: 'text-pink-300', bg: 'bg-pink-500/10' },
-                  { step: '3', title: 'Add Delivery Codes', text: 'Upload your product codes (gift card keys, activation codes) so buyers get instant delivery.', color: 'text-purple-300', bg: 'bg-purple-500/10' },
+                  { step: '1', title: 'Request Categories', text: 'Use the form above to request access to categories like Gift Cards, Game Top-Up, Subscriptions, or Services.', color: 'text-green-300', bg: 'bg-cyan-500/10' },
+                  { step: '2', title: 'Browse & Sell', text: 'Go to the Marketplace tab, find products, and click "Sell This Product" to create your offer with your own price.', color: 'text-green-300', bg: 'bg-green-500/10' },
+                  { step: '3', title: 'Add Delivery Codes', text: 'Upload your product codes (gift card keys, activation codes) so buyers get instant delivery.', color: 'text-purple-300', bg: 'bg-green-500/10' },
                   { step: '4', title: 'Earn & Withdraw', text: 'Track your earnings in real-time and withdraw via Binance Pay or USDT whenever you want.', color: 'text-green-300', bg: 'bg-green-500/10' },
                 ].map(s => (
                   <div key={s.step} className={`p-4 ${s.bg} rounded-xl border border-white/10`}>
@@ -332,8 +332,8 @@ const SellerDashboard = ({ user, logout, settings }) => {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: 'My Offers', value: myOffers.length, gradient: 'from-cyan-500/20 to-blue-500/20 border-cyan-500/30', color: 'text-white' },
-            { label: 'Orders', value: earnings.total_orders, gradient: 'from-purple-500/20 to-pink-500/20 border-purple-500/30', color: 'text-white' },
+            { label: 'My Offers', value: myOffers.length, gradient: 'from-cyan-500/20 to-blue-500/20 border-green-500/30', color: 'text-white' },
+            { label: 'Orders', value: earnings.total_orders, gradient: 'from-green-500/20 to-emerald-500/20 border-green-500/30', color: 'text-white' },
             { label: 'Balance', value: `$${earnings.balance.toFixed(2)}`, gradient: 'from-green-500/20 to-emerald-500/20 border-green-500/30', color: 'text-green-300' },
             { label: 'Total Earned', value: `$${earnings.total_earned.toFixed(2)}`, gradient: 'from-orange-500/20 to-yellow-500/20 border-orange-500/30', color: 'text-orange-300' },
           ].map(s => (
@@ -371,7 +371,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
         <div className="flex gap-2 mb-6 overflow-x-auto">
           {tabs.map(t => (
             <Button key={t.id} size="sm" onClick={() => setTab(t.id)}
-              className={`${tab === t.id ? 'bg-pink-500' : 'bg-white/10'} text-white text-sm whitespace-nowrap`}>
+              className={`${tab === t.id ? 'bg-green-500' : 'bg-white/10'} text-white text-sm whitespace-nowrap`}>
               {t.icon} <span className="ml-1">{t.label}</span>
             </Button>
           ))}
@@ -383,7 +383,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
             <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
               <div className="flex gap-2 overflow-x-auto">
                 <Button size="sm" onClick={() => setCatalogFilter('all')}
-                  className={`${catalogFilter === 'all' ? 'bg-white text-purple-600' : 'bg-white/10 text-white'} text-xs`}>
+                  className={`${catalogFilter === 'all' ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs`}>
                   All ({catalogProducts.length})
                 </Button>
                 {approvedCategories.map(c => {
@@ -392,13 +392,13 @@ const SellerDashboard = ({ user, logout, settings }) => {
                   const count = catalogProducts.filter(p => p.category === c).length;
                   return (
                     <Button key={c} size="sm" onClick={() => setCatalogFilter(c)}
-                      className={`${catalogFilter === c ? 'bg-white text-purple-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
+                      className={`${catalogFilter === c ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
                       <Icon size={12} /> {meta.label} ({count})
                     </Button>
                   );
                 })}
               </div>
-              <Button size="sm" onClick={() => setReqDialog(true)} className="bg-purple-600 text-white text-xs">
+              <Button size="sm" onClick={() => setReqDialog(true)} className="bg-green-600 text-white text-xs">
                 <Plus size={14} className="mr-1" /> Request New Product
               </Button>
             </div>
@@ -416,7 +416,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                         {p.region && <span className="text-white/40 text-xs">{p.region}</span>}
                         <span className="text-white/30 text-xs ml-auto">by KayiCom</span>
                       </div>
-                      <p className="text-cyan-300 font-bold mb-3">${Number(p.price).toFixed(2)}</p>
+                      <p className="text-green-300 font-bold mb-3">${Number(p.price).toFixed(2)}</p>
                       {p.already_offering ? (
                         <div className="flex items-center justify-center gap-2 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
                           <span className="w-2 h-2 bg-green-400 rounded-full"></span>
@@ -424,7 +424,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                         </div>
                       ) : (
                         <Button size="sm" onClick={() => openOfferDialog(p)}
-                          className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white text-xs">
+                          className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white text-xs">
                           <Tag size={14} className="mr-1" /> Sell This Product
                         </Button>
                       )}
@@ -478,7 +478,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                       {o.product_image && <img src={o.product_image} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
                       <div className="min-w-0 flex-1">
                         <h3 className="text-white font-bold text-sm truncate">{o.product_name}</h3>
-                        <p className="text-cyan-300 font-bold">${Number(o.price).toFixed(2)}</p>
+                        <p className="text-green-300 font-bold">${Number(o.price).toFixed(2)}</p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           <Badge className={o.stock_available ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
                             {o.stock_available ? 'In Stock' : 'Out of Stock'}
@@ -493,7 +493,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                         <Edit2 size={12} className="mr-1" /> Edit
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => { setCodesProduct({ id: o.product_id, name: o.product_name }); setCodesOpen(true); }}
-                        className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10 px-2">
+                        className="border-cyan-400 text-green-300 hover:bg-cyan-400/10 px-2">
                         <Key size={12} />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => handleDeleteOffer(o.id)}
@@ -512,7 +512,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
         {/* ===== MY PRODUCTS TAB ===== */}
         {tab === 'products' && (
           <div>
-            <Button className="bg-gradient-to-r from-pink-500 to-blue-500 text-white mb-4"
+            <Button className="bg-gradient-to-r from-green-500 to-green-600 text-white mb-4"
               onClick={() => { resetProductForm(); setProductDialog(true); }}>
               <Plus size={18} className="mr-2" /> Add Product
             </Button>
@@ -534,7 +534,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                               {status.replace('_', ' ')}
                             </Badge>
                           </div>
-                          <p className="text-cyan-300 font-bold mt-1">${Number(p.price).toFixed(2)}</p>
+                          <p className="text-green-300 font-bold mt-1">${Number(p.price).toFixed(2)}</p>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -543,7 +543,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                           <Edit2 size={12} className="mr-1" /> Edit
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => { setCodesProduct(p); setCodesOpen(true); }}
-                          className="border-cyan-400 text-cyan-300 hover:bg-cyan-400/10 px-2">
+                          className="border-cyan-400 text-green-300 hover:bg-cyan-400/10 px-2">
                           <Key size={12} />
                         </Button>
                         <Button size="sm" variant="outline" onClick={() => handleDeleteProduct(p.id)}
@@ -684,8 +684,8 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 {/* Key Metrics */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Total Orders', value: analytics.total_orders, color: 'text-cyan-300' },
-                    { label: 'Active Offers', value: analytics.offer_count, color: 'text-pink-300' },
+                    { label: 'Total Orders', value: analytics.total_orders, color: 'text-green-300' },
+                    { label: 'Active Offers', value: analytics.offer_count, color: 'text-green-300' },
                     { label: 'Avg Rating', value: analytics.avg_rating > 0 ? `${analytics.avg_rating} ★` : 'N/A', color: 'text-yellow-300' },
                     { label: 'Reviews', value: analytics.review_count, color: 'text-purple-300' },
                   ].map(s => (
@@ -702,7 +702,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 {analytics.daily_sales.length > 0 && (
                   <Card className="glass-effect border-white/20">
                     <CardContent className="p-6">
-                      <h3 className="text-white font-bold mb-4 flex items-center gap-2"><BarChart3 size={18} className="text-cyan-400" /> Revenue (Last 30 days)</h3>
+                      <h3 className="text-white font-bold mb-4 flex items-center gap-2"><BarChart3 size={18} className="text-green-400" /> Revenue (Last 30 days)</h3>
                       <div className="flex items-end gap-1 h-40">
                         {(() => {
                           const maxVal = Math.max(...analytics.daily_sales.map(d => d.revenue), 1);
@@ -816,7 +816,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 <SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
               </Select>
             </div>
-            <Button onClick={handleCreateOffer} className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white">Create Offer</Button>
+            <Button onClick={handleCreateOffer} className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white">Create Offer</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -874,7 +874,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
               </div>
             )}
             <div><Label className="text-white">Notes</Label><Textarea value={reqForm.notes} onChange={(e) => setReqForm(p => ({ ...p, notes: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} placeholder="Additional info..." /></div>
-            <Button onClick={handleProductRequest} className="w-full bg-purple-600 text-white">Submit Request</Button>
+            <Button onClick={handleProductRequest} className="w-full bg-green-600 text-white">Submit Request</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -917,7 +917,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
               <Input type="file" accept="image/*" className="bg-white/10 border-white/20 text-white mt-2 cursor-pointer"
                 onChange={async (e) => { const url = await uploadImage(e.target.files?.[0]); if (url) setProductForm(p => ({ ...p, image_url: url })); }} />
             </div>
-            <Button onClick={handleProductSubmit} className="w-full bg-white text-purple-600 hover:bg-gray-100">
+            <Button onClick={handleProductSubmit} className="w-full bg-white text-green-600 hover:bg-gray-100">
               {editingProduct ? 'Update' : 'Create Product'}
             </Button>
           </div>

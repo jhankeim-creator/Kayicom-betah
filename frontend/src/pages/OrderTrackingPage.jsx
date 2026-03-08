@@ -348,10 +348,10 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
 
           {/* Message Seller */}
           {order.items?.some(i => i.seller_id) && order.payment_status === 'paid' && (
-            <Card className="glass-effect border-cyan-500/20">
+            <Card className="glass-effect border-green-500/20">
               <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <MessageSquare className="text-cyan-400" size={20} />
+                  <MessageSquare className="text-green-400" size={20} />
                   <span className="text-white text-sm">Contact the seller about this order</span>
                 </div>
                 <Button size="sm" onClick={() => {
@@ -389,12 +389,12 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
 
           {/* Subscription Countdown */}
           {subscriptionEnd && subscriptionRemaining && (
-            <Card className="glass-effect border-cyan-500/30 border-2">
+            <Card className="glass-effect border-green-500/30 border-2">
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold text-white mb-2">Subscription Status</h3>
                 <p className="text-white/70 text-sm">Ends: {subscriptionEnd.toLocaleString()}</p>
                 {subscriptionRemaining.diffMs > 0 ? (
-                  <p className="text-cyan-300 font-mono text-2xl mt-3">
+                  <p className="text-green-300 font-mono text-2xl mt-3">
                     {subscriptionRemaining.days}d {String(subscriptionRemaining.hours).padStart(2, '0')}:{String(subscriptionRemaining.mins).padStart(2, '0')}:{String(subscriptionRemaining.secs).padStart(2, '0')}
                   </p>
                 ) : (
@@ -406,16 +406,16 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
 
           {/* Plisio Crypto Payment Instructions */}
           {order.payment_method === 'crypto_plisio' && order.payment_status === 'pending' && order.plisio_invoice_id && (
-            <Card className="glass-effect border-cyan-500/30 border-2" data-testid="plisio-payment-card">
+            <Card className="glass-effect border-green-500/30 border-2" data-testid="plisio-payment-card">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3 mb-4">
-                  <Package className="text-cyan-400" size={28} />
-                  <h3 className="text-2xl font-bold text-cyan-400">Complete Your Crypto Payment</h3>
+                  <Package className="text-green-400" size={28} />
+                  <h3 className="text-2xl font-bold text-green-400">Complete Your Crypto Payment</h3>
                 </div>
                 
-                <div className="bg-cyan-500/10 border border-cyan-500/30 rounded-lg p-5 space-y-4">
+                <div className="bg-cyan-500/10 border border-green-500/30 rounded-lg p-5 space-y-4">
                   <p className="text-white/90 text-lg font-semibold">
-                    Payment Amount: <span className="text-cyan-300">${order.total_amount.toFixed(2)} USD</span>
+                    Payment Amount: <span className="text-green-300">${order.total_amount.toFixed(2)} USD</span>
                   </p>
                   
                   <div className="space-y-2">
@@ -438,7 +438,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                     )}
                   </div>
                   
-                  <div className="border-t border-cyan-500/30 pt-4 mt-4">
+                  <div className="border-t border-green-500/30 pt-4 mt-4">
                     <p className="text-white/70 text-sm">
                       💡 You can pay with Bitcoin, Ethereum, USDT, and other cryptocurrencies.
                     </p>
@@ -587,7 +587,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                   <Button 
                     onClick={handleSubmitProof}
                     disabled={submitting}
-                    className="w-full bg-white text-purple-600 hover:bg-gray-100"
+                    className="w-full bg-white text-green-600 hover:bg-gray-100"
                     data-testid="submit-proof-btn"
                   >
                     {submitting ? 'Submitting...' : 'Submit Proof'}

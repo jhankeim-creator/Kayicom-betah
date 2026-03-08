@@ -151,7 +151,7 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                         href={tx.plisio_invoice_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-cyan-300 text-sm underline"
+                        className="text-green-300 text-sm underline"
                       >
                         View invoice
                       </a>
@@ -218,7 +218,7 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
                 )}
 
                 {tx.admin_notes && (
-                  <div className="bg-purple-500/10 p-3 rounded mb-3">
+                  <div className="bg-green-500/10 p-3 rounded mb-3">
                     <p className="text-purple-300 text-sm font-semibold">Admin Notes:</p>
                     <p className="text-white text-sm">{tx.admin_notes}</p>
                   </div>
@@ -226,7 +226,7 @@ const AdminCryptoTransactions = ({ user, logout, settings }) => {
 
                 {tx.tx_hash && (
                   <div className="bg-cyan-500/10 p-3 rounded mb-3">
-                    <p className="text-cyan-300 text-sm font-semibold">Blockchain TX Hash:</p>
+                    <p className="text-green-300 text-sm font-semibold">Blockchain TX Hash:</p>
                     <p className="text-white text-xs break-all">{tx.tx_hash}</p>
                   </div>
                 )}

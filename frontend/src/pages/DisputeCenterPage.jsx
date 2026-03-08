@@ -116,7 +116,7 @@ const DisputeCenterPage = ({ user, logout, settings }) => {
                 {/* Messages */}
                 <div className="space-y-2 max-h-[300px] overflow-y-auto p-3 bg-black/30 rounded-lg">
                   {(selected.messages || []).map(msg => (
-                    <div key={msg.id} className={`p-3 rounded-lg ${msg.sender_role === 'buyer' ? 'bg-blue-500/10 border-l-2 border-blue-500' : msg.sender_role === 'seller' ? 'bg-purple-500/10 border-l-2 border-purple-500' : 'bg-yellow-500/10 border-l-2 border-yellow-500'}`}>
+                    <div key={msg.id} className={`p-3 rounded-lg ${msg.sender_role === 'buyer' ? 'bg-blue-500/10 border-l-2 border-blue-500' : msg.sender_role === 'seller' ? 'bg-green-500/10 border-l-2 border-green-500' : 'bg-yellow-500/10 border-l-2 border-yellow-500'}`}>
                       <div className="flex justify-between items-center mb-1">
                         <span className="text-white/60 text-xs font-semibold">{msg.sender_name || msg.sender_role}</span>
                         <Badge className="text-xs" variant="outline">{msg.sender_role}</Badge>
@@ -146,7 +146,7 @@ const DisputeCenterPage = ({ user, logout, settings }) => {
                       <Button className="flex-1 bg-green-600 text-white" onClick={() => handleResolve('buyer_wins')}>
                         <CheckCircle size={16} className="mr-1" /> Refund Buyer
                       </Button>
-                      <Button className="flex-1 bg-purple-600 text-white" onClick={() => handleResolve('seller_wins')}>
+                      <Button className="flex-1 bg-green-600 text-white" onClick={() => handleResolve('seller_wins')}>
                         <CheckCircle size={16} className="mr-1" /> Release to Seller
                       </Button>
                     </div>

@@ -29,7 +29,7 @@ const AdminDashboard = ({ user, logout, settings }) => {
 
   const statCards = [
     { title: 'Total Orders', value: stats?.total_orders || 0, icon: ShoppingBag, color: 'from-blue-500 to-cyan-500', testId: 'stat-orders' },
-    { title: 'Total Products', value: stats?.total_products || 0, icon: Package, color: 'from-purple-500 to-indigo-500', testId: 'stat-products' },
+    { title: 'Total Products', value: stats?.total_products || 0, icon: Package, color: 'from-green-500 to-emerald-600', testId: 'stat-products' },
     { title: 'Total Customers', value: stats?.total_customers || 0, icon: Users, color: 'from-green-500 to-emerald-500', testId: 'stat-customers' },
     { title: 'Total Revenue', value: `$${stats?.total_revenue?.toFixed(2) || '0.00'}`, icon: DollarSign, color: 'from-yellow-500 to-orange-500', testId: 'stat-revenue' },
   ];
@@ -46,7 +46,7 @@ const AdminDashboard = ({ user, logout, settings }) => {
               <p className="text-white/80 text-lg">Manage your site</p>
             </div>
             <Link to="/admin/settings">
-              <Button className="bg-white text-purple-600 hover:bg-gray-100" data-testid="settings-link">
+              <Button className="bg-white text-green-600 hover:bg-gray-100" data-testid="settings-link">
                 <Settings className="mr-2" size={20} />
                 Settings
               </Button>
@@ -128,9 +128,9 @@ const AdminDashboard = ({ user, logout, settings }) => {
             </Link>
 
             <Link to="/admin/sellers">
-              <Card className="glass-effect border-white/20 hover:border-cyan-500/40 transition cursor-pointer">
+              <Card className="glass-effect border-white/20 hover:border-green-500/40 transition cursor-pointer">
                 <CardContent className="p-8 text-center">
-                  <Store className="mx-auto mb-4 text-cyan-400" size={48} />
+                  <Store className="mx-auto mb-4 text-green-400" size={48} />
                   <h3 className="text-xl font-bold text-white mb-2">Manage Sellers</h3>
                   <p className="text-white/70">Review KYC, approve sellers, manage categories</p>
                 </CardContent>
@@ -138,9 +138,9 @@ const AdminDashboard = ({ user, logout, settings }) => {
             </Link>
 
             <Link to="/admin/product-requests">
-              <Card className="glass-effect border-white/20 hover:border-purple-500/40 transition cursor-pointer">
+              <Card className="glass-effect border-white/20 hover:border-green-500/40 transition cursor-pointer">
                 <CardContent className="p-8 text-center">
-                  <Package className="mx-auto mb-4 text-purple-400" size={48} />
+                  <Package className="mx-auto mb-4 text-green-400" size={48} />
                   <h3 className="text-xl font-bold text-white mb-2">Product Requests</h3>
                   <p className="text-white/70">Review seller product requests</p>
                 </CardContent>
@@ -200,7 +200,7 @@ const AdminDashboard = ({ user, logout, settings }) => {
             <Link to="/admin/blog">
               <Card className="glass-effect border-white/20 hover:border-white/40 transition cursor-pointer">
                 <CardContent className="p-8 text-center">
-                  <FileText className="mx-auto mb-4 text-cyan-400" size={48} />
+                  <FileText className="mx-auto mb-4 text-green-400" size={48} />
                   <h3 className="text-xl font-bold text-white mb-2">Blog</h3>
                   <p className="text-white/70">Publish updates for customers</p>
                 </CardContent>

@@ -74,7 +74,7 @@ const AdminMinutesTransfers = ({ user, logout, settings }) => {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-4xl font-bold text-white">Mobile Topups</h1>
-            <Button onClick={() => (window.location.href = '/admin')} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+            <Button onClick={() => (window.location.href = '/admin')} className="bg-green-500 text-white">
               🏠 Admin Home
             </Button>
           </div>
@@ -147,12 +147,12 @@ const AdminMinutesTransfers = ({ user, logout, settings }) => {
                         </p>
                         {t.transaction_id && <p className="text-white/60 text-xs mt-1">TX: {t.transaction_id}</p>}
                         {t.payment_proof_url && (
-                          <a href={t.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-pink-400 text-sm hover:underline">
+                          <a href={t.payment_proof_url} target="_blank" rel="noopener noreferrer" className="text-green-400 text-sm hover:underline">
                             View proof
                           </a>
                         )}
                         {t.plisio_invoice_url && (
-                          <a href={t.plisio_invoice_url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 text-sm hover:underline ml-3">
+                          <a href={t.plisio_invoice_url} target="_blank" rel="noopener noreferrer" className="text-green-300 text-sm hover:underline ml-3">
                             View invoice
                           </a>
                         )}
