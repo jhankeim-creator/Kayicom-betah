@@ -51,6 +51,11 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                 <Link to="/dashboard" className="text-white font-medium hover:text-pink-400 transition">
                   Dashboard
                 </Link>
+                {(user.seller_status === 'approved' || user.role === 'seller') && (
+                  <Link to="/seller" className="text-cyan-300 font-medium hover:text-cyan-400 transition">
+                    Seller Dashboard
+                  </Link>
+                )}
                 <Link to="/mobile-topup" className="text-white font-medium hover:text-pink-400 transition">
                   Topup Mobile
                 </Link>

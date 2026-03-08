@@ -226,9 +226,14 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </span>
               )}
             </div>
-            <p className="text-white/70 text-sm mb-6" data-testid="product-orders-count">
-              {Math.max(0, Math.floor(totalOrdersCount))} orders
-            </p>
+            <div className="flex items-center gap-3 mb-6">
+              <p className="text-white/70 text-sm" data-testid="product-orders-count">
+                {Math.max(0, Math.floor(totalOrdersCount))} orders
+              </p>
+              {!selectedProduct.seller_id && (
+                <span className="text-xs bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full">by KayiCom</span>
+              )}
+            </div>
 
             <div className="mb-6">
               <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm" data-testid="product-category">

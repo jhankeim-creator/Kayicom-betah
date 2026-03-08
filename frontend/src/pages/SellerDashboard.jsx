@@ -267,7 +267,32 @@ const SellerDashboard = ({ user, logout, settings }) => {
             </h1>
             <p className="text-white/60 mt-1">{user?.seller_store_name || 'My Store'}</p>
           </div>
+          <Button onClick={() => window.location.href = '/'} variant="outline" className="border-white/20 text-white hover:bg-white/10 text-sm">
+            <ShoppingCart size={16} className="mr-2" /> View as Buyer
+          </Button>
         </div>
+
+        {/* Welcome guide for new sellers */}
+        {myOffers.length === 0 && myProducts.length === 0 && !loading && (
+          <Card className="glass-effect border-cyan-500/30 mb-6">
+            <CardContent className="p-5">
+              <h3 className="text-white font-bold mb-3">Welcome! Here's how to start selling:</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                {[
+                  { step: '1', text: 'Request categories you want to sell in', color: 'text-cyan-300' },
+                  { step: '2', text: 'Browse Marketplace and click "Sell This Product"', color: 'text-pink-300' },
+                  { step: '3', text: 'Set your price and manage delivery codes', color: 'text-purple-300' },
+                  { step: '4', text: 'Earn money and withdraw via crypto', color: 'text-green-300' },
+                ].map(s => (
+                  <div key={s.step} className="flex items-start gap-2 p-3 bg-white/5 rounded-lg">
+                    <span className={`flex-shrink-0 w-6 h-6 rounded-full bg-white/10 ${s.color} flex items-center justify-center text-xs font-bold`}>{s.step}</span>
+                    <p className="text-white/70 text-sm">{s.text}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -297,11 +322,12 @@ const SellerDashboard = ({ user, logout, settings }) => {
               })
             : <span className="text-white/40 text-sm">None — request below</span>
           }
-          <div className="flex gap-2 ml-auto">
+          <div className="flex gap-2 ml-auto items-center">
+            <span className="text-white/40 text-xs hidden md:inline">Request new:</span>
             <Input value={catRequest} onChange={(e) => setCatRequest(e.target.value)}
-              placeholder="e.g. giftcard, topup" className="bg-white/10 border-white/20 text-white text-sm w-48" />
+              placeholder="e.g. giftcard, topup" className="bg-white/10 border-white/20 text-white text-sm w-44" />
             <Button size="sm" onClick={handleCatRequest} className="bg-cyan-600 text-white text-xs">
-              <Send size={14} className="mr-1" /> Request
+              <Send size={14} className="mr-1" /> Request Category
             </Button>
           </div>
         </div>
@@ -348,17 +374,19 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 return (
                   <Card key={p.id} className="glass-effect border-white/20 hover:border-white/40 transition">
                     <CardContent className="p-4">
-                      <div className="flex gap-3 mb-3">
-                        {p.image_url && <img src={p.image_url} alt="" className="w-16 h-16 rounded object-cover flex-shrink-0" />}
-                        <div className="min-w-0 flex-1">
-                          <h3 className="text-white font-bold text-sm truncate">{p.name}</h3>
-                          <Badge className={`${meta.badge} text-xs mt-1`}>{meta.label}</Badge>
-                          {p.region && <span className="text-white/40 text-xs ml-2">{p.region}</span>}
-                          <p className="text-cyan-300 font-bold mt-1">${Number(p.price).toFixed(2)}</p>
-                        </div>
+                      {p.image_url && <img src={p.image_url} alt="" className="w-full h-28 rounded-lg object-cover mb-3" />}
+                      <h3 className="text-white font-bold text-sm truncate">{p.name}</h3>
+                      <div className="flex items-center gap-2 mt-1 mb-2">
+                        <Badge className={`${meta.badge} text-xs`}>{meta.label}</Badge>
+                        {p.region && <span className="text-white/40 text-xs">{p.region}</span>}
+                        <span className="text-white/30 text-xs ml-auto">by KayiCom</span>
                       </div>
+                      <p className="text-cyan-300 font-bold mb-3">${Number(p.price).toFixed(2)}</p>
                       {p.already_offering ? (
-                        <Badge className="bg-green-500/20 text-green-300 w-full justify-center py-1">Already offering</Badge>
+                        <div className="flex items-center justify-center gap-2 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                          <span className="text-green-300 text-xs font-medium">You're selling this</span>
+                        </div>
                       ) : (
                         <Button size="sm" onClick={() => openOfferDialog(p)}
                           className="w-full bg-gradient-to-r from-pink-500 to-purple-500 text-white text-xs">

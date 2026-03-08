@@ -270,7 +270,9 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
         </div>
         <div className="flex items-center justify-between text-white/60 text-xs mb-3">
           <span>{Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders</span>
-          {product._variant_count > 1 && <span>{product._variant_count} options available</span>}
+          {product._variant_count > 1 ? <span>{product._variant_count} options</span> : (
+            <span className="text-cyan-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
+          )}
         </div>
         <div className="flex gap-2">
           <Link to={`/product/${product.id}`} className="flex-1">
