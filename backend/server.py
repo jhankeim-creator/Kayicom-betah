@@ -2007,9 +2007,10 @@ async def get_products(
                     created_at = datetime.fromisoformat(created_at)
                 orders_count = _normalize_orders_count_for_product(product)
 
+                product_slug = product.get("slug") or _slugify_text(product.get("name", "product"))
                 validated_product = {
                     "id": product.get("id", ""),
-                    "slug": product.get("slug"),
+                    "slug": product_slug,
                     "name": product.get("name", ""),
                     "description": product.get("description", ""),
                     "category": product.get("category", ""),
@@ -2059,6 +2060,8 @@ async def get_product(product_id: str):
     if isinstance(product.get('created_at'), str):
         product['created_at'] = datetime.fromisoformat(product['created_at'])
     product["orders_count"] = _normalize_orders_count_for_product(product)
+    if not product.get("slug"):
+        product["slug"] = _slugify_text(product.get("name", "product"))
     return product
 
 @api_router.post("/products", response_model=Product)
