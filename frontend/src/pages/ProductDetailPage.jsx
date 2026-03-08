@@ -106,22 +106,28 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
             <h1 className="text-xl md:text-2xl font-bold text-white mb-4" data-testid="product-name">{selectedProduct.name}</h1>
 
             <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-white/50"><Globe size={16} /> Region</span>
-                <span className="text-white font-semibold">{selectedProduct.region || 'Global'}</span>
-              </div>
+              {selectedProduct.region && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-white/50"><Globe size={16} /> Region</span>
+                  <span className="text-white font-semibold">{selectedProduct.region}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2 text-white/50"><Monitor size={16} /> Platform</span>
                 <span className="text-white font-semibold">{catLabel}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="flex items-center gap-2 text-white/50"><Truck size={16} /> Delivery Method</span>
-                <span className="text-white font-semibold">{selectedProduct.delivery_type === 'automatic' ? 'Automatic' : 'Manual'}</span>
+                <span className={`font-semibold ${selectedProduct.delivery_type === 'automatic' ? 'text-green-400' : 'text-orange-400'}`}>
+                  {selectedProduct.delivery_type === 'automatic' ? '⚡ Automatic' : '👤 Manual'}
+                </span>
               </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-white/50"><Clock size={16} /> Estimated Delivery time</span>
-                <span className="text-white font-semibold">{selectedProduct.delivery_type === 'automatic' ? '1 Min' : '10 Mins'}</span>
-              </div>
+              {selectedProduct.delivery_type === 'automatic' && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-white/50"><Clock size={16} /> Estimated Delivery</span>
+                  <span className="text-green-400 font-semibold">Instant</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -129,7 +135,9 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
         {/* Variant Selector */}
         {variants.length > 1 && (
           <div className="mb-6">
-            <p className="text-green-400 text-sm font-semibold mb-2">Select Region</p>
+            <p className="text-green-400 text-sm font-semibold mb-2">
+              {variants.some(v => v.region) ? 'Select Region' : 'Select Option'}
+            </p>
             <div className="rounded-xl bg-[#141414] border border-white/5 p-4">
               <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
                 <SelectTrigger className="bg-white/5 border-white/10 text-white">
@@ -207,8 +215,8 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                             <ThumbsUp size={10} /> {(offer.seller_rating * 20).toFixed(0)}%
                           </span>
                         )}
-                        <span className="text-white/30 text-xs">
-                          ⏱ {offer.delivery_type === 'automatic' ? '1min' : '10min/2min'}
+                        <span className={`text-xs ${offer.delivery_type === 'automatic' ? 'text-green-400/70' : 'text-orange-400/70'}`}>
+                          {offer.delivery_type === 'automatic' ? '⚡ Instant' : '👤 Manual'}
                         </span>
                       </div>
                     </div>
