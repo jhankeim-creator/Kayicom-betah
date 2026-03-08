@@ -113,7 +113,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </div>
               )}
               <div className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-white/50"><Monitor size={16} /> Platform</span>
+                <span className="flex items-center gap-2 text-white/50"><Monitor size={16} /> Category</span>
                 <span className="text-white font-semibold">{catLabel}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
