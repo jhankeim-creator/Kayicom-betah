@@ -6,7 +6,7 @@ import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Eye, Clock, Copy } from 'lucide-react';
+import { Package, Eye, Clock, Copy, ChevronRight, Wallet, ShoppingBag, Gift, Users, HelpCircle, Bell, Settings, MessageCircle, Store } from 'lucide-react';
 import { toast } from 'sonner';
 
 const formatSubscriptionDurationLabel = (months) => {
@@ -21,12 +21,12 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
   const [statusFilter, setStatusFilter] = useState('all');
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [creditsBalance, setCreditsBalance] = useState(0);
 
-  useEffect(() => {
-    if (user) {
-      loadOrders();
-    }
-  }, [user]);
+  const userId = user?.user_id || user?.id;
+
+  useEffect(() => { if (user) { loadOrders(); loadWallet(); } }, [user]);
 
   useEffect(() => {
     const hasSubscriptions = orders.some((order) => order.subscription_end_date);
@@ -37,326 +37,177 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
 
   const loadOrders = async () => {
     try {
-      const response = await axiosInstance.get(`/orders?user_id=${user.user_id}`);
+      const response = await axiosInstance.get(`/orders?user_id=${userId}`);
       setOrders(response.data);
-    } catch (error) {
-      console.error('Error loading orders:', error);
-      toast.error('Error loading orders');
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { console.error('Error loading orders:', error); }
+    finally { setLoading(false); }
   };
 
-  const getStatusBadge = (status) => {
-    const variants = {
-      'pending': 'secondary',
-      'processing': 'default',
-      'completed': 'default',
-      'cancelled': 'destructive'
-    };
-    return variants[status] || 'secondary';
+  const loadWallet = async () => {
+    try {
+      const [balRes, creditsRes] = await Promise.all([
+        axiosInstance.get(`/wallet/balance?user_id=${userId}`),
+        axiosInstance.get(`/credits/balance?user_id=${userId}`)
+      ]);
+      setWalletBalance(balRes.data?.wallet_balance || 0);
+      setCreditsBalance(creditsRes.data?.credits_balance || 0);
+    } catch (e) { console.error('Wallet load error:', e); }
   };
 
   const getPaymentBadgeClass = (status) => {
-    const variants = {
-      pending: 'bg-yellow-500/20 text-yellow-400',
-      pending_verification: 'bg-blue-500/20 text-blue-400',
-      paid: 'bg-green-500/20 text-green-400',
-      failed: 'bg-red-500/20 text-red-400',
-      rejected: 'bg-red-500/20 text-red-400'
-    };
+    const variants = { pending: 'bg-yellow-500/20 text-yellow-400', pending_verification: 'bg-blue-500/20 text-blue-400', paid: 'bg-green-500/20 text-green-400', failed: 'bg-red-500/20 text-red-400' };
     return variants[status] || 'bg-gray-500/20 text-gray-400';
   };
 
-  const parseDate = (value) => {
-    if (!value) return null;
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  };
+  const parseDate = (value) => { if (!value) return null; const d = new Date(value); return Number.isNaN(d.getTime()) ? null : d; };
 
-  const sortedOrders = useMemo(() => {
-    return [...orders].sort((a, b) => {
-      const dateA = parseDate(a.created_at);
-      const dateB = parseDate(b.created_at);
-      return (dateB?.getTime() || 0) - (dateA?.getTime() || 0);
-    });
-  }, [orders]);
-
-  const filteredOrders = useMemo(() => {
-    if (statusFilter === 'all') return sortedOrders;
-    return sortedOrders.filter((order) => order.order_status === statusFilter);
-  }, [sortedOrders, statusFilter]);
-
-  const subscriptionOrders = useMemo(() => {
-    return orders
-      .filter(o => o.subscription_end_date)
-      .map(o => {
-        const end = parseDate(o.subscription_end_date);
-        if (!end) return null;
-        const start = parseDate(o.subscription_start_date);
-        const diffMs = end.getTime() - now;
-        const diff = Math.max(0, diffMs);
-        const days = Math.floor(diff / (24 * 3600 * 1000));
-        const hours = Math.floor((diff % (24 * 3600 * 1000)) / (3600 * 1000));
-        const mins = Math.floor((diff % (3600 * 1000)) / (60 * 1000));
-        const secs = Math.floor((diff % (60 * 1000)) / 1000);
-        const durationLabel = (() => {
-          if (!start) return '';
-          const durationMs = end.getTime() - start.getTime();
-          if (durationMs <= 0) return '';
-          const months = Math.round(durationMs / (30 * 24 * 3600 * 1000));
-          return formatSubscriptionDurationLabel(months);
-        })();
-        return { order: o, end, diffMs, remaining: { days, hours, mins, secs }, durationLabel };
-      })
-      .filter(Boolean);
-  }, [orders, now]);
+  const sortedOrders = useMemo(() => [...orders].sort((a, b) => (parseDate(b.created_at)?.getTime() || 0) - (parseDate(a.created_at)?.getTime() || 0)), [orders]);
+  const filteredOrders = useMemo(() => statusFilter === 'all' ? sortedOrders : sortedOrders.filter((o) => o.order_status === statusFilter), [sortedOrders, statusFilter]);
 
   const copyCustomerId = async () => {
     const cid = user?.customer_id;
     if (!cid) return;
-    try {
-      await navigator.clipboard.writeText(cid);
-      toast.success('Customer ID copied');
-    } catch (e) {
-      // Fallback
-      try {
-        const el = document.createElement('textarea');
-        el.value = cid;
-        el.style.position = 'fixed';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.focus();
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        toast.success('Customer ID copied');
-      } catch (err) {
-        toast.error('Could not copy Customer ID');
-      }
-    }
-  };
-
-  const copyOrderId = async (orderId) => {
-    if (!orderId) return;
-    try {
-      await navigator.clipboard.writeText(orderId);
-      toast.success('Order ID copied');
-    } catch (e) {
-      try {
-        const el = document.createElement('textarea');
-        el.value = orderId;
-        el.style.position = 'fixed';
-        el.style.left = '-9999px';
-        document.body.appendChild(el);
-        el.focus();
-        el.select();
-        document.execCommand('copy');
-        document.body.removeChild(el);
-        toast.success('Order ID copied');
-      } catch (err) {
-        toast.error('Could not copy Order ID');
-      }
-    }
+    try { await navigator.clipboard.writeText(cid); toast.success('Customer ID copied'); }
+    catch (e) { toast.error('Could not copy'); }
   };
 
   const cartItemCount = (cart || []).reduce((sum, item) => sum + item.quantity, 0);
   const displayName = user?.full_name || user?.username || user?.email || 'Customer';
-  const processingCount = orders.filter(o => ['pending', 'processing'].includes(o.order_status)).length;
+
+  const menuItems = [
+    { icon: Store, label: 'Seller Center', href: '/seller', color: 'text-orange-400' },
+    { icon: ShoppingBag, label: 'Purchased Orders', href: '#orders', color: 'text-white/70' },
+    { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
+    { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
+    { icon: HelpCircle, label: 'Help Center', href: '/', color: 'text-white/70' },
+    { icon: MessageCircle, label: 'Chat', href: '/', badge: null, color: 'text-white/70' },
+    { icon: Bell, label: 'Notification', href: '/', color: 'text-white/70' },
+    { icon: Settings, label: 'Setting', href: '/', color: 'text-white/70' },
+  ];
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="max-w-6xl mx-auto">
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4" data-testid="dashboard-title">My Account</h1>
-          <p className="text-white/80 text-lg mb-12">Welcome, {displayName}!</p>
-          {user?.customer_id && (
-            <div className="inline-flex items-center gap-2 mb-8 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-              <span className="text-white/70 text-sm">Customer ID:</span>
-              <span className="text-white font-semibold font-mono select-all">{user.customer_id}</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="border-white/20 text-white hover:bg-white/10"
-                onClick={copyCustomerId}
-                data-testid="copy-customer-id"
-              >
-                <Copy size={14} className="mr-2" />
-                Copy
-              </Button>
-            </div>
-          )}
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-2xl mx-auto">
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-            <Card className="glass-effect border-white/20">
-              <CardContent className="p-6 text-center">
-                <p className="text-white/70 mb-2">Total Orders</p>
-                <p className="text-4xl font-bold text-white" data-testid="total-orders">{orders.length}</p>
-              </CardContent>
-            </Card>
-            <Card className="glass-effect border-white/20">
-              <CardContent className="p-6 text-center">
-                <p className="text-white/70 mb-2">Pending/Processing Orders</p>
-                <p className="text-4xl font-bold text-white" data-testid="pending-orders">
-                  {processingCount}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="glass-effect border-white/20">
-              <CardContent className="p-6 text-center">
-                <p className="text-white/70 mb-2">Completed Orders</p>
-                <p className="text-4xl font-bold text-white" data-testid="completed-orders">
-                  {orders.filter(o => o.order_status === 'completed').length}
-                </p>
-              </CardContent>
-            </Card>
+          {/* Profile Card */}
+          <div className="flex items-center gap-4 mb-6">
+            <div className="w-14 h-14 rounded-full bg-[#1c1c1c] border border-white/10 flex items-center justify-center text-2xl">
+              👤
+            </div>
+            <div>
+              <h2 className="text-white font-bold text-lg" data-testid="dashboard-title">{displayName}</h2>
+              {user?.customer_id && (
+                <button onClick={copyCustomerId} className="text-white/40 text-xs flex items-center gap-1 hover:text-white/60" data-testid="copy-customer-id">
+                  ID: {user.customer_id} <Copy size={10} />
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Orders List */}
-          <Card className="glass-effect border-white/20">
-            <CardContent className="p-6">
-              <h2 className="text-2xl font-bold text-white mb-6">My Orders</h2>
-              
-              {loading ? (
-                <div className="text-center text-white py-8">Loading...</div>
-              ) : filteredOrders.length > 0 ? (
-                <div className="space-y-4" data-testid="orders-list">
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {['all', 'pending', 'processing', 'completed', 'cancelled'].map((status) => (
-                      <Button
-                        key={status}
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className={statusFilter === status
-                          ? 'border-cyan-400 text-cyan-200 bg-cyan-400/10'
-                          : 'border-white/20 text-white hover:bg-white/10'}
-                        onClick={() => setStatusFilter(status)}
-                      >
-                        {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
-                      </Button>
-                    ))}
+          {/* Balance & Points */}
+          <div className="flex items-center justify-center gap-8 mb-8 py-4">
+            <div className="text-center">
+              <p className="text-orange-400 font-bold text-xl">$ {Number(walletBalance).toFixed(2)} <span className="text-white/40 text-sm font-normal">USD</span></p>
+              <p className="text-white/40 text-xs flex items-center justify-center gap-1 mt-1">
+                <Wallet size={12} /> Balance
+              </p>
+            </div>
+            <div className="w-px h-10 bg-white/10" />
+            <div className="text-center">
+              <p className="text-white font-bold text-xl">{Number(creditsBalance)}</p>
+              <p className="text-white/40 text-xs flex items-center justify-center gap-1 mt-1">
+                ⭐ Points
+              </p>
+            </div>
+          </div>
+
+          {/* Menu Items */}
+          <div className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden mb-8">
+            {menuItems.map((item, i) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.label}
+                  to={item.href}
+                  className={`flex items-center justify-between px-5 py-4 hover:bg-white/5 transition ${i < menuItems.length - 1 ? 'border-b border-white/5' : ''}`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon size={20} className={item.color} />
+                    <span className="text-white text-sm">{item.label}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {item.badge && <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center">{item.badge}</span>}
+                    <ChevronRight size={16} className="text-white/30" />
                   </div>
-                  {filteredOrders.map((order) => {
-                    const createdDate = parseDate(order.created_at);
-                    const createdLabel = createdDate ? createdDate.toLocaleDateString('en-US') : 'Unknown date';
-                    return (
-                    <div key={order.id} className="glass-effect p-4 rounded-lg" data-testid={`order-${order.id}`}>
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Package className="text-white" size={20} />
-                            <span className="text-white font-semibold">Order #{order.id.slice(0, 8)}</span>
-                            <Badge variant={getStatusBadge(order.order_status)} className="capitalize">
-                              {order.order_status}
-                            </Badge>
-                          </div>
-                          <p className="text-white/70 text-sm">
-                            {order.items.length} items - {createdLabel}
-                          </p>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            <span className={`px-2 py-1 rounded text-xs font-semibold ${getPaymentBadgeClass(order.payment_status)}`}>
-                              {order.payment_status}
-                            </span>
-                            <span className="px-2 py-1 rounded text-xs font-semibold bg-white/10 text-white/80">
-                              {
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Recent Orders */}
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-white font-bold text-lg">Recent Orders</h2>
+              <div className="flex gap-2">
+                {['all', 'pending', 'processing', 'completed'].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setStatusFilter(status)}
+                    className={`text-xs px-3 py-1 rounded-full transition ${
+                      statusFilter === status ? 'bg-green-500 text-black font-semibold' : 'bg-white/5 text-white/50'
+                    }`}
+                  >
+                    {status === 'all' ? 'All' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {loading ? (
+              <div className="text-white/40 text-center py-8">Loading...</div>
+            ) : filteredOrders.length > 0 ? (
+              <div className="space-y-3" data-testid="orders-list">
+                {filteredOrders.slice(0, 10).map((order) => {
+                  const date = parseDate(order.created_at);
+                  return (
+                    <Link to={`/track/${order.id}`} key={order.id}>
+                      <div className="p-4 rounded-xl bg-[#141414] border border-white/5 hover:border-green-500/20 transition" data-testid={`order-${order.id}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-white font-semibold text-sm">Order #{order.id.slice(0, 8)}</span>
+                          <span className={`text-xs px-2 py-0.5 rounded font-semibold ${getPaymentBadgeClass(order.payment_status)}`}>{order.payment_status}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-white/50 text-xs">{order.items.length} items - {date ? date.toLocaleDateString() : ''}</p>
+                            <p className="text-white/70 text-xs mt-0.5 capitalize">{
                               order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
                               order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
                               order.payment_method === 'binance_pay' ? 'Binance Pay' :
                               order.payment_method
-                            }
-                            </span>
+                            }</p>
                           </div>
-                          <p className="text-white font-bold mt-1">${order.total_amount.toFixed(2)}</p>
-                        </div>
-                        
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="border-white/20 text-white hover:bg-white/10"
-                            onClick={() => copyOrderId(order.id)}
-                          >
-                            <Copy size={16} className="mr-2" />
-                            Copy ID
-                          </Button>
-                          <Link to={`/track/${order.id}`}>
-                            <Button variant="outline" className="border-white text-white hover:bg-white/10" data-testid={`view-order-${order.id}`}>
-                              <Eye size={16} className="mr-2" />
-                              View Details
-                            </Button>
-                          </Link>
+                          <p className="text-green-400 font-bold">${order.total_amount.toFixed(2)}</p>
                         </div>
                       </div>
-                    </div>
+                    </Link>
                   );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center text-white/70 py-8" data-testid="no-orders">
-                  <Package className="mx-auto mb-4" size={48} />
-                  <p>You don't have any orders yet</p>
-                  <Link to="/products" className="inline-block mt-4">
-                    <Button className="bg-white text-green-600 hover:bg-gray-100">
-                      Start Shopping
-                    </Button>
-                  </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Subscriptions */}
-          {subscriptionOrders.length > 0 && (
-            <Card className="glass-effect border-white/20 mt-8">
-              <CardContent className="p-6">
-                <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-                  <Clock className="text-green-300" size={22} />
-                  My Subscriptions
-                </h2>
-                <div className="space-y-4">
-                  {subscriptionOrders.map(({ order, end, diffMs, remaining, durationLabel }) => (
-                    <div key={order.id} className="p-4 rounded-lg bg-white/5 border border-white/10">
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div>
-                          <p className="text-white font-semibold">Order #{order.id.slice(0, 8)}</p>
-                          <p className="text-white/60 text-sm">Ends: {end.toLocaleString()}</p>
-                          {durationLabel && (
-                            <p className="text-white/60 text-sm">Duration: {durationLabel}</p>
-                          )}
-                        </div>
-                        <div className="text-right">
-                          {diffMs > 0 ? (
-                            <p className="text-green-300 font-mono text-lg">
-                              {remaining.days}d {String(remaining.hours).padStart(2, '0')}:{String(remaining.mins).padStart(2, '0')}:{String(remaining.secs).padStart(2, '0')}
-                            </p>
-                          ) : (
-                            <p className="text-red-300 font-semibold">Expired</p>
-                          )}
-                          <div className="mt-2 flex gap-2 justify-end">
-                            <Link to={`/track/${order.id}`}>
-                              <Button size="sm" variant="outline" className="border-white/20 text-white">
-                                View
-                              </Button>
-                            </Link>
-                            <Link to="/products/subscription">
-                              <Button size="sm" className="bg-white text-green-600 hover:bg-gray-100">
-                                Renew
-                              </Button>
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12" data-testid="no-orders">
+                <Package className="mx-auto mb-3 text-white/20" size={40} />
+                <p className="text-white/40 text-sm">No orders yet</p>
+                <Link to="/products" className="inline-block mt-3">
+                  <Button size="sm" className="bg-green-500 hover:bg-green-600 text-black font-semibold rounded-full px-6">
+                    Start Shopping
+                  </Button>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
