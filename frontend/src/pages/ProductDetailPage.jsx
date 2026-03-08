@@ -41,6 +41,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const { id } = useParams();
   const [product, setProduct] = useState(null);
   const [variants, setVariants] = useState([]);
+  const [sellerOffers, setSellerOffers] = useState([]);
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -54,6 +55,12 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
       const response = await axiosInstance.get(`/products/${id}`);
       const p = response.data;
       setProduct(p);
+
+      // Load seller offers
+      try {
+        const offersRes = await axiosInstance.get(`/products/${id}/offers`);
+        setSellerOffers(Array.isArray(offersRes.data) ? offersRes.data : []);
+      } catch { setSellerOffers([]); }
 
       // Load variants for this group (if any)
       const groupId = p.parent_product_id || p.id;
@@ -349,6 +356,24 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </li>
               </ul>
             </div>
+
+            {/* Seller Offers */}
+            {sellerOffers.length > 0 && (
+              <div className="mt-6 glass-effect p-6 rounded-lg">
+                <h3 className="text-xl font-bold mb-3">Also available from sellers</h3>
+                <div className="space-y-2">
+                  {sellerOffers.map(offer => (
+                    <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                      <div>
+                        <p className="text-white font-semibold text-sm">{offer.seller_store_name}</p>
+                        <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? 'Instant delivery' : 'Manual delivery'}</p>
+                      </div>
+                      <p className="text-cyan-300 font-bold">${Number(offer.price).toFixed(2)}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

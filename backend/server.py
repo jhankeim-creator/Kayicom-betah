@@ -756,6 +756,10 @@ class SiteSettings(BaseModel):
     minutes_transfer_min_amount: Optional[float] = 1.0
     minutes_transfer_max_amount: Optional[float] = 500.0
     minutes_transfer_instructions: Optional[str] = None
+    # Seller withdrawal settings
+    seller_withdrawal_fee_percent: Optional[float] = 0.0
+    seller_withdrawal_fee_fixed: Optional[float] = 0.0
+    seller_withdrawal_min_amount: Optional[float] = 5.0
     # Social links (follow buttons)
     social_links: Optional[dict] = {
         "facebook": "",
@@ -1930,7 +1934,7 @@ async def get_products(
     Also normalizes fields to ensure frontend compatibility.
     """
     try:
-        query: Dict[str, Any] = {}
+        query: Dict[str, Any] = {"product_status": {"$in": ["approved", None]}}
         if category:
             query["category"] = category
         if parent_product_id:
@@ -3793,17 +3797,54 @@ async def seller_get_earnings(user_id: str):
     }
 
 
+class SellerWithdrawalRequest(BaseModel):
+    amount: float
+    method: str  # binance_pay, usdt_bep20, usdt_trc20
+    wallet_address: str
+
+
+@api_router.get("/seller/withdrawal-info")
+async def seller_withdrawal_info():
+    """Get withdrawal methods and fee info for sellers."""
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    return {
+        "methods": [
+            {"id": "binance_pay", "label": "Binance Pay", "placeholder": "Binance Pay ID (email or UID)"},
+            {"id": "usdt_bep20", "label": "USDT (BEP20)", "placeholder": "BEP20 wallet address (BSC)"},
+            {"id": "usdt_trc20", "label": "USDT (TRC20)", "placeholder": "TRC20 wallet address (TRON)"},
+        ],
+        "fee_percent": float(settings.get("seller_withdrawal_fee_percent", 0)),
+        "fee_fixed": float(settings.get("seller_withdrawal_fee_fixed", 0)),
+        "min_amount": float(settings.get("seller_withdrawal_min_amount", 5)),
+    }
+
+
 @api_router.post("/seller/withdraw")
-async def seller_request_withdrawal(user_id: str, amount: float):
+async def seller_request_withdrawal(payload: SellerWithdrawalRequest, user_id: str):
     """Seller requests a withdrawal from their balance."""
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("seller_status") != "approved":
         raise HTTPException(status_code=403, detail="Not an approved seller")
-    balance = float(user.get("seller_balance", 0.0))
+    if payload.method not in ("binance_pay", "usdt_bep20", "usdt_trc20"):
+        raise HTTPException(status_code=400, detail="Invalid withdrawal method. Use: binance_pay, usdt_bep20, usdt_trc20")
+    if not payload.wallet_address or not payload.wallet_address.strip():
+        raise HTTPException(status_code=400, detail="Wallet address / Binance Pay ID is required")
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    min_amount = float(settings.get("seller_withdrawal_min_amount", 5))
+    fee_pct = float(settings.get("seller_withdrawal_fee_percent", 0))
+    fee_fixed = float(settings.get("seller_withdrawal_fee_fixed", 0))
+    amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+    if amount < min_amount:
+        raise HTTPException(status_code=400, detail=f"Minimum withdrawal is ${min_amount:.2f}")
+    fee = round(amount * (fee_pct / 100.0) + fee_fixed, 2)
+    net_amount = round(amount - fee, 2)
+    if net_amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount too low after fees")
+    balance = float(user.get("seller_balance", 0.0))
     if amount > balance:
         raise HTTPException(status_code=400, detail="Insufficient seller balance")
     now = datetime.now(timezone.utc).isoformat()
@@ -3813,17 +3854,24 @@ async def seller_request_withdrawal(user_id: str, amount: float):
         "user_email": user.get("email"),
         "store_name": user.get("seller_store_name"),
         "amount": amount,
+        "fee": fee,
+        "net_amount": net_amount,
+        "method": payload.method,
+        "wallet_address": payload.wallet_address.strip(),
         "status": "pending",
         "type": "seller_withdrawal",
         "created_at": now,
     }
     await db.withdrawals.insert_one(withdrawal)
     await db.users.update_one({"id": user_id}, {"$inc": {"seller_balance": -amount}})
+    method_labels = {"binance_pay": "Binance Pay", "usdt_bep20": "USDT BEP20", "usdt_trc20": "USDT TRC20"}
     await _notify_admin_telegram("Seller withdrawal request", [
         f"Seller: {user.get('email')}",
-        f"Amount: ${amount:.2f}",
+        f"Amount: ${amount:.2f} | Fee: ${fee:.2f} | Net: ${net_amount:.2f}",
+        f"Method: {method_labels.get(payload.method, payload.method)}",
+        f"Address: {payload.wallet_address.strip()}",
     ])
-    return {"message": "Withdrawal request submitted", "withdrawal_id": withdrawal["id"]}
+    return {"message": "Withdrawal request submitted", "withdrawal_id": withdrawal["id"], "fee": fee, "net_amount": net_amount}
 
 
 # ==================== ADMIN SELLER MANAGEMENT ====================
@@ -3924,6 +3972,111 @@ async def admin_list_category_requests(status: Optional[str] = None):
         query["status"] = "pending"
     requests = await db.seller_category_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
     return requests
+
+
+# ==================== SELLER CATALOG (Browse admin products to sell) ====================
+
+@api_router.get("/seller/catalog")
+async def seller_browse_catalog(user_id: str, category: Optional[str] = None):
+    """Seller browses admin catalog products they can create offers for."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user or user.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Not an approved seller")
+    approved_cats = user.get("seller_approved_categories") or []
+    if not approved_cats:
+        return []
+    query: Dict[str, Any] = {
+        "product_status": {"$in": ["approved", None]},
+        "seller_id": {"$in": [None, ""]},
+        "category": {"$in": approved_cats},
+    }
+    if category and category in approved_cats:
+        query["category"] = category
+    products = await db.products.find(query, {"_id": 0}).to_list(500)
+    existing_offers = await db.seller_offers.find(
+        {"seller_id": user_id, "status": "active"}, {"product_id": 1, "_id": 0}
+    ).to_list(500)
+    offered_ids = {o["product_id"] for o in existing_offers}
+    for p in products:
+        p["already_offering"] = p.get("id") in offered_ids
+    return products
+
+
+# ==================== SELLER PRODUCT REQUESTS ====================
+
+class SellerProductRequest(BaseModel):
+    product_name: str
+    description: str
+    category: str
+    suggested_price: Optional[float] = None
+    notes: Optional[str] = None
+
+
+@api_router.post("/seller/product-requests")
+async def seller_request_product(payload: SellerProductRequest, user_id: str):
+    """Seller requests a new product to be added to the catalog."""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not user or user.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Not an approved seller")
+    now = datetime.now(timezone.utc).isoformat()
+    req = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "user_email": user.get("email"),
+        "store_name": user.get("seller_store_name"),
+        "product_name": payload.product_name.strip(),
+        "description": payload.description.strip(),
+        "category": payload.category,
+        "suggested_price": payload.suggested_price,
+        "notes": (payload.notes or "").strip() or None,
+        "status": "pending",
+        "created_at": now,
+    }
+    await db.seller_product_requests.insert_one(req)
+    await _notify_admin_telegram("New product request from seller", [
+        f"Seller: {user.get('email')} ({user.get('seller_store_name')})",
+        f"Product: {payload.product_name}",
+        f"Category: {payload.category}",
+    ])
+    req.pop("_id", None)
+    return req
+
+
+@api_router.get("/seller/product-requests")
+async def seller_list_product_requests(user_id: str):
+    """List seller's own product requests."""
+    reqs = await db.seller_product_requests.find(
+        {"user_id": user_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(100)
+    return reqs
+
+
+@api_router.get("/admin/product-requests")
+async def admin_list_product_requests(status: Optional[str] = None):
+    """Admin lists all product requests."""
+    query: Dict[str, Any] = {}
+    if status:
+        query["status"] = status
+    else:
+        query["status"] = "pending"
+    reqs = await db.seller_product_requests.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return reqs
+
+
+@api_router.put("/admin/product-requests/{request_id}")
+async def admin_review_product_request(request_id: str, action: str, reason: Optional[str] = None):
+    """Admin approves or rejects a product request."""
+    req = await db.seller_product_requests.find_one({"id": request_id}, {"_id": 0})
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+    if action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
+    now = datetime.now(timezone.utc).isoformat()
+    updates = {"status": "approved" if action == "approve" else "rejected", "reviewed_at": now}
+    if reason:
+        updates["rejection_reason"] = reason
+    await db.seller_product_requests.update_one({"id": request_id}, {"$set": updates})
+    return {"message": f"Product request {action}d"}
 
 
 # ==================== SELLER OFFERS ====================
@@ -5030,12 +5183,18 @@ async def update_withdrawal_status(withdrawal_id: str, status: str, admin_notes:
     if admin_notes:
         updates['admin_notes'] = admin_notes
     
-    # If rejected, refund balance
+    # If rejected, refund balance to the correct source
     if status == 'rejected' and withdrawal['status'] == 'pending':
-        await db.users.update_one(
-            {"id": withdrawal['user_id']},
-            {"$inc": {"referral_balance": withdrawal['amount']}}
-        )
+        if withdrawal.get('type') == 'seller_withdrawal':
+            await db.users.update_one(
+                {"id": withdrawal['user_id']},
+                {"$inc": {"seller_balance": withdrawal['amount']}}
+            )
+        else:
+            await db.users.update_one(
+                {"id": withdrawal['user_id']},
+                {"$inc": {"referral_balance": withdrawal['amount']}}
+            )
     
     await db.withdrawals.update_one({"id": withdrawal_id}, {"$set": updates})
     await _notify_admin_telegram(

@@ -34,6 +34,18 @@ def _match_value(doc_value, query_value):
     if not isinstance(query_value, dict):
         return doc_value == query_value
 
+    # $in operator
+    if "$in" in query_value:
+        return doc_value in query_value["$in"]
+
+    # $ne operator
+    if "$ne" in query_value:
+        return doc_value != query_value["$ne"]
+
+    # $exists operator
+    if "$exists" in query_value:
+        return query_value["$exists"] == (doc_value is not None)
+
     # regex
     if "$regex" in query_value:
         pattern = query_value.get("$regex") or ""
