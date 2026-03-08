@@ -501,6 +501,14 @@ const AdminOrders = ({ user, logout, settings }) => {
                           </div>
                         )}
 
+                        {/* Auto-delivery failure reason */}
+                        {order.auto_delivery_failed_reason && !order.delivery_info && (
+                          <div className="mt-3 p-3 bg-orange-900/20 border border-orange-500/30 rounded">
+                            <p className="text-orange-400 text-sm mb-1"><strong>⚠ Auto-delivery failed</strong></p>
+                            <p className="text-white/70 text-xs">{order.auto_delivery_failed_reason}</p>
+                          </div>
+                        )}
+
                         {/* Delivery Information */}
                         {order.delivery_info && (
                           <div className="mt-3 p-3 bg-green-900/20 border border-green-500/30 rounded">

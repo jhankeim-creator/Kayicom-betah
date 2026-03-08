@@ -17,9 +17,10 @@ const AdminCoupons = ({ user, logout, settings }) => {
     code: '',
     discount_type: 'percent',
     discount_value: 10,
+    max_discount_amount: '',
     min_order_amount: 0,
-    usage_limit: '',
-    max_uses_per_user: '',
+    usage_limit: 1,
+    max_uses_per_user: 1,
     expires_at: ''
   });
 
@@ -48,14 +49,15 @@ const AdminCoupons = ({ user, logout, settings }) => {
         code: form.code,
         discount_type: form.discount_type,
         discount_value: parseFloat(form.discount_value),
+        max_discount_amount: form.max_discount_amount ? parseFloat(form.max_discount_amount) : null,
         min_order_amount: parseFloat(form.min_order_amount || 0),
-        usage_limit: form.usage_limit ? parseInt(form.usage_limit, 10) : null,
-        max_uses_per_user: form.max_uses_per_user ? parseInt(form.max_uses_per_user, 10) : null,
+        usage_limit: form.usage_limit ? parseInt(form.usage_limit, 10) : 1,
+        max_uses_per_user: form.max_uses_per_user ? parseInt(form.max_uses_per_user, 10) : 1,
         expires_at: form.expires_at || null,
       };
       await axiosInstance.post('/coupons', payload);
       toast.success('Coupon created');
-      setForm({ code: '', discount_type: 'percent', discount_value: 10, min_order_amount: 0, usage_limit: '', max_uses_per_user: '', expires_at: '' });
+      setForm({ code: '', discount_type: 'percent', discount_value: 10, max_discount_amount: '', min_order_amount: 0, usage_limit: 1, max_uses_per_user: 1, expires_at: '' });
       loadCoupons();
     } catch (e) {
       toast.error(e.response?.data?.detail || 'Error creating coupon');
@@ -147,6 +149,18 @@ const AdminCoupons = ({ user, logout, settings }) => {
                   />
                 </div>
                 <div>
+                  <Label className="text-white">Max discount (USD)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={form.max_discount_amount}
+                    onChange={(e) => setForm(prev => ({ ...prev, max_discount_amount: e.target.value }))}
+                    className="bg-white/10 border-white/20 text-white mt-2"
+                    placeholder="e.g. 50"
+                  />
+                  <p className="text-white/30 text-xs mt-1">Max $ discount (leave empty = no cap)</p>
+                </div>
+                <div>
                   <Label className="text-white">Min order (USD)</Label>
                   <Input
                     type="number"
@@ -160,23 +174,25 @@ const AdminCoupons = ({ user, logout, settings }) => {
                   <Label className="text-white">Total usage limit</Label>
                   <Input
                     type="number"
+                    min="1"
                     value={form.usage_limit}
                     onChange={(e) => setForm(prev => ({ ...prev, usage_limit: e.target.value }))}
                     className="bg-white/10 border-white/20 text-white mt-2"
-                    placeholder="e.g. 100"
+                    placeholder="1"
                   />
-                  <p className="text-white/30 text-xs mt-1">Max total uses (leave empty = unlimited)</p>
+                  <p className="text-white/30 text-xs mt-1">Max total uses (default: 1 = single-use)</p>
                 </div>
                 <div>
                   <Label className="text-white">Max uses per user</Label>
                   <Input
                     type="number"
+                    min="1"
                     value={form.max_uses_per_user}
                     onChange={(e) => setForm(prev => ({ ...prev, max_uses_per_user: e.target.value }))}
                     className="bg-white/10 border-white/20 text-white mt-2"
-                    placeholder="e.g. 1"
+                    placeholder="1"
                   />
-                  <p className="text-white/30 text-xs mt-1">Per user limit (leave empty = unlimited)</p>
+                  <p className="text-white/30 text-xs mt-1">Per user limit (default: 1)</p>
                 </div>
                 <div>
                   <Label className="text-white">Expiration date</Label>
@@ -227,8 +243,9 @@ const AdminCoupons = ({ user, logout, settings }) => {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-white/60 mb-3">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs text-white/60 mb-3">
                           <span>Min order: ${c.min_order_amount || 0}</span>
+                          <span>Max discount: {c.max_discount_amount != null ? `$${c.max_discount_amount}` : 'No cap'}</span>
                           <span>Total uses: {c.used_count}{c.usage_limit != null ? ` / ${c.usage_limit}` : ' (unlimited)'}</span>
                           <span>Per user: {c.max_uses_per_user != null ? `${c.max_uses_per_user} max` : 'unlimited'}</span>
                           <span>{c.expires_at ? `Expires: ${new Date(c.expires_at).toLocaleDateString()}` : 'No expiration'}</span>
