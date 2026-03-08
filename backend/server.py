@@ -4008,8 +4008,16 @@ class SellerProductRequest(BaseModel):
     product_name: str
     description: str
     category: str
+    giftcard_category: Optional[str] = None
+    giftcard_subcategory: Optional[str] = None
     suggested_price: Optional[float] = None
     notes: Optional[str] = None
+
+
+class SellerOfferUpdate(BaseModel):
+    price: Optional[float] = None
+    delivery_type: Optional[str] = None
+    stock_available: Optional[bool] = None
 
 
 @api_router.post("/seller/product-requests")
@@ -4027,6 +4035,8 @@ async def seller_request_product(payload: SellerProductRequest, user_id: str):
         "product_name": payload.product_name.strip(),
         "description": payload.description.strip(),
         "category": payload.category,
+        "giftcard_category": (payload.giftcard_category or "").strip() or None,
+        "giftcard_subcategory": (payload.giftcard_subcategory or "").strip() or None,
         "suggested_price": payload.suggested_price,
         "notes": (payload.notes or "").strip() or None,
         "status": "pending",
@@ -4064,8 +4074,8 @@ async def admin_list_product_requests(status: Optional[str] = None):
 
 
 @api_router.put("/admin/product-requests/{request_id}")
-async def admin_review_product_request(request_id: str, action: str, reason: Optional[str] = None):
-    """Admin approves or rejects a product request."""
+async def admin_review_product_request(request_id: str, action: str, reason: Optional[str] = None, auto_create: bool = True):
+    """Admin approves or rejects a product request. On approve, optionally auto-creates the product."""
     req = await db.seller_product_requests.find_one({"id": request_id}, {"_id": 0})
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
@@ -4075,8 +4085,28 @@ async def admin_review_product_request(request_id: str, action: str, reason: Opt
     updates = {"status": "approved" if action == "approve" else "rejected", "reviewed_at": now}
     if reason:
         updates["rejection_reason"] = reason
+    created_product_id = None
+    if action == "approve" and auto_create:
+        new_product = Product(
+            name=req.get("product_name", ""),
+            description=req.get("description", ""),
+            category=req.get("category", "giftcard"),
+            price=float(req.get("suggested_price") or 0),
+            giftcard_category=req.get("giftcard_category"),
+            giftcard_subcategory=req.get("giftcard_subcategory"),
+            product_status="approved",
+        )
+        doc = new_product.model_dump()
+        doc["created_at"] = doc["created_at"].isoformat()
+        doc = _normalize_product_doc(doc)
+        await db.products.insert_one(doc)
+        created_product_id = new_product.id
+        updates["created_product_id"] = created_product_id
     await db.seller_product_requests.update_one({"id": request_id}, {"$set": updates})
-    return {"message": f"Product request {action}d"}
+    result = {"message": f"Product request {action}d"}
+    if created_product_id:
+        result["created_product_id"] = created_product_id
+    return result
 
 
 # ==================== SELLER OFFERS ====================
@@ -4142,6 +4172,30 @@ async def seller_list_offers(user_id: str):
     return offers
 
 
+@api_router.put("/seller/offers/{offer_id}")
+async def seller_update_offer(offer_id: str, updates: SellerOfferUpdate, user_id: str):
+    """Seller updates their offer (price, delivery, stock)."""
+    offer = await db.seller_offers.find_one({"id": offer_id, "seller_id": user_id, "status": "active"})
+    if not offer:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    update_data = {}
+    if updates.price is not None:
+        if updates.price <= 0:
+            raise HTTPException(status_code=400, detail="Price must be positive")
+        update_data["price"] = float(updates.price)
+    if updates.delivery_type is not None:
+        if updates.delivery_type not in ("automatic", "manual"):
+            raise HTTPException(status_code=400, detail="delivery_type must be automatic or manual")
+        update_data["delivery_type"] = updates.delivery_type
+    if updates.stock_available is not None:
+        update_data["stock_available"] = bool(updates.stock_available)
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No updates provided")
+    await db.seller_offers.update_one({"id": offer_id}, {"$set": update_data})
+    updated = await db.seller_offers.find_one({"id": offer_id}, {"_id": 0})
+    return updated
+
+
 @api_router.delete("/seller/offers/{offer_id}")
 async def seller_delete_offer(offer_id: str, user_id: str):
     """Seller removes their offer."""
@@ -4152,6 +4206,32 @@ async def seller_delete_offer(offer_id: str, user_id: str):
     count = await db.seller_offers.count_documents({"product_id": offer["product_id"], "status": "active"})
     await db.products.update_one({"id": offer["product_id"]}, {"$set": {"seller_offer_count": count}})
     return {"message": "Offer removed"}
+
+
+# ==================== PUBLIC SELLER STORE ====================
+
+@api_router.get("/store/{seller_id}")
+async def get_seller_store(seller_id: str):
+    """Public store page for an approved seller."""
+    user = await db.users.find_one({"id": seller_id}, {"_id": 0, "password": 0, "password_hash": 0})
+    if not user or user.get("seller_status") != "approved":
+        raise HTTPException(status_code=404, detail="Store not found")
+    offers = await db.seller_offers.find(
+        {"seller_id": seller_id, "status": "active"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    for offer in offers:
+        product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
+        offer["product_name"] = (product or {}).get("name", "Unknown")
+        offer["product_image"] = (product or {}).get("image_url")
+        offer["product_category"] = (product or {}).get("category")
+    return {
+        "seller_id": seller_id,
+        "store_name": user.get("seller_store_name", ""),
+        "bio": user.get("seller_bio"),
+        "categories": user.get("seller_approved_categories", []),
+        "total_orders": user.get("seller_total_orders", 0),
+        "offers": offers,
+    }
 
 
 # ==================== ESCROW SYSTEM ====================

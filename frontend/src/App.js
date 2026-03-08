@@ -38,8 +38,10 @@ import BlogPage from './pages/BlogPage';
 import BlogDetailPage from './pages/BlogDetailPage';
 import AdminBlog from './pages/AdminBlog';
 import AdminSellers from './pages/AdminSellers';
+import AdminProductRequests from './pages/AdminProductRequests';
 import SellerApplyPage from './pages/SellerApplyPage';
 import SellerDashboard from './pages/SellerDashboard';
+import SellerStorePage from './pages/SellerStorePage';
 import DisputeCenterPage from './pages/DisputeCenterPage';
 import MessagesPage from './pages/MessagesPage';
 import WhatsAppButton from './components/WhatsAppButton';
@@ -482,6 +484,22 @@ function App() {
               <ProtectedRoute adminOnly>
                 <AdminSellers user={user} logout={logout} settings={settings} />
               </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/product-requests"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminProductRequests user={user} logout={logout} settings={settings} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/store/:sellerId"
+            element={
+              <SellerStorePage user={user} logout={logout} settings={settings} addToCart={addToCart} />
             }
           />
         </Routes>

@@ -137,6 +137,16 @@ const AdminDashboard = ({ user, logout, settings }) => {
               </Card>
             </Link>
 
+            <Link to="/admin/product-requests">
+              <Card className="glass-effect border-white/20 hover:border-purple-500/40 transition cursor-pointer">
+                <CardContent className="p-8 text-center">
+                  <Package className="mx-auto mb-4 text-purple-400" size={48} />
+                  <h3 className="text-xl font-bold text-white mb-2">Product Requests</h3>
+                  <p className="text-white/70">Review seller product requests</p>
+                </CardContent>
+              </Card>
+            </Link>
+
             <Link to="/admin/settings">
               <Card className="glass-effect border-white/20 hover:border-white/40 transition cursor-pointer" data-testid="site-settings">
                 <CardContent className="p-8 text-center">

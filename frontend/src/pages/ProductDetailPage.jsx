@@ -363,9 +363,11 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 <h3 className="text-xl font-bold mb-3">Also available from sellers</h3>
                 <div className="space-y-2">
                   {sellerOffers.map(offer => (
-                    <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10">
+                    <div key={offer.id} className="flex items-center justify-between p-3 bg-white/5 rounded-lg border border-white/10 hover:border-white/20 transition">
                       <div>
-                        <p className="text-white font-semibold text-sm">{offer.seller_store_name}</p>
+                        <a href={`/store/${offer.seller_id}`} className="text-cyan-300 font-semibold text-sm hover:underline">
+                          {offer.seller_store_name || 'Seller'}
+                        </a>
                         <p className="text-white/50 text-xs">{offer.delivery_type === 'automatic' ? 'Instant delivery' : 'Manual delivery'}</p>
                       </div>
                       <p className="text-cyan-300 font-bold">${Number(offer.price).toFixed(2)}</p>
