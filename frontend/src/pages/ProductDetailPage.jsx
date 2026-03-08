@@ -111,6 +111,28 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     }
     descriptionMeta.setAttribute('content', deriveProductSeoDescription(selectedProduct));
 
+    // Open Graph tags
+    const ogTags = {
+      'og:title': `${nextTitle} | KayiCom`,
+      'og:description': deriveProductSeoDescription(selectedProduct),
+      'og:url': `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`,
+      'og:type': 'product',
+      'og:site_name': 'KayiCom',
+    };
+    if (selectedProduct.image_url) ogTags['og:image'] = selectedProduct.image_url;
+    const createdOgTags = [];
+    Object.entries(ogTags).forEach(([prop, content]) => {
+      let tag = document.querySelector(`meta[property="${prop}"]`);
+      if (!tag) { tag = document.createElement('meta'); tag.setAttribute('property', prop); document.head.appendChild(tag); createdOgTags.push(tag); }
+      tag.setAttribute('content', content);
+    });
+
+    // Canonical URL
+    let canonical = document.querySelector('link[rel="canonical"]');
+    const createdCanonical = !canonical;
+    if (!canonical) { canonical = document.createElement('link'); canonical.setAttribute('rel', 'canonical'); document.head.appendChild(canonical); }
+    canonical.setAttribute('href', `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`);
+
     const jsonLdScript = document.createElement('script');
     jsonLdScript.type = 'application/ld+json';
     jsonLdScript.id = 'product-seo-jsonld';
@@ -131,7 +153,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
         availability: selectedProduct.stock_available
           ? 'https://schema.org/InStock'
           : 'https://schema.org/OutOfStock',
-        url: `https://kayicom.com/product/${selectedProduct.id}`,
+        url: `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`,
       },
     };
     jsonLdScript.text = JSON.stringify(productSchema);
@@ -147,6 +169,8 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
         }
       }
       jsonLdScript.remove();
+      createdOgTags.forEach(t => t.remove());
+      if (createdCanonical && canonical) canonical.remove();
     };
   }, [selectedProduct]);
 

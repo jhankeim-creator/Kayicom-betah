@@ -5,7 +5,7 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle, FileText, Store } from 'lucide-react';
+import { Package, ShoppingBag, Users, DollarSign, Settings, AlertCircle, FileText, Store, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 
 const AdminDashboard = ({ user, logout, settings }) => {
@@ -143,6 +143,16 @@ const AdminDashboard = ({ user, logout, settings }) => {
                   <Package className="mx-auto mb-4 text-purple-400" size={48} />
                   <h3 className="text-xl font-bold text-white mb-2">Product Requests</h3>
                   <p className="text-white/70">Review seller product requests</p>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link to="/admin/pending-products">
+              <Card className="glass-effect border-white/20 hover:border-yellow-500/40 transition cursor-pointer">
+                <CardContent className="p-8 text-center">
+                  <Clock className="mx-auto mb-4 text-yellow-400" size={48} />
+                  <h3 className="text-xl font-bold text-white mb-2">Pending Products</h3>
+                  <p className="text-white/70">Approve or reject seller products</p>
                 </CardContent>
               </Card>
             </Link>

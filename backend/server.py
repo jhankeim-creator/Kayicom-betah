@@ -421,6 +421,8 @@ def _normalize_product_doc(product: Dict[str, Any]) -> Dict[str, Any]:
     normalized = dict(product or {})
     normalized["seo_title"] = _derive_product_seo_title(normalized.get("seo_title"), normalized)
     normalized["seo_description"] = _derive_product_seo_description(normalized.get("seo_description"), normalized)
+    if not normalized.get("slug"):
+        normalized["slug"] = _slugify_text(normalized.get("name") or normalized.get("id") or "product")
     return normalized
 
 
@@ -435,6 +437,22 @@ async def _generate_unique_blog_slug(
     while True:
         existing = await db.blog_posts.find_one({"slug": candidate}, {"_id": 0, "id": 1})
         if not existing or existing.get("id") == exclude_post_id:
+            return candidate
+        candidate = f"{base}-{idx}"
+        idx += 1
+
+
+async def _generate_unique_product_slug(
+    name: str,
+    preferred_slug: Optional[str] = None,
+    exclude_product_id: Optional[str] = None,
+) -> str:
+    base = _slugify_text(preferred_slug if preferred_slug is not None else name)
+    candidate = base
+    idx = 2
+    while True:
+        existing = await db.products.find_one({"slug": candidate}, {"_id": 0, "id": 1})
+        if not existing or existing.get("id") == exclude_product_id:
             return candidate
         candidate = f"{base}-{idx}"
         idx += 1
@@ -466,6 +484,7 @@ def _normalize_blog_post_doc(post: Dict[str, Any]) -> Dict[str, Any]:
 class Product(BaseModel):
     model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    slug: Optional[str] = None
     name: str
     description: str
     category: str  # giftcard, topup, subscription, service, crypto
@@ -1109,6 +1128,27 @@ async def _backfill_product_seo_fields(limit: int = 5000) -> int:
         await db.products.update_one({"id": product_id}, {"$set": updates})
         updated += 1
 
+    return updated
+
+
+async def _backfill_product_slugs(limit: int = 5000) -> int:
+    """Ensure existing products have URL slugs."""
+    updated = 0
+    try:
+        products = await db.products.find(
+            {"$or": [{"slug": {"$exists": False}}, {"slug": None}, {"slug": ""}]},
+            {"_id": 0, "id": 1, "name": 1}
+        ).to_list(limit)
+    except Exception:
+        return 0
+    for product in products:
+        pid = str(product.get("id") or "").strip()
+        name = str(product.get("name") or "product").strip()
+        if not pid:
+            continue
+        slug = await _generate_unique_product_slug(name, exclude_product_id=pid)
+        await db.products.update_one({"id": pid}, {"$set": {"slug": slug}})
+        updated += 1
     return updated
 
 
@@ -2006,6 +2046,8 @@ async def get_products(
 async def get_product(product_id: str):
     product = await db.products.find_one({"id": product_id}, {"_id": 0})
     if not product:
+        product = await db.products.find_one({"slug": product_id}, {"_id": 0})
+    if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
     product = _normalize_product_doc(product)
@@ -2017,6 +2059,7 @@ async def get_product(product_id: str):
 @api_router.post("/products", response_model=Product)
 async def create_product(product_data: ProductCreate):
     product = Product(**product_data.model_dump())
+    product.slug = await _generate_unique_product_slug(product.name, exclude_product_id=product.id)
     product.orders_count = _normalize_orders_count_for_product(product.model_dump())
     normalized_product = _normalize_product_doc(product.model_dump())
     product.seo_title = normalized_product.get("seo_title")
@@ -3732,8 +3775,10 @@ async def seller_create_product(product: ProductCreate, user_id: str):
     approved = user.get("seller_approved_categories") or []
     if product.category not in approved:
         raise HTTPException(status_code=403, detail=f"Not approved to sell in category: {product.category}")
+    product_slug = await _generate_unique_product_slug(product.name)
     new_product = Product(
         name=product.name,
+        slug=product_slug,
         description=product.description,
         category=product.category,
         price=product.price,
@@ -7086,6 +7131,45 @@ async def seed_database(request: SeedRequest):
 
 # ==================== END TEMPORARY SEEDING ENDPOINT ====================
 
+# ==================== SITEMAP ====================
+
+@app.get("/sitemap.xml")
+async def sitemap_xml():
+    """Dynamic sitemap for Google indexing."""
+    from starlette.responses import Response
+    frontend_url = os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
+    urls = []
+    urls.append(f"  <url><loc>{frontend_url}/</loc><priority>1.0</priority></url>")
+    urls.append(f"  <url><loc>{frontend_url}/products</loc><priority>0.9</priority></url>")
+    for cat in ("giftcard", "topup", "subscription", "service"):
+        urls.append(f"  <url><loc>{frontend_url}/products/{cat}</loc><priority>0.8</priority></url>")
+    urls.append(f"  <url><loc>{frontend_url}/blog</loc><priority>0.7</priority></url>")
+    try:
+        products = await db.products.find(
+            {"product_status": {"$in": ["approved", None]}},
+            {"_id": 0, "id": 1, "slug": 1}
+        ).to_list(5000)
+        for p in products:
+            slug = p.get("slug") or p.get("id")
+            urls.append(f"  <url><loc>{frontend_url}/product/{slug}</loc><priority>0.7</priority></url>")
+    except Exception:
+        pass
+    try:
+        posts = await db.blog_posts.find(
+            {"published": True}, {"_id": 0, "slug": 1}
+        ).to_list(1000)
+        for post in posts:
+            if post.get("slug"):
+                urls.append(f"  <url><loc>{frontend_url}/blog/{post['slug']}</loc><priority>0.6</priority></url>")
+    except Exception:
+        pass
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    xml += "\n".join(urls) + "\n"
+    xml += '</urlset>'
+    return Response(content=xml, media_type="application/xml")
+
+
 # Include the router (must be after all endpoints are defined)
 app.include_router(api_router)
 
@@ -7628,6 +7712,13 @@ async def startup_background_jobs():
             logging.info(f"Backfilled SEO fields for {updated_seo} product(s)")
     except Exception as e:
         logging.error(f"Failed to backfill product SEO fields: {e}")
+
+    try:
+        updated_slugs = await _backfill_product_slugs()
+        if updated_slugs:
+            logging.info(f"Backfilled slugs for {updated_slugs} product(s)")
+    except Exception as e:
+        logging.error(f"Failed to backfill product slugs: {e}")
 
     if _order_auto_cancel_task is not None:
         try:

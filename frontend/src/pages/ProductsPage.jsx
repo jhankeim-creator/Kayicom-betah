@@ -275,7 +275,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
           )}
         </div>
         <div className="flex gap-2">
-          <Link to={`/product/${product.id}`} className="flex-1">
+          <Link to={`/product/${product.slug || product.id}`} className="flex-1">
             <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>
               Details
             </Button>

@@ -263,7 +263,7 @@ const NewHomePage = ({ user, logout, cart, settings }) => {
         ) : featuredProducts.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
             {featuredProducts.map((product) => (
-              <Link to={`/product/${product.id}`} key={product.id}>
+              <Link to={`/product/${product.slug || product.id}`} key={product.id}>
                 <Card className="product-card overflow-hidden" data-testid={`product-card-${product.id}`}>
                   <div className="h-40 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center relative overflow-hidden">
                     {product.image_url ? (

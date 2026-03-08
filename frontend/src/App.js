@@ -39,6 +39,7 @@ import BlogDetailPage from './pages/BlogDetailPage';
 import AdminBlog from './pages/AdminBlog';
 import AdminSellers from './pages/AdminSellers';
 import AdminProductRequests from './pages/AdminProductRequests';
+import AdminPendingProducts from './pages/AdminPendingProducts';
 import SellerApplyPage from './pages/SellerApplyPage';
 import SellerDashboard from './pages/SellerDashboard';
 import SellerStorePage from './pages/SellerStorePage';
@@ -492,6 +493,15 @@ function App() {
             element={
               <ProtectedRoute adminOnly>
                 <AdminProductRequests user={user} logout={logout} settings={settings} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/pending-products"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminPendingProducts user={user} logout={logout} settings={settings} />
               </ProtectedRoute>
             }
           />
