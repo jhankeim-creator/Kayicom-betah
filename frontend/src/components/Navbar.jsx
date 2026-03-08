@@ -1,6 +1,6 @@
-import { useContext } from 'react';
+import { useContext, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ShoppingCart, User, LogOut, Package, Settings } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Package, Settings, Bell, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,10 +9,30 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import LanguageSwitcher from './LanguageSwitcher';
-import { LanguageContext } from '../App';
+import { LanguageContext, axiosInstance } from '../App';
 
 const Navbar = ({ user, logout, cartItemCount, settings }) => {
   const { t } = useContext(LanguageContext);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  useEffect(() => {
+    if (user) {
+      const fetchCounts = async () => {
+        try {
+          const [notifRes, msgRes] = await Promise.all([
+            axiosInstance.get(`/notifications/unread-count?user_id=${user.user_id || user.id}`),
+            axiosInstance.get(`/messages/unread-count?user_id=${user.user_id || user.id}`),
+          ]);
+          setUnreadNotifs(notifRes.data?.unread_count || 0);
+          setUnreadMessages(msgRes.data?.unread_count || 0);
+        } catch {}
+      };
+      fetchCounts();
+      const interval = setInterval(fetchCounts, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   return (
     <nav className="sticky top-0 z-50 shadow-lg border-b border-purple-500/20" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' }}>
@@ -72,7 +92,24 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
           {/* Right side */}
           <div className="flex items-center gap-0 md:gap-3 flex-shrink-0">
             <LanguageSwitcher />
-            
+
+            {user && (
+              <>
+                <Link to="/messages" className="relative text-white hover:text-pink-400 transition">
+                  <MessageCircle size={20} />
+                  {unreadMessages > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{unreadMessages}</span>
+                  )}
+                </Link>
+                <Link to="/notifications" className="relative text-white hover:text-pink-400 transition">
+                  <Bell size={20} />
+                  {unreadNotifs > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{unreadNotifs}</span>
+                  )}
+                </Link>
+              </>
+            )}
+
             <Link to="/cart" className="relative" data-testid="nav-cart">
               <Button variant="ghost" size="sm" className="text-gray-300 hover:bg-white/5 hover:text-pink-400 p-1 md:p-2 md:px-3">
                 <ShoppingCart size={16} className="md:w-5 md:h-5" />
@@ -125,6 +162,16 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem asChild>
+                    <Link to="/messages" className="cursor-pointer text-gray-300 hover:text-pink-400">
+                      💬 Messages {unreadMessages > 0 && `(${unreadMessages})`}
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link to="/notifications" className="cursor-pointer text-gray-300 hover:text-pink-400">
+                      🔔 Notifications {unreadNotifs > 0 && `(${unreadNotifs})`}
+                    </Link>
+                  </DropdownMenuItem>
                   {/* Mobile only - show nav items in dropdown */}
                   <div className="lg:hidden">
                     <DropdownMenuItem asChild>
