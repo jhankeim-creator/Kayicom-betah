@@ -288,24 +288,24 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const giftcardTaxonomy = settings?.giftcard_taxonomy || [];
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
+      <div className="container mx-auto px-3 md:px-4 py-6 md:py-8">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-              <Store className="text-green-400" /> Seller Dashboard
+            <h1 className="text-xl md:text-3xl font-bold text-white flex items-center gap-2">
+              <Store className="text-green-400" size={22} /> Seller Dashboard
             </h1>
-            <p className="text-white/60 mt-1">{user?.seller_store_name || 'My Store'}</p>
+            <p className="text-white/60 text-sm mt-1">{user?.seller_store_name || 'My Store'}</p>
           </div>
-          <Button onClick={() => window.location.href = '/'} variant="outline" className="border-white/20 text-white hover:bg-white/10 text-sm">
-            <ShoppingCart size={16} className="mr-2" /> View as Buyer
+          <Button onClick={() => window.location.href = '/'} variant="outline" className="border-white/20 text-white hover:bg-white/10 text-xs self-start">
+            <ShoppingCart size={14} className="mr-1" /> View as Buyer
           </Button>
         </div>
 
         {/* Welcome guide for new sellers */}
         {myOffers.length === 0 && myProducts.length === 0 && !loading && (
-          <Card className="glass-effect border-green-500/30 mb-6">
+          <Card className="bg-[#141414] border border-green-500/20 mb-6">
             <CardContent className="p-6">
               <h3 className="text-white font-bold text-lg mb-2">🎉 Welcome to your Seller Dashboard!</h3>
               <p className="text-white/60 text-sm mb-4">Start earning by following these simple steps:</p>
@@ -330,50 +330,51 @@ const SellerDashboard = ({ user, logout, settings }) => {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4 mb-6">
           {[
-            { label: 'My Offers', value: myOffers.length, gradient: 'from-cyan-500/20 to-blue-500/20 border-green-500/30', color: 'text-white' },
-            { label: 'Orders', value: earnings.total_orders, gradient: 'from-green-500/20 to-emerald-500/20 border-green-500/30', color: 'text-white' },
-            { label: 'Balance', value: `$${earnings.balance.toFixed(2)}`, gradient: 'from-green-500/20 to-emerald-500/20 border-green-500/30', color: 'text-green-300' },
-            { label: 'Total Earned', value: `$${earnings.total_earned.toFixed(2)}`, gradient: 'from-orange-500/20 to-yellow-500/20 border-orange-500/30', color: 'text-orange-300' },
+            { label: 'My Offers', value: myOffers.length, color: 'text-white' },
+            { label: 'Orders', value: earnings.total_orders, color: 'text-white' },
+            { label: 'Balance', value: `$${earnings.balance.toFixed(2)}`, color: 'text-green-400' },
+            { label: 'Total Earned', value: `$${earnings.total_earned.toFixed(2)}`, color: 'text-orange-400' },
           ].map(s => (
-            <Card key={s.label} className={`bg-gradient-to-br ${s.gradient}`}>
-              <CardContent className="p-4">
-                <p className="text-white/60 text-xs">{s.label}</p>
-                <p className={`${s.color} font-bold text-2xl`}>{s.value}</p>
-              </CardContent>
-            </Card>
+            <div key={s.label} className="rounded-xl bg-[#141414] border border-white/5 p-3 md:p-4">
+              <p className="text-white/50 text-[10px] md:text-xs">{s.label}</p>
+              <p className={`${s.color} font-bold text-lg md:text-2xl`}>{s.value}</p>
+            </div>
           ))}
         </div>
 
         {/* Approved Categories */}
-        <div className="mb-6 flex flex-wrap items-center gap-2">
-          <span className="text-white/60 text-sm">Categories:</span>
-          {approvedCategories.length > 0
-            ? approvedCategories.map(c => {
-                const meta = getCatMeta(c);
-                const Icon = meta.icon;
-                return <Badge key={c} className={`${meta.badge} flex items-center gap-1`}><Icon size={12} /> {meta.label}</Badge>;
-              })
-            : <span className="text-white/40 text-sm">None — request below</span>
-          }
-          <div className="flex gap-2 ml-auto items-center">
-            <span className="text-white/40 text-xs hidden md:inline">Request new:</span>
+        <div className="mb-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-white/50 text-xs">Categories:</span>
+            {approvedCategories.length > 0
+              ? approvedCategories.map(c => {
+                  const meta = getCatMeta(c);
+                  const Icon = meta.icon;
+                  return <Badge key={c} className={`${meta.badge} flex items-center gap-1 text-[10px]`}><Icon size={10} /> {meta.label}</Badge>;
+                })
+              : <span className="text-white/30 text-xs">None — request below</span>
+            }
+          </div>
+          <div className="flex gap-2 items-center">
             <Input value={catRequest} onChange={(e) => setCatRequest(e.target.value)}
-              placeholder="e.g. giftcard, topup" className="bg-white/10 border-white/20 text-white text-sm w-44" />
-            <Button size="sm" onClick={handleCatRequest} className="bg-cyan-600 text-white text-xs">
-              <Send size={14} className="mr-1" /> Request Category
+              placeholder="e.g. giftcard, topup" className="bg-white/5 border-white/10 text-white text-xs flex-1" />
+            <Button size="sm" onClick={handleCatRequest} className="bg-green-600 text-white text-xs whitespace-nowrap">
+              <Send size={12} className="mr-1" /> Request
             </Button>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mb-6 overflow-x-auto">
+        <div className="flex gap-1.5 mb-6 overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
           {tabs.map(t => (
-            <Button key={t.id} size="sm" onClick={() => setTab(t.id)}
-              className={`${tab === t.id ? 'bg-green-500' : 'bg-white/10'} text-white text-sm whitespace-nowrap`}>
-              {t.icon} <span className="ml-1">{t.label}</span>
-            </Button>
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition ${
+                tab === t.id ? 'bg-green-500 text-black' : 'bg-white/5 text-white/60 hover:bg-white/10'
+              }`}>
+              {t.icon} <span>{t.label}</span>
+            </button>
           ))}
         </div>
 
@@ -407,7 +408,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
               {filteredCatalog.map(p => {
                 const meta = getCatMeta(p.category);
                 return (
-                  <Card key={p.id} className="glass-effect border-white/20 hover:border-white/40 transition">
+                  <Card key={p.id} className="bg-[#141414] border border-white/5 hover:border-white/40 transition">
                     <CardContent className="p-4">
                       {p.image_url && <img src={p.image_url} alt="" className="w-full h-28 rounded-lg object-cover mb-3" />}
                       <h3 className="text-white font-bold text-sm truncate">{p.name}</h3>
@@ -472,7 +473,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
             {myOffers.map(o => {
               const meta = getCatMeta(o.product_category || '');
               return (
-                <Card key={o.id} className="glass-effect border-white/20">
+                <Card key={o.id} className="bg-[#141414] border border-white/5">
                   <CardContent className="p-4">
                     <div className="flex gap-3 mb-3">
                       {o.product_image && <img src={o.product_image} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
@@ -522,7 +523,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 const meta = getCatMeta(p.category);
                 const status = p.product_status || 'pending_review';
                 return (
-                  <Card key={p.id} className="glass-effect border-white/20">
+                  <Card key={p.id} className="bg-[#141414] border border-white/5">
                     <CardContent className="p-4">
                       <div className="flex gap-3 mb-3">
                         {p.image_url && <img src={p.image_url} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
@@ -568,7 +569,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
               const hasDelivery = o.seller_deliveries && o.seller_deliveries.length > 0;
               const needsDelivery = o.order_status !== 'completed' && !hasDelivery && (o.seller_items || []).some(i => i.delivery_type === 'manual' || !i.delivery_type);
               return (
-                <Card key={o.id} className="glass-effect border-white/20">
+                <Card key={o.id} className="bg-[#141414] border border-white/5">
                   <CardContent className="p-4">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
@@ -613,64 +614,62 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
         {/* ===== EARNINGS TAB ===== */}
         {tab === 'earnings' && (
-          <div className="space-y-4">
-            <Card className="glass-effect border-white/20">
-              <CardContent className="p-6">
-                <h2 className="text-xl font-bold text-white mb-4">Earnings Summary</h2>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <p className="text-white/60 text-sm">Available Balance</p>
-                    <p className="text-green-300 font-bold text-3xl">${earnings.balance.toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-white/60 text-sm">Total Earned</p>
-                    <p className="text-white font-bold text-3xl">${earnings.total_earned.toFixed(2)}</p>
-                  </div>
+          <div className="space-y-4 max-w-lg mx-auto">
+            {/* Earnings Summary - matches screenshot */}
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-5">
+              <h2 className="text-white font-bold text-lg mb-4">Earnings Summary</h2>
+              <div className="flex gap-8 mb-3">
+                <div>
+                  <p className="text-white/50 text-sm">Available Balance</p>
+                  <p className="text-green-400 font-bold text-2xl">${earnings.balance.toFixed(2)}</p>
                 </div>
-                <p className="text-white/40 text-xs">Platform commission: {earnings.commission_rate}%</p>
-              </CardContent>
-            </Card>
+                <div>
+                  <p className="text-white/50 text-sm">Total Earned</p>
+                  <p className="text-white font-bold text-2xl">${earnings.total_earned.toFixed(2)}</p>
+                </div>
+              </div>
+              <p className="text-white/30 text-xs">Platform commission: {earnings.commission_rate}%</p>
+            </div>
 
-            <Card className="glass-effect border-white/20">
-              <CardContent className="p-6">
-                <h2 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
-                  <Wallet size={20} className="text-green-400" /> Request Withdrawal
-                </h2>
-                <div className="space-y-4">
-                  <div>
-                    <Label className="text-white">Withdrawal Method *</Label>
-                    <Select value={withdrawMethod} onValueChange={setWithdrawMethod}>
-                      <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1"><SelectValue placeholder="Select method" /></SelectTrigger>
-                      <SelectContent>
-                        {withdrawalInfo.methods.map(m => (<SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {withdrawMethod && (
-                    <div>
-                      <Label className="text-white">{withdrawalInfo.methods.find(m => m.id === withdrawMethod)?.label} Address *</Label>
-                      <Input value={withdrawAddress} onChange={(e) => setWithdrawAddress(e.target.value)}
-                        placeholder={withdrawalInfo.methods.find(m => m.id === withdrawMethod)?.placeholder || ''}
-                        className="bg-white/10 border-white/20 text-white mt-1" />
-                    </div>
-                  )}
-                  <div>
-                    <Label className="text-white">Amount (USD) *</Label>
-                    <Input type="number" step="0.01" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
-                      placeholder={`Min $${withdrawalInfo.min_amount}`} className="bg-white/10 border-white/20 text-white mt-1" />
-                  </div>
-                  {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
-                    <div className="p-3 bg-white/5 border border-white/10 rounded-lg space-y-1">
-                      <div className="flex justify-between text-sm"><span className="text-white/60">Amount</span><span className="text-white">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
-                      <div className="flex justify-between text-sm"><span className="text-white/60">Fee</span><span className="text-red-300">-${calcFee(withdrawAmount).toFixed(2)}</span></div>
-                      <div className="border-t border-white/10 pt-1 flex justify-between text-sm font-bold"><span className="text-white">You receive</span><span className="text-green-300">${(parseFloat(withdrawAmount) - calcFee(withdrawAmount)).toFixed(2)}</span></div>
-                    </div>
-                  )}
-                  <Button onClick={handleWithdraw} disabled={!withdrawMethod || !withdrawAddress || !withdrawAmount}
-                    className="w-full bg-green-600 text-white">Submit Withdrawal</Button>
+            {/* Request Withdrawal - matches screenshot */}
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-5">
+              <h2 className="text-white font-bold text-lg mb-4 flex items-center gap-2">
+                <Wallet size={18} className="text-green-400" /> Request Withdrawal
+              </h2>
+              <div className="space-y-4">
+                <div>
+                  <Label className="text-white/70 text-sm">Withdrawal Method *</Label>
+                  <Select value={withdrawMethod} onValueChange={setWithdrawMethod}>
+                    <SelectTrigger className="bg-white/5 border-white/10 text-white mt-1"><SelectValue placeholder="Select method" /></SelectTrigger>
+                    <SelectContent>
+                      {withdrawalInfo.methods.map(m => (<SelectItem key={m.id} value={m.id}>{m.label}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              </CardContent>
-            </Card>
+                {withdrawMethod && (
+                  <div>
+                    <Label className="text-white/70 text-sm">{withdrawalInfo.methods.find(m => m.id === withdrawMethod)?.label} Address *</Label>
+                    <Input value={withdrawAddress} onChange={(e) => setWithdrawAddress(e.target.value)}
+                      placeholder={withdrawalInfo.methods.find(m => m.id === withdrawMethod)?.placeholder || ''}
+                      className="bg-white/5 border-white/10 text-white mt-1" />
+                  </div>
+                )}
+                <div>
+                  <Label className="text-white/70 text-sm">Amount (USD) *</Label>
+                  <Input type="number" step="0.01" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder={`Min $${withdrawalInfo.min_amount}`} className="bg-white/5 border-white/10 text-white mt-1" />
+                </div>
+                {withdrawAmount && parseFloat(withdrawAmount) > 0 && (
+                  <div className="p-3 bg-white/5 border border-white/10 rounded-lg space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-white/50">Amount</span><span className="text-white">${parseFloat(withdrawAmount).toFixed(2)}</span></div>
+                    <div className="flex justify-between"><span className="text-white/50">Fee</span><span className="text-red-400">-${calcFee(withdrawAmount).toFixed(2)}</span></div>
+                    <div className="border-t border-white/10 pt-1 flex justify-between font-bold"><span className="text-white">You receive</span><span className="text-green-400">${(parseFloat(withdrawAmount) - calcFee(withdrawAmount)).toFixed(2)}</span></div>
+                  </div>
+                )}
+                <Button onClick={handleWithdraw} disabled={!withdrawMethod || !withdrawAddress || !withdrawAmount}
+                  className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full py-3">Submit Withdrawal</Button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -689,7 +688,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                     { label: 'Avg Rating', value: analytics.avg_rating > 0 ? `${analytics.avg_rating} ★` : 'N/A', color: 'text-yellow-300' },
                     { label: 'Reviews', value: analytics.review_count, color: 'text-purple-300' },
                   ].map(s => (
-                    <Card key={s.label} className="glass-effect border-white/20">
+                    <Card key={s.label} className="bg-[#141414] border border-white/5">
                       <CardContent className="p-4">
                         <p className="text-white/60 text-xs">{s.label}</p>
                         <p className={`${s.color} font-bold text-2xl`}>{s.value}</p>
@@ -700,7 +699,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
                 {/* Revenue Chart (simple bar chart) */}
                 {analytics.daily_sales.length > 0 && (
-                  <Card className="glass-effect border-white/20">
+                  <Card className="bg-[#141414] border border-white/5">
                     <CardContent className="p-6">
                       <h3 className="text-white font-bold mb-4 flex items-center gap-2"><BarChart3 size={18} className="text-green-400" /> Revenue (Last 30 days)</h3>
                       <div className="flex items-end gap-1 h-40">
@@ -729,7 +728,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
                 {/* Top Products */}
                 {analytics.top_products.length > 0 && (
-                  <Card className="glass-effect border-white/20">
+                  <Card className="bg-[#141414] border border-white/5">
                     <CardContent className="p-6">
                       <h3 className="text-white font-bold mb-4 flex items-center gap-2"><Star size={18} className="text-yellow-400" /> Top Products</h3>
                       <div className="space-y-2">
@@ -752,7 +751,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
                 {/* Recent Withdrawals */}
                 {analytics.recent_withdrawals.length > 0 && (
-                  <Card className="glass-effect border-white/20">
+                  <Card className="bg-[#141414] border border-white/5">
                     <CardContent className="p-6">
                       <h3 className="text-white font-bold mb-4 flex items-center gap-2"><Wallet size={18} className="text-green-400" /> Recent Withdrawals</h3>
                       <div className="space-y-2">
