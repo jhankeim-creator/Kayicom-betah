@@ -112,7 +112,8 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         quantity: item.quantity,
         price: item.product.price,
         player_id: playerIds[item.product.id] || null,
-        credentials: credentials[item.product.id] || null
+        credentials: credentials[item.product.id] || null,
+        seller_id: item.product._seller_id || null
       }));
 
       const response = await axiosInstance.post(`/orders?user_id=${user.user_id}&user_email=${user.email}`, {
