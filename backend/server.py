@@ -3559,6 +3559,32 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
         logging.warning(f"Binance Pay transactions query failed: {e}")
         raise HTTPException(status_code=502, detail="Failed to connect to Binance API. Please try again.")
 
+    # Fallback: check C2C/P2P orders if not found in Pay transactions
+    if not verified:
+        try:
+            for trade_type in ("BUY", "SELL"):
+                c2c_result = await _binance_get_c2c_orders(api_key, api_secret, trade_type=trade_type, proxy_url=proxy_url)
+                logging.info(f"Binance C2C ({trade_type}): code={c2c_result.get('code', 'N/A')}, count={len(c2c_result.get('data', []))}")
+                if c2c_result.get("code") == "000000" and c2c_result.get("data"):
+                    for tx in c2c_result["data"]:
+                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                        if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
+                            continue
+                        tx_order_no = str(tx.get("orderNumber") or tx.get("advNo") or "").strip()
+                        tx_ad_no = str(tx.get("advNo") or "").strip()
+                        if binance_id in (tx_order_no, tx_ad_no):
+                            tx_amount = abs(float(tx.get("totalPrice") or tx.get("amount") or 0))
+                            if tx_amount >= order_amount - 0.01:
+                                verified = True
+                                matched_tx = tx
+                                matched_tx["_source"] = "c2c"
+                                break
+                if verified:
+                    break
+        except Exception as e:
+            logging.warning(f"Binance C2C query failed: {e}")
+
+    verify_source = matched_tx.get("_source", "pay")
     if verified:
         await db.orders.update_one(
             {"id": req.order_id},
@@ -3566,7 +3592,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "payment_status": "paid",
                 "order_status": "processing",
                 "transaction_id": binance_id,
-                "payment_proof_url": f"binance-pay-verified:{binance_id}",
+                "payment_proof_url": f"binance-{verify_source}-verified:{binance_id}",
                 "binance_pay_data": matched_tx,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
@@ -3577,21 +3603,22 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             logging.error(f"Auto-delivery error on Binance Pay: {e}")
         try:
             await _notify_admin_telegram(
-                "Binance Pay Auto-Verified",
+                f"Binance {'C2C' if verify_source == 'c2c' else 'Pay'} Auto-Verified",
                 [
                     f"Order: {req.order_id[:8]}",
                     f"Amount: ${order_amount:.2f}",
                     f"Binance ID: {binance_id}",
+                    f"Source: {verify_source.upper()}",
                     f"User: {order.get('user_email', 'N/A')}",
                 ],
             )
         except Exception:
             pass
-        return {"status": "paid", "message": "Payment verified automatically!", "verified": True}
+        return {"status": "paid", "message": "Payment verified automatically!", "verified": True, "source": verify_source}
     else:
         return {
             "status": "pending",
-            "message": "Payment not found yet. Please check your Order ID and try again in a few minutes.",
+            "message": "Payment not found yet. Make sure you entered the correct Order ID from Binance Pay or C2C, and try again in a few minutes.",
             "verified": False,
         }
 

@@ -4,7 +4,9 @@
  * Forwards requests to Binance API from Cloudflare's global edge network,
  * bypassing geo-restrictions on the origin server.
  * 
- * Deploy this as a Cloudflare Worker and set the URL in Admin Settings.
+ * Supports two formats:
+ * 1. Path-based: GET /sapi/v1/pay/transactions?timestamp=...
+ * 2. Query-param: GET /?endpoint=/sapi/v1/pay/transactions&timestamp=...
  * 
  * SETUP:
  * 1. Go to Cloudflare Dashboard → Workers & Pages → Create Worker
@@ -39,20 +41,36 @@ export default {
     }
 
     const url = new URL(request.url);
-    const targetPath = url.pathname.replace(/^\/proxy/, "");
+
+    // Support both formats:
+    // 1. ?endpoint=/sapi/v1/... (from backend _binance_api_call)
+    // 2. /sapi/v1/... (path-based)
+    let targetPath = url.searchParams.get("endpoint") || "";
+    let searchParams = new URLSearchParams(url.search);
+
+    if (targetPath) {
+      // Query-param format: remove "endpoint" from forwarded params
+      searchParams.delete("endpoint");
+    } else {
+      // Path-based format
+      targetPath = url.pathname.replace(/^\/proxy/, "");
+      searchParams = new URLSearchParams(url.search);
+    }
 
     const allowed = ALLOWED_PATHS.some((p) => targetPath.startsWith(p));
     if (!allowed) {
-      return new Response(JSON.stringify({ error: "Path not allowed" }), {
+      return new Response(JSON.stringify({ error: "Path not allowed", path: targetPath }), {
         status: 403,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
     const apiKey = request.headers.get("X-MBX-APIKEY") || "";
+    const queryString = searchParams.toString();
+    const suffix = queryString ? `?${queryString}` : "";
 
     for (const base of BINANCE_BASES) {
-      const targetUrl = `${base}${targetPath}${url.search}`;
+      const targetUrl = `${base}${targetPath}${suffix}`;
       try {
         const resp = await fetch(targetUrl, {
           method: request.method,

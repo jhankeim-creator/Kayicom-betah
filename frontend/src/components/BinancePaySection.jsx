@@ -64,10 +64,14 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
   return (
     <div className="space-y-5" data-testid="binance-pay-section">
       {/* Header Badge */}
-      <div className="flex justify-center">
+      <div className="flex justify-center gap-2 flex-wrap">
         <span className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 font-semibold text-sm">
           <Zap size={16} />
-          USDT · Instant Auto Verify
+          Binance Pay · Auto Verify
+        </span>
+        <span className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 font-semibold text-sm">
+          <Zap size={16} />
+          C2C / P2P · Auto Verify
         </span>
       </div>
 
@@ -127,17 +131,19 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
         <CardContent className="p-6">
           <h3 className="text-yellow-300 font-bold text-lg mb-4 flex items-center gap-2">
             <ShieldCheck size={20} />
-            Binance Pay Order ID
+            Binance Order ID
           </h3>
           <Input
             value={binanceOrderId}
             onChange={(e) => setBinanceOrderId(e.target.value)}
             className="bg-white/5 border-white/20 text-white placeholder:text-white/40 text-center text-lg py-6 font-mono"
-            placeholder="Enter your Binance Pay Order ID"
+            placeholder="Pay Order ID or C2C Order Number"
             data-testid="binance-order-id-input"
           />
           <p className="text-white/40 text-xs mt-2">
-            Found in your Binance app &rarr; Pay &rarr; Order History
+            <strong className="text-white/60">Binance Pay:</strong> Binance app &rarr; Pay &rarr; Order History
+            <br />
+            <strong className="text-white/60">C2C/P2P:</strong> Binance app &rarr; P2P &rarr; Order History
           </p>
 
           <Button
@@ -185,19 +191,19 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
           <ol className="space-y-3 text-white/70 text-sm">
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">1</span>
-              <span>Send <strong className="text-white">USDT</strong> to the UID above via <strong className="text-white">Binance Pay</strong></span>
+              <span>Send <strong className="text-white">USDT</strong> via <strong className="text-white">Binance Pay</strong> (to UID above) or <strong className="text-white">Binance C2C/P2P</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">2</span>
-              <span>Open your <strong className="text-white">Binance app &rarr; Pay &rarr; Order History</strong></span>
+              <span>Open <strong className="text-white">Binance app &rarr; Pay &rarr; Order History</strong> or <strong className="text-white">P2P &rarr; Order History</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">3</span>
-              <span>Copy the <strong className="text-white">Order ID</strong> from the transaction</span>
+              <span>Copy the <strong className="text-white">Order ID</strong> or <strong className="text-white">Order Number</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500/20 text-yellow-300 flex items-center justify-center text-xs font-bold">4</span>
-              <span>Paste the Order ID above and click <strong className="text-white">Verify Payment</strong></span>
+              <span>Paste it above and click <strong className="text-white">Verify Payment</strong></span>
             </li>
             <li className="flex items-start gap-3">
               <span className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/20 text-green-300 flex items-center justify-center text-xs font-bold">5</span>
