@@ -74,14 +74,23 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
   const cartItemCount = (cart || []).reduce((sum, item) => sum + item.quantity, 0);
   const displayName = user?.full_name || user?.username || user?.email || 'Customer';
 
+  const isSeller = user?.seller_status === 'approved' || user?.role === 'seller';
+  const isSellerPending = user?.seller_status && ['pending_kyc', 'kyc_submitted'].includes(user.seller_status);
+
   const menuItems = [
-    { icon: Store, label: 'Seller Center', href: '/seller', color: 'text-orange-400' },
+    ...(isSeller ? [
+      { icon: Store, label: 'Seller Center', href: '/seller', color: 'text-orange-400' },
+    ] : isSellerPending ? [
+      { icon: Store, label: 'Seller Application', href: '/seller/apply', color: 'text-yellow-400', badge: 'Pending' },
+    ] : [
+      { icon: Store, label: 'Become a Seller', href: '/seller/apply', color: 'text-green-400' },
+    ]),
     { icon: ShoppingBag, label: 'Purchased Orders', href: '#orders', color: 'text-white/70' },
     { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
     { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
+    { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70' },
     { icon: HelpCircle, label: 'Help Center', href: '/', color: 'text-white/70' },
-    { icon: MessageCircle, label: 'Chat', href: '/', badge: null, color: 'text-white/70' },
-    { icon: Bell, label: 'Notification', href: '/', color: 'text-white/70' },
+    { icon: Bell, label: 'Notification', href: '/notifications', color: 'text-white/70' },
     { icon: Settings, label: 'Setting', href: '/', color: 'text-white/70' },
   ];
 
@@ -139,7 +148,9 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
                     <span className="text-white text-sm">{item.label}</span>
                   </span>
                   <div className="flex items-center gap-2">
-                    {item.badge && <span className="bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center">{item.badge}</span>}
+                    {item.badge && (
+                      <span className="bg-yellow-500/20 text-yellow-400 text-[10px] font-semibold rounded px-2 py-0.5">{item.badge}</span>
+                    )}
                     <ChevronRight size={16} className="text-white/30" />
                   </div>
                 </Link>

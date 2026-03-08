@@ -296,32 +296,33 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
 
           {/* Escrow Actions */}
           {order.escrow_status === 'held' && order.order_status === 'completed' && (
-            <Card className="glass-effect border-yellow-500/30 border-2">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <ShieldCheck className="text-yellow-400" size={28} />
-                  <h3 className="text-xl font-bold text-yellow-400">Payment in Escrow</h3>
+            <Card className="rounded-xl bg-[#141414] border border-yellow-500/20">
+              <CardContent className="p-5">
+                <div className="flex items-center gap-3 mb-3">
+                  <ShieldCheck className="text-yellow-400" size={24} />
+                  <h3 className="text-lg font-bold text-yellow-400">Payment in Escrow</h3>
                 </div>
-                <p className="text-white/70 text-sm mb-4">
-                  Your payment is held securely. Please confirm if the delivery is correct, or open a dispute if there's an issue.
+                <p className="text-white/60 text-sm mb-4">
+                  Your payment is held securely. Please verify the delivery and confirm, or open a dispute if something is wrong.
                 </p>
-                <div className="flex gap-3">
-                  <Button className="flex-1 bg-green-600 text-white" onClick={async () => {
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button className="flex-1 bg-green-500 hover:bg-green-600 text-black font-semibold rounded-lg py-3" onClick={async () => {
+                    if (!window.confirm('Are you sure the delivery is correct? This will release payment to the seller after 3 days.')) return;
                     try {
                       await axiosInstance.post(`/orders/${order.id}/escrow?user_id=${order.user_id}`, { action: 'confirm' });
                       toast.success('Delivery confirmed! Seller payment will release in 3 days.');
-                      window.location.reload();
+                      loadOrder();
                     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
                   }}>
                     <CheckCircle size={18} className="mr-2" /> Confirm Delivery
                   </Button>
-                  <Button variant="outline" className="flex-1 border-red-400 text-red-400" onClick={async () => {
-                    const reason = prompt('Describe the issue:');
-                    if (!reason) return;
+                  <Button className="flex-1 bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 font-semibold rounded-lg py-3" onClick={async () => {
+                    const reason = window.prompt('Describe the issue with your order:');
+                    if (!reason || !reason.trim()) return;
                     try {
-                      await axiosInstance.post(`/orders/${order.id}/escrow?user_id=${order.user_id}`, { action: 'dispute', reason });
-                      toast.success('Dispute opened');
-                      window.location.reload();
+                      await axiosInstance.post(`/orders/${order.id}/escrow?user_id=${order.user_id}`, { action: 'dispute', reason: reason.trim() });
+                      toast.success('Dispute opened. Our team will review it.');
+                      loadOrder();
                     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
                   }}>
                     <AlertTriangle size={18} className="mr-2" /> Open Dispute
@@ -332,22 +333,30 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
           )}
 
           {order.escrow_status === 'buyer_confirmed' && (
-            <Card className="glass-effect border-green-500/20">
-              <CardContent className="p-4 text-center">
-                <p className="text-green-300">Delivery confirmed. Seller payment releases on {order.escrow_release_at ? new Date(order.escrow_release_at).toLocaleDateString() : '3 days'}.</p>
-              </CardContent>
-            </Card>
+            <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
+              <CheckCircle className="text-green-400 mx-auto mb-2" size={24} />
+              <p className="text-green-300 font-semibold text-sm">Delivery confirmed</p>
+              <p className="text-white/40 text-xs mt-1">Seller payment releases on {order.escrow_release_at ? new Date(order.escrow_release_at).toLocaleDateString() : 'in 3 days'}</p>
+            </div>
           )}
 
           {order.escrow_status === 'disputed' && (
-            <Card className="glass-effect border-red-500/20">
-              <CardContent className="p-4 flex items-center justify-between">
-                <p className="text-red-300">Dispute is open. Our team will review it.</p>
-                <Button size="sm" onClick={() => window.location.href = '/disputes'} className="bg-red-600 text-white text-xs">
-                  <AlertTriangle size={14} className="mr-1" /> View Dispute
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="text-red-400" size={20} />
+                <p className="text-red-300 text-sm font-semibold">Dispute is open. Our team will review it.</p>
+              </div>
+              <Button size="sm" onClick={() => window.location.href = '/disputes'} className="bg-red-500 hover:bg-red-600 text-white text-xs rounded-lg">
+                View Dispute
+              </Button>
+            </div>
+          )}
+
+          {order.escrow_status === 'released' && (
+            <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
+              <CheckCircle className="text-green-400 mx-auto mb-2" size={24} />
+              <p className="text-green-300 font-semibold text-sm">Escrow released - Seller has been paid</p>
+            </div>
           )}
 
           {/* Message Seller */}

@@ -353,7 +353,10 @@ function App() {
             path="/seller"
             element={
               <ProtectedRoute>
-                <SellerDashboard user={user} logout={logout} settings={settings} />
+                {user?.seller_status === 'approved' || user?.role === 'seller'
+                  ? <SellerDashboard user={user} logout={logout} settings={settings} />
+                  : <SellerApplyPage user={user} logout={logout} settings={settings} />
+                }
               </ProtectedRoute>
             }
           />
