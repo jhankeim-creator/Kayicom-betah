@@ -157,7 +157,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
     }
     setApplyingCoupon(true);
     try {
-      const res = await axiosInstance.get(`/coupons/validate?code=${encodeURIComponent(code)}&amount=${subtotal}`);
+      const res = await axiosInstance.get(`/coupons/validate?code=${encodeURIComponent(code)}&amount=${subtotal}${user?.id ? `&user_id=${user.id}` : ''}`);
       setDiscountAmount(res.data?.discount_amount || 0);
       setAppliedCoupon({ code: res.data?.code || code.toUpperCase() });
       toast.success('Coupon applied');

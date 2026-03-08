@@ -195,19 +195,60 @@ const AdminSellers = ({ user, logout, settings }) => {
             </DialogHeader>
             {selectedSeller && (
               <div className="space-y-4 py-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div><p className="text-white/50 text-xs">Email</p><p className="text-white text-sm">{selectedSeller.email}</p></div>
-                  <div><p className="text-white/50 text-xs">Name</p><p className="text-white text-sm">{selectedSeller.full_name}</p></div>
-                  <div><p className="text-white/50 text-xs">Status</p>
-                    <Badge className={statusColors[selectedSeller.seller_status] || ''}>
-                      {(selectedSeller.seller_status || '').replace('_', ' ')}
-                    </Badge>
+                {/* Personal Information */}
+                <div>
+                  <p className="text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-2">Personal Information</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><p className="text-white/50 text-xs">Email</p><p className="text-white text-sm">{selectedSeller.email}</p></div>
+                    <div><p className="text-white/50 text-xs">Name</p><p className="text-white text-sm">{selectedSeller.full_name}</p></div>
+                    {selectedSeller.seller_phone && (
+                      <div><p className="text-white/50 text-xs">Phone</p><p className="text-white text-sm">{selectedSeller.seller_phone}</p></div>
+                    )}
+                    {selectedSeller.seller_date_of_birth && (
+                      <div><p className="text-white/50 text-xs">Date of Birth</p><p className="text-white text-sm">{selectedSeller.seller_date_of_birth}</p></div>
+                    )}
+                    {selectedSeller.seller_country && (
+                      <div><p className="text-white/50 text-xs">Country</p><p className="text-white text-sm">{selectedSeller.seller_country}</p></div>
+                    )}
+                    {selectedSeller.seller_city && (
+                      <div><p className="text-white/50 text-xs">City</p><p className="text-white text-sm">{selectedSeller.seller_city}</p></div>
+                    )}
+                    {selectedSeller.seller_address && (
+                      <div className="col-span-2"><p className="text-white/50 text-xs">Address</p><p className="text-white text-sm">{selectedSeller.seller_address}</p></div>
+                    )}
+                    <div><p className="text-white/50 text-xs">Status</p>
+                      <Badge className={statusColors[selectedSeller.seller_status] || ''}>
+                        {(selectedSeller.seller_status || '').replace('_', ' ')}
+                      </Badge>
+                    </div>
+                    <div><p className="text-white/50 text-xs">Products</p><p className="text-white text-sm">{selectedSeller.product_count}</p></div>
                   </div>
-                  <div><p className="text-white/50 text-xs">Products</p><p className="text-white text-sm">{selectedSeller.product_count}</p></div>
                 </div>
 
+                {/* Store Info */}
                 {selectedSeller.seller_bio && (
                   <div><p className="text-white/50 text-xs">Bio</p><p className="text-white text-sm">{selectedSeller.seller_bio}</p></div>
+                )}
+
+                {/* Selling Experience */}
+                {(selectedSeller.seller_selling_platforms || selectedSeller.seller_years_experience != null || selectedSeller.seller_selling_proof_url) && (
+                  <div>
+                    <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">Selling Experience</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedSeller.seller_selling_platforms && (
+                        <div className="col-span-2"><p className="text-white/50 text-xs">Platforms</p><p className="text-white text-sm">{selectedSeller.seller_selling_platforms}</p></div>
+                      )}
+                      {selectedSeller.seller_years_experience != null && (
+                        <div><p className="text-white/50 text-xs">Years Experience</p><p className="text-white text-sm">{selectedSeller.seller_years_experience} year(s)</p></div>
+                      )}
+                      {selectedSeller.seller_selling_proof_url && (
+                        <div className="col-span-2">
+                          <p className="text-white/50 text-xs mb-1">Proof of Sales</p>
+                          <img src={selectedSeller.seller_selling_proof_url} alt="Sales proof" className="w-full max-w-sm rounded-lg border border-white/20" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 )}
 
                 {/* KYC Documents */}

@@ -8,12 +8,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { Store, Upload, FileCheck, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Store, Upload, FileCheck, Clock, CheckCircle, XCircle, User, MapPin, ShoppingBag } from 'lucide-react';
 import { toast } from 'sonner';
 
 const SellerApplyPage = ({ user, logout, settings }) => {
   const [storeName, setStoreName] = useState('');
   const [bio, setBio] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [country, setCountry] = useState('');
+  const [dateOfBirth, setDateOfBirth] = useState('');
+  const [sellingPlatforms, setSellingPlatforms] = useState('');
+  const [yearsExperience, setYearsExperience] = useState('');
+  const [sellingProofUrl, setSellingProofUrl] = useState('');
   const [docUrl, setDocUrl] = useState('');
   const [selfieUrl, setSelfieUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -51,10 +60,23 @@ const SellerApplyPage = ({ user, logout, settings }) => {
 
   const handleApply = async () => {
     if (!storeName.trim()) { toast.error('Enter your store name'); return; }
+    if (!phone.trim()) { toast.error('Enter your phone number'); return; }
+    if (!country.trim()) { toast.error('Select your country'); return; }
+    if (!city.trim()) { toast.error('Enter your city'); return; }
+    if (!address.trim()) { toast.error('Enter your address'); return; }
+    if (!dateOfBirth) { toast.error('Enter your date of birth'); return; }
     try {
       await axiosInstance.post(`/seller/apply?user_id=${user.id}`, {
         store_name: storeName.trim(),
         bio: bio.trim() || null,
+        phone: phone.trim(),
+        address: address.trim(),
+        city: city.trim(),
+        country: country.trim(),
+        date_of_birth: dateOfBirth,
+        selling_platforms: sellingPlatforms.trim() || null,
+        years_experience: yearsExperience ? parseInt(yearsExperience, 10) : null,
+        selling_proof_url: sellingProofUrl || null,
       });
       toast.success('Application submitted! Now upload your KYC documents.');
       setStep('kyc');
@@ -83,6 +105,13 @@ const SellerApplyPage = ({ user, logout, settings }) => {
     rejected: { icon: <XCircle className="text-red-400" size={48} />, color: 'red', label: 'Rejected' },
   };
 
+  const countries = [
+    'Haiti', 'United States', 'Canada', 'France', 'Dominican Republic',
+    'Jamaica', 'Bahamas', 'Trinidad and Tobago', 'Barbados', 'Guadeloupe',
+    'Martinique', 'Saint Lucia', 'Grenada', 'Antigua and Barbuda', 'Dominica',
+    'Saint Vincent', 'Belize', 'Suriname', 'Guyana', 'Other'
+  ];
+
   return (
     <div className="min-h-screen gradient-bg">
       <Navbar user={user} logout={logout} cartItemCount={0} settings={settings} />
@@ -94,19 +123,112 @@ const SellerApplyPage = ({ user, logout, settings }) => {
 
         {step === 'apply' && (
           <Card className="glass-effect border-white/20">
-            <CardContent className="p-6 space-y-4">
-              <h2 className="text-xl font-bold text-white">Step 1: Store Information</h2>
+            <CardContent className="p-6 space-y-6">
+              {/* Section 1: Personal Information */}
               <div>
-                <Label className="text-white">Store Name *</Label>
-                <Input value={storeName} onChange={(e) => setStoreName(e.target.value)}
-                  className="bg-white/10 border-white/20 text-white mt-1" placeholder="Your store name" />
+                <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+                  <User className="text-cyan-400" size={20} /> Personal Information
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <Label className="text-white">Full Name</Label>
+                    <Input value={user?.full_name || ''} disabled
+                      className="bg-white/5 border-white/10 text-white/60 mt-1" />
+                    <p className="text-white/30 text-xs mt-1">From your account</p>
+                  </div>
+                  <div>
+                    <Label className="text-white">Phone Number *</Label>
+                    <Input value={phone} onChange={(e) => setPhone(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" placeholder="+509 XXXX XXXX" />
+                  </div>
+                  <div>
+                    <Label className="text-white">Date of Birth *</Label>
+                    <Input type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" />
+                  </div>
+                  <div>
+                    <Label className="text-white">Country *</Label>
+                    <Select value={country} onValueChange={setCountry}>
+                      <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1">
+                        <SelectValue placeholder="Select country" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {countries.map(c => (
+                          <SelectItem key={c} value={c}>{c}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-white">City *</Label>
+                    <Input value={city} onChange={(e) => setCity(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" placeholder="Port-au-Prince" />
+                  </div>
+                  <div className="md:col-span-2">
+                    <Label className="text-white">Address *</Label>
+                    <Input value={address} onChange={(e) => setAddress(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" placeholder="Your full address" />
+                  </div>
+                </div>
               </div>
+
+              {/* Section 2: Store Information */}
               <div>
-                <Label className="text-white">Bio / Description</Label>
-                <Textarea value={bio} onChange={(e) => setBio(e.target.value)}
-                  className="bg-white/10 border-white/20 text-white mt-1" rows={3}
-                  placeholder="Tell us about your business..." />
+                <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+                  <Store className="text-purple-400" size={20} /> Store Information
+                </h2>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-white">Store Name *</Label>
+                    <Input value={storeName} onChange={(e) => setStoreName(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" placeholder="Your store name" />
+                  </div>
+                  <div>
+                    <Label className="text-white">Bio / Description</Label>
+                    <Textarea value={bio} onChange={(e) => setBio(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" rows={3}
+                      placeholder="Tell us about your business..." />
+                  </div>
+                </div>
               </div>
+
+              {/* Section 3: Selling Experience */}
+              <div>
+                <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-4">
+                  <ShoppingBag className="text-green-400" size={20} /> Selling Experience
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <Label className="text-white">Platforms where you already sell</Label>
+                    <Input value={sellingPlatforms} onChange={(e) => setSellingPlatforms(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1"
+                      placeholder="eBay, Amazon, Facebook Marketplace, Instagram..." />
+                    <p className="text-white/30 text-xs mt-1">Separate multiple platforms with commas</p>
+                  </div>
+                  <div>
+                    <Label className="text-white">Years of selling experience</Label>
+                    <Input type="number" min="0" max="50" value={yearsExperience}
+                      onChange={(e) => setYearsExperience(e.target.value)}
+                      className="bg-white/10 border-white/20 text-white mt-1" placeholder="0" />
+                  </div>
+                  <div>
+                    <Label className="text-white">Proof of sales (screenshot)</Label>
+                    <Input type="file" accept="image/*" disabled={uploading}
+                      className="bg-white/10 border-white/20 text-white mt-1 cursor-pointer"
+                      onChange={async (e) => {
+                        const url = await uploadImage(e.target.files?.[0]);
+                        if (url) { setSellingProofUrl(url); toast.success('Proof uploaded'); }
+                      }} />
+                    {sellingProofUrl && (
+                      <div className="mt-2">
+                        <Badge className="bg-green-500/20 text-green-300">Proof uploaded</Badge>
+                      </div>
+                    )}
+                    <p className="text-white/30 text-xs mt-1">Screenshot from your other selling platforms</p>
+                  </div>
+                </div>
+              </div>
+
               <Button onClick={handleApply} className="w-full bg-gradient-to-r from-cyan-500 to-purple-500 text-white">
                 Continue to KYC Verification
               </Button>

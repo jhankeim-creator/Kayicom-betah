@@ -79,6 +79,14 @@ class User(UserBase):
     seller_status: Optional[str] = None  # pending_kyc, kyc_submitted, approved, rejected
     seller_store_name: Optional[str] = None
     seller_bio: Optional[str] = None
+    seller_phone: Optional[str] = None
+    seller_address: Optional[str] = None
+    seller_city: Optional[str] = None
+    seller_country: Optional[str] = None
+    seller_date_of_birth: Optional[str] = None
+    seller_selling_platforms: Optional[str] = None
+    seller_years_experience: Optional[int] = None
+    seller_selling_proof_url: Optional[str] = None
     seller_kyc_document_url: Optional[str] = None
     seller_kyc_selfie_url: Optional[str] = None
     seller_kyc_submitted_at: Optional[datetime] = None
@@ -114,6 +122,14 @@ class LoginRequest(BaseModel):
 class SellerApplicationRequest(BaseModel):
     store_name: str
     bio: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    selling_platforms: Optional[str] = None
+    years_experience: Optional[int] = None
+    selling_proof_url: Optional[str] = None
 
 
 class SellerKYCSubmit(BaseModel):
@@ -598,7 +614,9 @@ class Coupon(BaseModel):
     active: bool = True
     min_order_amount: float = 0.0
     usage_limit: Optional[int] = None
+    max_uses_per_user: Optional[int] = None
     used_count: int = 0
+    user_usage: dict = Field(default_factory=dict)
     expires_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -609,6 +627,7 @@ class CouponCreate(BaseModel):
     active: bool = True
     min_order_amount: float = 0.0
     usage_limit: Optional[int] = None
+    max_uses_per_user: Optional[int] = None
     expires_at: Optional[datetime] = None
 
 class CouponUpdate(BaseModel):
@@ -617,6 +636,7 @@ class CouponUpdate(BaseModel):
     active: Optional[bool] = None
     min_order_amount: Optional[float] = None
     usage_limit: Optional[int] = None
+    max_uses_per_user: Optional[int] = None
     expires_at: Optional[datetime] = None
 
 # ==================== PRODUCT CODE MODELS (Auto-Delivery) ====================
@@ -2178,8 +2198,8 @@ async def delete_product_code(product_id: str, code_id: str):
 def _normalize_coupon_code(code: str) -> str:
     return (code or "").strip().upper()
 
-async def _get_valid_coupon(code: str, order_amount: float) -> Optional[dict]:
-    """Return coupon doc if valid for given amount, else None."""
+async def _get_valid_coupon(code: str, order_amount: float, user_id: Optional[str] = None) -> Optional[dict]:
+    """Return coupon doc if valid for given amount and user, else None."""
     normalized = _normalize_coupon_code(code)
     if not normalized:
         return None
@@ -2202,6 +2222,12 @@ async def _get_valid_coupon(code: str, order_amount: float) -> Optional[dict]:
     usage_limit = coupon.get("usage_limit")
     if usage_limit is not None and int(coupon.get("used_count", 0)) >= int(usage_limit):
         return None
+    max_per_user = coupon.get("max_uses_per_user")
+    if max_per_user is not None and user_id:
+        user_usage = coupon.get("user_usage", {})
+        user_count = int(user_usage.get(user_id, 0))
+        if user_count >= int(max_per_user):
+            return None
     return coupon
 
 def _calculate_discount(coupon: dict, subtotal: float) -> float:
@@ -2216,7 +2242,7 @@ def _calculate_discount(coupon: dict, subtotal: float) -> float:
     return 0.0
 
 async def _record_coupon_usage_if_needed(order_id: str):
-    """Increment coupon usage once per paid order."""
+    """Increment coupon usage (global + per-user) once per paid order."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         return
@@ -2230,17 +2256,19 @@ async def _record_coupon_usage_if_needed(order_id: str):
 
     coupon = await db.coupons.find_one({"code": code}, {"_id": 0})
     if not coupon:
-        # Still mark recorded to avoid retry loops
         await db.orders.update_one({"id": order_id}, {"$set": {"coupon_usage_recorded": True}})
         return
 
     usage_limit = coupon.get("usage_limit")
     if usage_limit is not None and int(coupon.get("used_count", 0)) >= int(usage_limit):
-        # Coupon exhausted; keep order as-is but mark recorded to avoid retry loops
         await db.orders.update_one({"id": order_id}, {"$set": {"coupon_usage_recorded": True}})
         return
 
-    await db.coupons.update_one({"code": code}, {"$inc": {"used_count": 1}})
+    order_user_id = order.get("user_id", "")
+    update_ops = {"$inc": {"used_count": 1}}
+    if order_user_id:
+        update_ops["$inc"][f"user_usage.{order_user_id}"] = 1
+    await db.coupons.update_one({"code": code}, update_ops)
     await db.orders.update_one({"id": order_id}, {"$set": {"coupon_usage_recorded": True}})
 
 
@@ -2364,15 +2392,24 @@ async def _record_loyalty_credits_if_needed(order_id: str):
     })
 
 @api_router.get("/coupons/validate")
-async def validate_coupon(code: str, amount: float):
-    coupon = await _get_valid_coupon(code, amount)
+async def validate_coupon(code: str, amount: float, user_id: Optional[str] = None):
+    coupon = await _get_valid_coupon(code, amount, user_id=user_id)
     if not coupon:
         raise HTTPException(status_code=400, detail="Invalid coupon")
     discount = _calculate_discount(coupon, float(amount))
+    remaining_global = None
+    if coupon.get("usage_limit") is not None:
+        remaining_global = max(0, int(coupon["usage_limit"]) - int(coupon.get("used_count", 0)))
+    remaining_user = None
+    if coupon.get("max_uses_per_user") is not None and user_id:
+        user_usage = coupon.get("user_usage", {})
+        remaining_user = max(0, int(coupon["max_uses_per_user"]) - int(user_usage.get(user_id, 0)))
     return {
         "code": coupon["code"],
         "discount_amount": discount,
-        "total_after_discount": float(amount) - discount
+        "total_after_discount": float(amount) - discount,
+        "remaining_uses": remaining_global,
+        "remaining_user_uses": remaining_user,
     }
 
 @api_router.get("/coupons", response_model=List[Coupon])
@@ -2409,6 +2446,7 @@ async def create_coupon(data: CouponCreate):
         active=bool(data.active),
         min_order_amount=float(data.min_order_amount or 0.0),
         usage_limit=data.usage_limit,
+        max_uses_per_user=data.max_uses_per_user,
         expires_at=data.expires_at,
     )
     doc = coupon.model_dump()
@@ -2536,7 +2574,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
     coupon_code = _normalize_coupon_code(order_data.coupon_code) if order_data.coupon_code else None
     discount_amount = 0.0
     if coupon_code:
-        coupon = await _get_valid_coupon(coupon_code, subtotal)
+        coupon = await _get_valid_coupon(coupon_code, subtotal, user_id=user_id)
         if not coupon:
             raise HTTPException(status_code=400, detail="Invalid coupon")
         discount_amount = _calculate_discount(coupon, subtotal)
@@ -3563,6 +3601,14 @@ async def seller_apply(payload: SellerApplicationRequest, user_id: str):
         "seller_status": "pending_kyc",
         "seller_store_name": payload.store_name.strip(),
         "seller_bio": (payload.bio or "").strip() or None,
+        "seller_phone": (payload.phone or "").strip() or None,
+        "seller_address": (payload.address or "").strip() or None,
+        "seller_city": (payload.city or "").strip() or None,
+        "seller_country": (payload.country or "").strip() or None,
+        "seller_date_of_birth": (payload.date_of_birth or "").strip() or None,
+        "seller_selling_platforms": (payload.selling_platforms or "").strip() or None,
+        "seller_years_experience": payload.years_experience,
+        "seller_selling_proof_url": (payload.selling_proof_url or "").strip() or None,
     }})
     updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
     return updated
