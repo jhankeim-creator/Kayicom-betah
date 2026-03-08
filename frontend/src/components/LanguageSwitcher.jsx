@@ -24,7 +24,7 @@ const LanguageSwitcher = () => {
         <Button 
           variant="ghost"
           size="sm"
-          className="text-gray-300 hover:bg-white/5 hover:text-pink-400 flex items-center gap-1 p-1 md:p-2"
+          className="text-gray-300 hover:bg-white/5 hover:text-green-400 flex items-center gap-1 p-1 md:p-2"
           data-testid="language-switcher"
         >
           <span className="text-base md:text-xl">{currentLang.flag}</span>
@@ -34,7 +34,7 @@ const LanguageSwitcher = () => {
       <DropdownMenuContent align="end" className="w-40 bg-gray-900 border-white/10">
         <DropdownMenuItem 
           onClick={() => switchLanguage('en')}
-          className={`cursor-pointer text-gray-300 hover:text-pink-400 ${language === 'en' ? 'bg-white/5' : ''}`}
+          className={`cursor-pointer text-gray-300 hover:text-green-400 ${language === 'en' ? 'bg-white/5' : ''}`}
           data-testid="lang-en"
         >
           <span className="text-xl mr-2">🇺🇸</span>
@@ -42,7 +42,7 @@ const LanguageSwitcher = () => {
         </DropdownMenuItem>
         <DropdownMenuItem 
           onClick={() => switchLanguage('fr')}
-          className={`cursor-pointer text-gray-300 hover:text-pink-400 ${language === 'fr' ? 'bg-white/5' : ''}`}
+          className={`cursor-pointer text-gray-300 hover:text-green-400 ${language === 'fr' ? 'bg-white/5' : ''}`}
           data-testid="lang-fr"
         >
           <span className="text-xl mr-2">🇫🇷</span>

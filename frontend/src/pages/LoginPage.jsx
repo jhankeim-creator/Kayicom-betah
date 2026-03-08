@@ -43,7 +43,7 @@ const LoginPage = ({ login, settings }) => {
   return (
     <div className="min-h-screen gradient-bg flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <Link to="/" className="inline-flex items-center text-gray-400 hover:text-cyan-400 mb-6 transition" data-testid="back-home">
+        <Link to="/" className="inline-flex items-center text-gray-400 hover:text-green-400 mb-6 transition" data-testid="back-home">
           <ArrowLeft className="mr-2" size={20} />
           {t('home')}
         </Link>
@@ -112,7 +112,7 @@ const LoginPage = ({ login, settings }) => {
                 </Label>
               </div>
               <div className="text-right">
-                <Link to="/forgot-password" className="text-sm text-cyan-400 hover:underline" data-testid="forgot-password-link">
+                <Link to="/forgot-password" className="text-sm text-green-400 hover:underline" data-testid="forgot-password-link">
                   {t('forgotPassword')}
                 </Link>
               </div>
@@ -130,7 +130,7 @@ const LoginPage = ({ login, settings }) => {
             <div className="mt-6 text-center">
               <p className="text-gray-400">
                 {t('dontHaveAccount')}{' '}
-                <Link to="/register" className="text-cyan-400 font-semibold hover:underline" data-testid="register-link">
+                <Link to="/register" className="text-green-400 font-semibold hover:underline" data-testid="register-link">
                   {t('register')}
                 </Link>
               </p>

@@ -171,7 +171,7 @@ const AdminCustomers = ({ user, logout, settings }) => {
               <Users className="text-white" />
               <h1 className="text-4xl font-bold text-white">Manage Customers</h1>
             </div>
-            <Button onClick={() => (window.location.href = '/admin')} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+            <Button onClick={() => (window.location.href = '/admin')} className="bg-green-500 text-white">
               🏠 Admin Home
             </Button>
           </div>
@@ -189,7 +189,7 @@ const AdminCustomers = ({ user, logout, settings }) => {
                   }}
                 />
                 <div className="flex gap-2">
-                  <Button className="bg-white text-purple-600 hover:bg-gray-100" onClick={loadCustomers}>
+                  <Button className="bg-white text-green-600 hover:bg-gray-100" onClick={loadCustomers}>
                     Search
                   </Button>
                   <Button
@@ -341,7 +341,7 @@ const AdminCustomers = ({ user, logout, settings }) => {
                         onChange={(e) => setWalletReason(e.target.value)}
                         className="bg-white/10 border-white/20 text-white"
                       />
-                      <Button onClick={submitWalletAdjust} disabled={walletSubmitting} className="bg-white text-purple-600 hover:bg-gray-100 mt-2">
+                      <Button onClick={submitWalletAdjust} disabled={walletSubmitting} className="bg-white text-green-600 hover:bg-gray-100 mt-2">
                         {walletSubmitting ? '...' : 'Apply'}
                       </Button>
                     </div>
@@ -375,7 +375,7 @@ const AdminCustomers = ({ user, logout, settings }) => {
                         onChange={(e) => setCreditsReason(e.target.value)}
                         className="bg-white/10 border-white/20 text-white"
                       />
-                      <Button onClick={submitCreditsAdjust} disabled={creditsSubmitting} className="bg-white text-purple-600 hover:bg-gray-100 mt-2">
+                      <Button onClick={submitCreditsAdjust} disabled={creditsSubmitting} className="bg-white text-green-600 hover:bg-gray-100 mt-2">
                         {creditsSubmitting ? '...' : 'Apply'}
                       </Button>
                     </div>

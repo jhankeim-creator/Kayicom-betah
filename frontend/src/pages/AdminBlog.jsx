@@ -196,7 +196,7 @@ const AdminBlog = ({ user, logout, settings }) => {
               )}
             </div>
             <Link to="/admin">
-              <Button className="bg-white text-purple-600 hover:bg-gray-100">Admin Home</Button>
+              <Button className="bg-white text-green-600 hover:bg-gray-100">Admin Home</Button>
             </Link>
           </div>
 

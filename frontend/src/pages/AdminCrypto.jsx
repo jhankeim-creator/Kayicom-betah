@@ -75,7 +75,7 @@ const AdminCrypto = () => {
         <h2 className="text-2xl font-bold text-white">Crypto Management</h2>
         <Button 
           onClick={() => window.location.href = '/admin'}
-          className="bg-gradient-to-r from-pink-500 to-blue-500 text-white"
+          className="bg-green-500 text-white"
         >
           🏠 Admin Home
         </Button>
@@ -145,7 +145,7 @@ const AdminCrypto = () => {
               <Button
                 onClick={updateConfig}
                 disabled={loading}
-                className="w-full bg-white text-purple-600 hover:bg-gray-100 mt-6"
+                className="w-full bg-white text-green-600 hover:bg-gray-100 mt-6"
               >
                 {loading ? 'Saving...' : 'Save Configuration'}
               </Button>
@@ -209,7 +209,7 @@ const AdminCrypto = () => {
                               {...(proofIsInline && !canPreviewProof
                                 ? { download: 'payment-proof.png' }
                                 : { target: '_blank', rel: 'noopener noreferrer' })}
-                              className="text-cyan-300 text-xs underline"
+                              className="text-green-300 text-xs underline"
                             >
                               {proofIsInline && !canPreviewProof ? 'Download payment proof' : 'View payment proof'}
                             </a>
@@ -217,7 +217,7 @@ const AdminCrypto = () => {
                               <img
                                 src={proofUrl}
                                 alt="Payment proof"
-                                className="mt-2 h-20 w-auto rounded border border-cyan-500/30 cursor-zoom-in"
+                                className="mt-2 h-20 w-auto rounded border border-green-500/30 cursor-zoom-in"
                                 onClick={() => {
                                   openPaymentProof(proofUrl, { filename: 'payment-proof.png', action: 'open' });
                                 }}

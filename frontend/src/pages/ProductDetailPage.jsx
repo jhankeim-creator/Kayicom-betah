@@ -228,7 +228,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                 </div>
                 <Button
                   size="lg"
-                  className="w-full bg-white text-purple-600 hover:bg-gray-100 text-lg py-6"
+                  className="w-full bg-white text-green-600 hover:bg-gray-100 text-lg py-6"
                   onClick={handleAddToCart}
                   disabled={!selectedProduct.stock_available}
                   data-testid="add-to-cart-btn"

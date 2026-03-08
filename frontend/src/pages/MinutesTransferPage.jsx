@@ -399,7 +399,7 @@ const MinutesTransferPage = ({ user, logout, settings }) => {
               <Button
                 onClick={createTransfer}
                 disabled={!enabled || creating}
-                className="w-full bg-white text-purple-600 hover:bg-gray-100"
+                className="w-full bg-white text-green-600 hover:bg-gray-100"
               >
                 {creating ? 'Creating...' : 'Submit'}
               </Button>

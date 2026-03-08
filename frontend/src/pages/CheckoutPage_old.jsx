@@ -76,7 +76,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
         <div className="container mx-auto px-4 py-20 text-center">
           <h2 className="text-2xl text-white mb-4">You must login to continue</h2>
-          <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} className="bg-white text-purple-600 hover:bg-gray-100">
+          <Button onClick={() => navigate('/login', { state: { from: location }, replace: true })} className="bg-white text-green-600 hover:bg-gray-100">
             Login
           </Button>
         </div>
@@ -102,7 +102,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                   <div className="flex items-center space-x-3 p-3 rounded-lg glass-effect cursor-pointer" data-testid="payment-crypto">
                     <RadioGroupItem value="crypto_plisio" id="crypto" />
                     <Label htmlFor="crypto" className="flex items-center space-x-3 cursor-pointer flex-1">
-                      <Wallet className="text-cyan-400" size={20} />
+                      <Wallet className="text-green-400" size={20} />
                       <div>
                         <div className="text-white font-semibold text-sm">Cryptocurrency (Automatic)</div>
                         <div className="text-white/70 text-xs">Bitcoin, Ethereum, USDT</div>
@@ -124,7 +124,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                   <div className="flex items-center space-x-3 p-3 rounded-lg glass-effect cursor-pointer" data-testid="payment-skrill">
                     <RadioGroupItem value="skrill" id="skrill" />
                     <Label htmlFor="skrill" className="flex items-center space-x-3 cursor-pointer flex-1">
-                      <CreditCard className="text-purple-400" size={20} />
+                      <CreditCard className="text-green-400" size={20} />
                       <div>
                         <div className="text-white font-semibold text-sm">Skrill</div>
                         <div className="text-white/70 text-xs">Manual verification required</div>
@@ -212,7 +212,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
               </div>
 
               <Button
-                className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg"
+                className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg"
                 onClick={handleCheckout}
                 disabled={loading}
                 data-testid="place-order-btn"

@@ -21,7 +21,7 @@ const CartPage = ({ user, logout, cart, removeFromCart, updateCartQuantity, sett
             <ShoppingBag className="mx-auto mb-6 text-white" size={80} />
             <h2 className="text-2xl text-white mb-4">Your cart is empty</h2>
             <Link to="/products">
-              <Button className="bg-white text-purple-600 hover:bg-gray-100" data-testid="continue-shopping-btn">
+              <Button className="bg-white text-green-600 hover:bg-gray-100" data-testid="continue-shopping-btn">
                 Continue Shopping
               </Button>
             </Link>
@@ -109,7 +109,7 @@ const CartPage = ({ user, logout, cart, removeFromCart, updateCartQuantity, sett
                   </div>
 
                   <Link to="/checkout">
-                    <Button className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg" data-testid="checkout-btn">
+                    <Button className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg" data-testid="checkout-btn">
                       Checkout
                     </Button>
                   </Link>

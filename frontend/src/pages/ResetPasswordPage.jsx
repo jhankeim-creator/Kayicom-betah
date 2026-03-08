@@ -49,7 +49,7 @@ const ResetPasswordPage = ({ settings }) => {
   return (
     <div className="min-h-screen gradient-bg flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <Link to="/login" className="inline-flex items-center text-gray-400 hover:text-cyan-400 mb-6 transition" data-testid="back-login">
+        <Link to="/login" className="inline-flex items-center text-gray-400 hover:text-green-400 mb-6 transition" data-testid="back-login">
           <ArrowLeft className="mr-2" size={20} />
           {t('backToLogin')}
         </Link>

@@ -266,7 +266,7 @@ const WithdrawPage = ({ user, logout, settings }) => {
                 <Button
                   onClick={handleWithdraw}
                   disabled={loading || balance < 5}
-                  className="w-full bg-white text-purple-600 hover:bg-gray-100 py-6 text-lg"
+                  className="w-full bg-white text-green-600 hover:bg-gray-100 py-6 text-lg"
                 >
                   {loading ? 'Processing...' : 'Submit Withdrawal Request'}
                 </Button>

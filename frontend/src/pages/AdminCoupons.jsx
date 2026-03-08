@@ -64,7 +64,7 @@ const AdminCoupons = ({ user, logout, settings }) => {
         <div className="max-w-6xl mx-auto space-y-6">
           <div className="flex justify-between items-center">
             <h1 className="text-4xl font-bold text-white">Coupons</h1>
-            <Button onClick={() => (window.location.href = '/admin')} className="bg-gradient-to-r from-pink-500 to-blue-500 text-white">
+            <Button onClick={() => (window.location.href = '/admin')} className="bg-green-500 text-white">
               🏠 Admin Home
             </Button>
           </div>
@@ -125,7 +125,7 @@ const AdminCoupons = ({ user, logout, settings }) => {
                   />
                 </div>
               </div>
-              <Button onClick={createCoupon} className="w-full bg-white text-purple-600 hover:bg-gray-100">
+              <Button onClick={createCoupon} className="w-full bg-white text-green-600 hover:bg-gray-100">
                 Create Coupon
               </Button>
             </CardContent>

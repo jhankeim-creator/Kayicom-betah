@@ -465,7 +465,7 @@ const AdminProducts = ({ user, logout, settings }) => {
             </h1>
             <Button 
               onClick={() => window.location.href = '/admin'}
-              className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-4 py-2 sm:px-6 sm:py-3 text-sm sm:text-base w-full sm:w-auto"
+              className="bg-green-500 text-white px-4 py-2 sm:px-6 sm:py-3 text-sm sm:text-base w-full sm:w-auto"
             >
               🏠 Admin Home
             </Button>
@@ -476,7 +476,7 @@ const AdminProducts = ({ user, logout, settings }) => {
             <div className="flex flex-col sm:flex-row gap-2">
               <DialogTrigger asChild>
                 <Button
-                  className="bg-gradient-to-r from-pink-500 to-blue-500 text-white w-full sm:w-auto text-sm sm:text-base"
+                  className="bg-green-500 text-white w-full sm:w-auto text-sm sm:text-base"
                   data-testid="add-product-btn"
                   onClick={() => {
                     resetForm();
@@ -511,7 +511,7 @@ const AdminProducts = ({ user, logout, settings }) => {
               <div className="space-y-4 py-4 px-1 sm:px-4">
                 {/* Variant Mode: Select Parent Product */}
                 {showVariantMode && !editingProduct && (
-                  <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                  <div className="p-4 bg-cyan-500/10 border border-green-500/30 rounded-lg">
                     <Label className="text-white mb-2 block">Select Parent Product</Label>
                     <Select onValueChange={(value) => {
                       const parent = products.find(p => p.id === value);
@@ -558,7 +558,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                       </SelectContent>
                     </Select>
                     {parentProduct && (
-                      <p className="text-cyan-300 text-sm mt-2">
+                      <p className="text-green-300 text-sm mt-2">
                         Creating variant for: <strong>{parentProduct.name}</strong>
                       </p>
                     )}
@@ -851,7 +851,7 @@ const AdminProducts = ({ user, logout, settings }) => {
 
                 {/* Credential Fields Configuration */}
                 {formData.requires_credentials && (
-                  <div className="p-4 bg-cyan-500/10 border border-cyan-500/30 rounded-lg">
+                  <div className="p-4 bg-cyan-500/10 border border-green-500/30 rounded-lg">
                     <Label className="text-white mb-2 block">Credential Fields Required</Label>
                     <p className="text-white/70 text-xs mb-3">
                       Specify which credential fields customers need to provide (e.g., email, password, username)
@@ -891,7 +891,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                         type="button"
                         size="sm"
                         variant="outline"
-                        className="border-cyan-400 text-cyan-400 hover:bg-cyan-400/10 w-full"
+                        className="border-cyan-400 text-green-400 hover:bg-cyan-400/10 w-full"
                         onClick={() => {
                           handleChange('credential_fields', [...(formData.credential_fields || []), '']);
                         }}
@@ -905,7 +905,7 @@ const AdminProducts = ({ user, logout, settings }) => {
 
                 <Button
                   onClick={handleSubmit}
-                  className="w-full bg-white text-purple-600 hover:bg-gray-100"
+                  className="w-full bg-white text-green-600 hover:bg-gray-100"
                   data-testid="save-product-btn"
                 >
                   {editingProduct ? 'Update Product' : 'Create Product'}
@@ -928,7 +928,7 @@ const AdminProducts = ({ user, logout, settings }) => {
           <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 sm:flex-wrap">
             <Button
               onClick={() => setCategoryFilter('all')}
-              className={`${categoryFilter === 'all' ? 'bg-pink-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
+              className={`${categoryFilter === 'all' ? 'bg-green-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
             >
               All ({groupedProducts.length})
             </Button>
@@ -938,7 +938,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                 <Button
                   key={option.value}
                   onClick={() => setCategoryFilter(option.value)}
-                  className={`${categoryFilter === option.value ? 'bg-pink-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
+                  className={`${categoryFilter === option.value ? 'bg-green-500' : 'bg-white/10'} text-white whitespace-nowrap text-xs sm:text-sm px-3 py-2`}
                 >
                   {option.label} ({count})
                 </Button>
@@ -981,11 +981,11 @@ const AdminProducts = ({ user, logout, settings }) => {
                             </p>
                           )}
                           {product.subscription_duration_months && (
-                            <p className="text-cyan-300 text-xs">
+                            <p className="text-green-300 text-xs">
                               Duration: {formatSubscriptionDurationLabel(product.subscription_duration_months)}
                             </p>
                           )}
-                          {product.region && <p className="text-pink-400 text-xs">Region: {product.region}</p>}
+                          {product.region && <p className="text-green-400 text-xs">Region: {product.region}</p>}
                           <div className="flex flex-wrap gap-2 mt-2">
                             {product.requires_player_id && <span className="text-green-400 text-xs bg-green-400/10 px-2 py-0.5 rounded">✓ Player ID</span>}
                             {product.is_subscription && <span className="text-yellow-400 text-xs bg-yellow-400/10 px-2 py-0.5 rounded">✓ Subscription</span>}

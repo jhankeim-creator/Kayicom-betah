@@ -47,7 +47,7 @@ const AdminWithdrawals = () => {
         <h2 className="text-2xl font-bold text-white">Withdrawal Management</h2>
         <Button 
           onClick={() => window.location.href = '/admin'}
-          className="bg-gradient-to-r from-pink-500 to-blue-500 text-white px-6 py-3"
+          className="bg-green-500 text-white px-6 py-3"
         >
           🏠 Admin Home
         </Button>

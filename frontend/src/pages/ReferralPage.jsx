@@ -87,7 +87,7 @@ const ReferralPage = ({ user, logout, settings }) => {
 
               <Card className="glass-effect border-white/20">
                 <CardContent className="p-6 text-center">
-                  <Users className="mx-auto mb-3 text-cyan-400" size={48} />
+                  <Users className="mx-auto mb-3 text-green-400" size={48} />
                   <p className="text-white/70 text-sm mb-2">Total Referrals</p>
                   <p className="text-4xl font-bold text-white">{referralInfo.total_referrals}</p>
                 </CardContent>
@@ -95,7 +95,7 @@ const ReferralPage = ({ user, logout, settings }) => {
 
               <Card className="glass-effect border-white/20">
                 <CardContent className="p-6 text-center">
-                  <DollarSign className="mx-auto mb-3 text-pink-400" size={48} />
+                  <DollarSign className="mx-auto mb-3 text-green-400" size={48} />
                   <p className="text-white/70 text-sm mb-2">Earned per Subscription</p>
                   <p className="text-4xl font-bold text-white">$1.00</p>
                 </CardContent>
@@ -114,7 +114,7 @@ const ReferralPage = ({ user, logout, settings }) => {
                   />
                   <Button
                     onClick={copyReferralLink}
-                    className="bg-white text-purple-600 hover:bg-gray-100 flex items-center gap-2"
+                    className="bg-white text-green-600 hover:bg-gray-100 flex items-center gap-2"
                   >
                     {copied ? <Check size={20} /> : <Copy size={20} />}
                     {copied ? 'Copied!' : 'Copy'}
@@ -139,7 +139,7 @@ const ReferralPage = ({ user, logout, settings }) => {
                     </div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <span className="bg-pink-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">2</span>
+                    <span className="bg-green-500 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 font-bold">2</span>
                     <div>
                       <p className="font-semibold text-white">They Subscribe</p>
                       <p className="text-sm">When they purchase a subscription plan, you earn $1</p>

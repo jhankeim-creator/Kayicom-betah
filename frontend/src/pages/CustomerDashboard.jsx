@@ -301,7 +301,7 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
                   <Package className="mx-auto mb-4" size={48} />
                   <p>You don't have any orders yet</p>
                   <Link to="/products" className="inline-block mt-4">
-                    <Button className="bg-white text-purple-600 hover:bg-gray-100">
+                    <Button className="bg-white text-green-600 hover:bg-gray-100">
                       Start Shopping
                     </Button>
                   </Link>
@@ -315,7 +315,7 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
             <Card className="glass-effect border-white/20 mt-8">
               <CardContent className="p-6">
                 <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-2">
-                  <Clock className="text-cyan-300" size={22} />
+                  <Clock className="text-green-300" size={22} />
                   My Subscriptions
                 </h2>
                 <div className="space-y-4">
@@ -344,7 +344,7 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
                               </Button>
                             </Link>
                             <Link to="/products/subscription">
-                              <Button size="sm" className="bg-white text-purple-600 hover:bg-gray-100">
+                              <Button size="sm" className="bg-white text-green-600 hover:bg-gray-100">
                                 Renew
                               </Button>
                             </Link>

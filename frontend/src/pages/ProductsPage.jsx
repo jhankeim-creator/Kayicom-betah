@@ -280,7 +280,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
           </Link>
           <Button 
             size="sm" 
-            className="bg-white text-purple-600 hover:bg-gray-100"
+            className="bg-white text-green-600 hover:bg-gray-100"
             onClick={() => {
               addToCart(product);
               toast.success('Product added to cart');
@@ -319,7 +319,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
             placeholder="Search products..."
           />
           <div className="flex gap-2 justify-center mt-3">
-            <Button type="button" className="bg-white text-purple-600 hover:bg-gray-100" onClick={loadProducts}>
+            <Button type="button" className="bg-white text-green-600 hover:bg-gray-100" onClick={loadProducts}>
               Search
             </Button>
             <Button
@@ -344,7 +344,7 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
               onClick={() => setSelectedCategory(cat.value)}
               variant={selectedCategory === cat.value ? 'default' : 'outline'}
               className={selectedCategory === cat.value 
-                ? 'bg-white text-purple-600 hover:bg-gray-100' 
+                ? 'bg-white text-green-600 hover:bg-gray-100' 
                 : 'border-white text-white hover:bg-white/10'
               }
               data-testid={`filter-${cat.value || 'all'}`}

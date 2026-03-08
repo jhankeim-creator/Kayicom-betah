@@ -29,9 +29,9 @@ const HomePage = ({ user, logout, cart, settings }) => {
   };
 
   const categories = [
-    { name: 'Gift Cards', icon: Gift, path: '/products/giftcard', color: 'from-pink-500 to-rose-500' },
+    { name: 'Gift Cards', icon: Gift, path: '/products/giftcard', color: 'from-green-500 to-green-600' },
     { name: 'Game Topup', icon: Gamepad2, path: '/products/topup', color: 'from-blue-500 to-cyan-500' },
-    { name: 'Subscriptions', icon: Tv, path: '/products/subscription', color: 'from-purple-500 to-indigo-500' },
+    { name: 'Subscriptions', icon: Tv, path: '/products/subscription', color: 'from-green-500 to-emerald-600' },
     { name: 'Services', icon: Wrench, path: '/products/service', color: 'from-green-500 to-emerald-500' },
   ];
 
@@ -52,7 +52,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
           </p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link to="/products">
-              <Button size="lg" className="bg-white text-purple-600 hover:bg-gray-100 px-8" data-testid="browse-products-btn">
+              <Button size="lg" className="bg-white text-green-600 hover:bg-gray-100 px-8" data-testid="browse-products-btn">
                 Explore Products <ArrowRight className="ml-2" size={20} />
               </Button>
             </Link>
@@ -111,7 +111,7 @@ const HomePage = ({ user, logout, cart, settings }) => {
                     <p className="text-white/70 text-sm mb-4 line-clamp-2">{product.description}</p>
                     <div className="flex items-center justify-between">
                       <span className="text-2xl font-bold text-white">${product.price}</span>
-                      <Button size="sm" className="bg-white text-purple-600 hover:bg-gray-100" data-testid={`buy-btn-${product.id}`}>
+                      <Button size="sm" className="bg-white text-green-600 hover:bg-gray-100" data-testid={`buy-btn-${product.id}`}>
                         Buy Now
                       </Button>
                     </div>
