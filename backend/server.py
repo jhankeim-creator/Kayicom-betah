@@ -2005,6 +2005,7 @@ async def get_products(
 
                 validated_product = {
                     "id": product.get("id", ""),
+                    "slug": product.get("slug"),
                     "name": product.get("name", ""),
                     "description": product.get("description", ""),
                     "category": product.get("category", ""),
@@ -2605,6 +2606,12 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
         price = float(product.get("price", item.price))
         subtotal += price * quantity
 
+        item_seller_id = item.seller_id or product.get("seller_id") or None
+        if item_seller_id:
+            seller_check = await db.users.find_one({"id": item_seller_id, "seller_status": "approved"})
+            if not seller_check:
+                item_seller_id = None
+
         validated_items.append(
             OrderItem(
                 product_id=product["id"],
@@ -2613,7 +2620,7 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
                 price=price,
                 player_id=item.player_id,
                 credentials=item.credentials,
-                seller_id=product.get("seller_id"),
+                seller_id=item_seller_id,
             )
         )
     
@@ -3839,25 +3846,30 @@ async def seller_delete_product(product_id: str, user_id: str):
 
 @api_router.get("/seller/orders")
 async def seller_get_orders(user_id: str):
-    """Get orders containing seller's products."""
+    """Get orders containing seller's products or offer-based items."""
     seller_product_ids = [
         p["id"] async for p in db.products.find({"seller_id": user_id}, {"id": 1, "_id": 0})
     ]
-    if not seller_product_ids:
+    query = {"payment_status": "paid", "$or": []}
+    if seller_product_ids:
+        query["$or"].append({"items.product_id": {"$in": seller_product_ids}})
+    query["$or"].append({"items.seller_id": user_id})
+    if not query["$or"]:
         return []
-    orders = await db.orders.find(
-        {"items.product_id": {"$in": seller_product_ids}, "payment_status": "paid"},
-        {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
+    orders = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    seller = await db.users.find_one({"id": user_id}, {"_id": 0})
+    commission_rate = float((seller or {}).get("seller_commission_rate", 10.0))
     for order in orders:
         order["seller_items"] = [
             item for item in order.get("items", [])
-            if item.get("product_id") in seller_product_ids
+            if item.get("seller_id") == user_id or item.get("product_id") in seller_product_ids
         ]
-        order["seller_earnings"] = sum(
+        gross = sum(
             float(item.get("price", 0)) * int(item.get("quantity", 1))
             for item in order["seller_items"]
         )
+        order["seller_earnings"] = round(gross * (1.0 - commission_rate / 100.0), 2)
+        order["seller_earnings_gross"] = round(gross, 2)
     return orders
 
 
@@ -3995,12 +4007,22 @@ async def admin_review_seller(user_id: str, review: AdminSellerReview):
         if review.commission_rate is not None:
             updates["seller_commission_rate"] = review.commission_rate
         await db.users.update_one({"id": user_id}, {"$set": updates})
+        await _create_notification(
+            user_id, "seller_approved",
+            "Congratulations! Your seller application has been approved. Start selling now!",
+            {}
+        )
     elif review.action == "reject":
         await db.users.update_one({"id": user_id}, {"$set": {
             "seller_status": "rejected",
             "seller_kyc_reviewed_at": now,
             "seller_kyc_rejection_reason": review.reason or "Application rejected",
         }})
+        await _create_notification(
+            user_id, "seller_rejected",
+            f"Your seller application was rejected. Reason: {review.reason or 'Not specified'}",
+            {}
+        )
     else:
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
     updated = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
@@ -4021,10 +4043,20 @@ async def admin_update_seller_categories(user_id: str, review: AdminCategoryAcce
             {"user_id": user_id, "status": "pending"},
             {"$set": {"status": "approved", "reviewed_at": datetime.now(timezone.utc).isoformat()}}
         )
+        await _create_notification(
+            user_id, "category_approved",
+            f"Your category request has been approved: {', '.join(review.categories)}",
+            {"categories": review.categories}
+        )
     elif review.action == "reject":
         await db.seller_category_requests.update_many(
             {"user_id": user_id, "status": "pending"},
             {"$set": {"status": "rejected", "reviewed_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        await _create_notification(
+            user_id, "category_rejected",
+            f"Your category request was rejected: {', '.join(review.categories)}",
+            {"categories": review.categories}
         )
     else:
         raise HTTPException(status_code=400, detail="Action must be 'approve' or 'reject'")
@@ -4303,10 +4335,19 @@ async def get_seller_store(seller_id: str):
         offer["product_name"] = (product or {}).get("name", "Unknown")
         offer["product_image"] = (product or {}).get("image_url")
         offer["product_category"] = (product or {}).get("category")
+        offer["product_slug"] = (product or {}).get("slug")
+    total_orders = int(user.get("seller_total_orders", 0))
+    reviews_data = await db.reviews.find(
+        {"seller_id": seller_id}, {"_id": 0}
+    ).sort("created_at", -1).to_list(50)
     return {
         "seller_id": seller_id,
         "store_name": user.get("seller_store_name", ""),
         "bio": user.get("seller_bio"),
+        "rating": float(user.get("seller_rating", 0)),
+        "review_count": int(user.get("seller_review_count", 0)),
+        "member_since": str(user.get("created_at", ""))[:10],
+        "reviews": reviews_data,
         "categories": user.get("seller_approved_categories", []),
         "total_orders": user.get("seller_total_orders", 0),
         "offers": offers,
@@ -4575,10 +4616,231 @@ async def admin_get_pending_products():
     return products
 
 
+# ==================== IN-APP NOTIFICATIONS ====================
+
+async def _create_notification(user_id: str, ntype: str, message: str, data: Optional[Dict] = None):
+    """Create an in-app notification for a user."""
+    now = datetime.now(timezone.utc).isoformat()
+    notif = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "type": ntype,
+        "message": message,
+        "data": data or {},
+        "read": False,
+        "created_at": now,
+    }
+    await db.notifications.insert_one(notif)
+    return notif
+
+
+@api_router.get("/notifications")
+async def get_notifications(user_id: str, limit: int = 50, offset: int = 0):
+    """Get user notifications."""
+    notifs = await db.notifications.find(
+        {"user_id": user_id}, {"_id": 0}
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+    unread = await db.notifications.count_documents({"user_id": user_id, "read": False})
+    return {"notifications": notifs, "unread_count": unread}
+
+
+@api_router.get("/notifications/unread-count")
+async def get_unread_notification_count(user_id: str):
+    """Get unread notification count."""
+    count = await db.notifications.count_documents({"user_id": user_id, "read": False})
+    return {"unread_count": count}
+
+
+@api_router.put("/notifications/read-all")
+async def mark_all_notifications_read(user_id: str):
+    """Mark all notifications as read."""
+    await db.notifications.update_many(
+        {"user_id": user_id, "read": False},
+        {"$set": {"read": True}}
+    )
+    return {"message": "All notifications marked as read"}
+
+
+@api_router.put("/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, user_id: str):
+    """Mark a single notification as read."""
+    await db.notifications.update_one(
+        {"id": notification_id, "user_id": user_id},
+        {"$set": {"read": True}}
+    )
+    return {"message": "Notification marked as read"}
+
+
+# ==================== SELLER MANUAL DELIVERY ====================
+
+class SellerDeliverySubmit(BaseModel):
+    delivery_codes: List[str]
+    delivery_note: Optional[str] = None
+
+
+@api_router.post("/seller/orders/{order_id}/deliver")
+async def seller_deliver_order(order_id: str, payload: SellerDeliverySubmit, user_id: str):
+    """Seller submits delivery codes for a manual delivery order."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    seller_items = [
+        item for item in order.get("items", [])
+        if item.get("seller_id") == user_id
+    ]
+    if not seller_items:
+        seller_product_ids = [
+            p["id"] async for p in db.products.find({"seller_id": user_id}, {"id": 1, "_id": 0})
+        ]
+        seller_items = [
+            item for item in order.get("items", [])
+            if item.get("product_id") in seller_product_ids
+        ]
+    if not seller_items:
+        raise HTTPException(status_code=403, detail="You have no items in this order")
+    if not payload.delivery_codes:
+        raise HTTPException(status_code=400, detail="At least one delivery code is required")
+    now = datetime.now(timezone.utc).isoformat()
+    delivery_record = {
+        "seller_id": user_id,
+        "codes": payload.delivery_codes,
+        "note": payload.delivery_note,
+        "delivered_at": now,
+    }
+    await db.orders.update_one({"id": order_id}, {
+        "$push": {"seller_deliveries": delivery_record},
+        "$set": {"order_status": "completed", "updated_at": now}
+    })
+    buyer_id = order.get("user_id")
+    if buyer_id:
+        await _create_notification(
+            buyer_id, "order_delivered",
+            f"Your order #{order_id[:8]} has been delivered by the seller!",
+            {"order_id": order_id}
+        )
+    return {"message": "Delivery submitted successfully"}
+
+
+# ==================== SELLER RATINGS & REVIEWS ====================
+
+class SellerReviewCreate(BaseModel):
+    order_id: str
+    seller_id: str
+    rating: int
+    comment: Optional[str] = None
+
+
+@api_router.post("/reviews")
+async def create_review(payload: SellerReviewCreate, user_id: str):
+    """Buyer submits a review for a seller after an order."""
+    if payload.rating < 1 or payload.rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be 1-5")
+    order = await db.orders.find_one({"id": payload.order_id, "user_id": user_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_status") != "paid":
+        raise HTTPException(status_code=400, detail="Order must be paid before reviewing")
+    existing = await db.reviews.find_one({"order_id": payload.order_id, "reviewer_id": user_id, "seller_id": payload.seller_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="You already reviewed this seller for this order")
+    seller = await db.users.find_one({"id": payload.seller_id}, {"_id": 0})
+    if not seller or seller.get("seller_status") != "approved":
+        raise HTTPException(status_code=404, detail="Seller not found")
+    reviewer = await db.users.find_one({"id": user_id}, {"_id": 0})
+    now = datetime.now(timezone.utc).isoformat()
+    review = {
+        "id": str(uuid.uuid4()),
+        "order_id": payload.order_id,
+        "seller_id": payload.seller_id,
+        "reviewer_id": user_id,
+        "reviewer_name": (reviewer or {}).get("full_name", "Customer"),
+        "rating": payload.rating,
+        "comment": (payload.comment or "").strip() or None,
+        "created_at": now,
+    }
+    await db.reviews.insert_one(review)
+    all_reviews = await db.reviews.find({"seller_id": payload.seller_id}, {"rating": 1, "_id": 0}).to_list(10000)
+    avg = round(sum(r["rating"] for r in all_reviews) / len(all_reviews), 1) if all_reviews else 0
+    await db.users.update_one({"id": payload.seller_id}, {"$set": {
+        "seller_rating": avg,
+        "seller_review_count": len(all_reviews),
+    }})
+    await _create_notification(
+        payload.seller_id, "new_review",
+        f"You received a {payload.rating}-star review!",
+        {"order_id": payload.order_id, "rating": payload.rating}
+    )
+    review.pop("_id", None)
+    return review
+
+
+@api_router.get("/reviews/seller/{seller_id}")
+async def get_seller_reviews(seller_id: str, limit: int = 50, offset: int = 0):
+    """Get reviews for a seller."""
+    reviews = await db.reviews.find(
+        {"seller_id": seller_id}, {"_id": 0}
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+    total = await db.reviews.count_documents({"seller_id": seller_id})
+    return {"reviews": reviews, "total": total}
+
+
+@api_router.get("/seller/analytics")
+async def seller_analytics(user_id: str):
+    """Get seller analytics data."""
+    seller = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not seller or seller.get("seller_status") != "approved":
+        raise HTTPException(status_code=403, detail="Not an approved seller")
+    seller_product_ids = [
+        p["id"] async for p in db.products.find({"seller_id": user_id}, {"id": 1, "_id": 0})
+    ]
+    orders = await db.orders.find(
+        {"payment_status": "paid", "$or": [
+            {"items.seller_id": user_id},
+            {"items.product_id": {"$in": seller_product_ids}} if seller_product_ids else {"_never": True},
+        ]},
+        {"_id": 0, "items": 1, "created_at": 1, "total_amount": 1}
+    ).sort("created_at", -1).to_list(1000)
+    commission_rate = float(seller.get("seller_commission_rate", 10.0))
+    daily_sales: Dict[str, float] = {}
+    product_sales: Dict[str, Dict[str, Any]] = {}
+    for order in orders:
+        created = str(order.get("created_at", ""))[:10]
+        for item in order.get("items", []):
+            if item.get("seller_id") == user_id or item.get("product_id") in seller_product_ids:
+                revenue = float(item.get("price", 0)) * int(item.get("quantity", 1))
+                net = round(revenue * (1.0 - commission_rate / 100.0), 2)
+                daily_sales[created] = daily_sales.get(created, 0) + net
+                pid = item.get("product_id", "unknown")
+                pname = item.get("product_name", "Unknown")
+                if pid not in product_sales:
+                    product_sales[pid] = {"name": pname, "units": 0, "revenue": 0}
+                product_sales[pid]["units"] += int(item.get("quantity", 1))
+                product_sales[pid]["revenue"] += net
+    top_products = sorted(product_sales.values(), key=lambda x: x["revenue"], reverse=True)[:10]
+    recent_days = sorted(daily_sales.items(), key=lambda x: x[0])[-30:]
+    offer_count = await db.seller_offers.count_documents({"seller_id": user_id, "status": "active"})
+    product_count = await db.products.count_documents({"seller_id": user_id})
+    review_count = await db.reviews.count_documents({"seller_id": user_id})
+    avg_rating = float(seller.get("seller_rating", 0))
+    withdrawals = await db.withdrawals.find(
+        {"user_id": user_id, "type": "seller_withdrawal"}, {"_id": 0}
+    ).sort("created_at", -1).to_list(20)
+    return {
+        "daily_sales": [{"date": d, "revenue": v} for d, v in recent_days],
+        "top_products": top_products,
+        "total_orders": len(orders),
+        "offer_count": offer_count,
+        "product_count": product_count,
+        "review_count": review_count,
+        "avg_rating": avg_rating,
+        "recent_withdrawals": withdrawals,
+    }
+
+
 # ==================== SELLER EARNINGS CREDITING ====================
 
 async def _credit_seller_earnings(order_id: str):
-    """Credit sellers for their items. Respects escrow: only credits after release."""
+    """Credit sellers for their items. Handles both seller-owned products and offer-based sales."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order or order.get("payment_status") != "paid":
         return
@@ -4587,21 +4849,28 @@ async def _credit_seller_earnings(order_id: str):
     if order.get("escrow_status") and order.get("escrow_status") not in ("released", "buyer_confirmed"):
         return
     for item in order.get("items", []):
-        product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
-        if not product or not product.get("seller_id"):
+        seller_id = item.get("seller_id")
+        if not seller_id:
+            product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
+            seller_id = (product or {}).get("seller_id")
+        if not seller_id:
             continue
-        seller_id = product["seller_id"]
         seller = await db.users.find_one({"id": seller_id}, {"_id": 0})
         if not seller or seller.get("seller_status") != "approved":
             continue
         commission_rate = float(seller.get("seller_commission_rate", 10.0))
         item_total = float(item.get("price", 0)) * int(item.get("quantity", 1))
-        seller_share = item_total * (1.0 - commission_rate / 100.0)
+        seller_share = round(item_total * (1.0 - commission_rate / 100.0), 2)
         await db.users.update_one({"id": seller_id}, {"$inc": {
             "seller_balance": seller_share,
             "seller_total_earned": seller_share,
             "seller_total_orders": 1,
         }})
+        await _create_notification(
+            seller_id, "new_sale",
+            f"New sale: {item.get('product_name', 'Product')} x{item.get('quantity', 1)} — you earned ${seller_share:.2f}",
+            {"order_id": order_id, "product_name": item.get("product_name")}
+        )
     await db.orders.update_one({"id": order_id}, {"$set": {"seller_earnings_credited": True}})
 
 
