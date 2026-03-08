@@ -1,12 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Package, ShoppingCart, CheckCircle } from 'lucide-react';
+import { Package, ShoppingCart, CheckCircle, Globe, Monitor, Truck, Clock, Star, MessageCircle, ThumbsUp, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeOrdersCount } from '../utils/ordersCount';
 
@@ -18,24 +17,9 @@ const formatSubscriptionDurationLabel = (months) => {
 };
 
 const stripHtml = (value = '') => String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-
-const truncateText = (value = '', limit = 160) => {
-  const clean = stripHtml(value);
-  if (clean.length <= limit) return clean;
-  return `${clean.slice(0, Math.max(0, limit - 3)).trim()}...`;
-};
-
-const deriveProductSeoTitle = (item) => {
-  const raw = String(item?.seo_title || '').trim() || String(item?.name || '').trim();
-  return raw || 'Product';
-};
-
-const deriveProductSeoDescription = (item) => {
-  const raw = String(item?.seo_description || '').trim() || String(item?.description || '').trim();
-  if (raw) return truncateText(raw, 160);
-  const fallbackName = String(item?.name || 'digital product').trim();
-  return truncateText(`Buy ${fallbackName} securely on KayiCom.`, 160);
-};
+const truncateText = (value = '', limit = 160) => { const c = stripHtml(value); return c.length <= limit ? c : `${c.slice(0, limit - 3).trim()}...`; };
+const deriveProductSeoTitle = (item) => String(item?.seo_title || '').trim() || String(item?.name || '').trim() || 'Product';
+const deriveProductSeoDescription = (item) => { const r = String(item?.seo_description || '').trim() || String(item?.description || '').trim(); return r ? truncateText(r, 160) : truncateText(`Buy ${String(item?.name || 'digital product').trim()} securely on KayiCom.`, 160); };
 
 const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const { slug } = useParams();
@@ -46,391 +30,265 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadProduct();
-  }, [slug]);
+  useEffect(() => { loadProduct(); }, [slug]);
 
   const loadProduct = async () => {
     try {
       const response = await axiosInstance.get(`/products/${slug}`);
       const p = response.data;
       setProduct(p);
-
-      // Load seller offers
-      try {
-        const offersRes = await axiosInstance.get(`/products/${slug}/offers`);
-        setSellerOffers(Array.isArray(offersRes.data) ? offersRes.data : []);
-      } catch { setSellerOffers([]); }
-
-      // Load variants for this group (if any)
+      try { const r = await axiosInstance.get(`/products/${slug}/offers`); setSellerOffers(Array.isArray(r.data) ? r.data : []); } catch { setSellerOffers([]); }
       const groupId = p.parent_product_id || p.id;
       try {
-        const variantsResp = await axiosInstance.get(`/products?parent_product_id=${groupId}`);
-        const list = Array.isArray(variantsResp.data) ? variantsResp.data : [];
-        // Sort by price asc for clean UX
-        const sorted = [...list].sort((a, b) => (a.price || 0) - (b.price || 0));
+        const vr = await axiosInstance.get(`/products?parent_product_id=${groupId}`);
+        const sorted = [...(Array.isArray(vr.data) ? vr.data : [])].sort((a, b) => (a.price || 0) - (b.price || 0));
         setVariants(sorted);
-        const current = sorted.find(v => v.id === p.id);
-        setSelectedVariantId((current || sorted[0] || p).id);
-      } catch (e) {
-        // If variants endpoint fails, fall back to single product
-        setVariants([]);
-        setSelectedVariantId(p.id);
-      }
-    } catch (error) {
-      console.error('Error loading product:', error);
-      toast.error('Error loading product');
-    } finally {
-      setLoading(false);
-    }
+        setSelectedVariantId((sorted.find(v => v.id === p.id) || sorted[0] || p).id);
+      } catch { setVariants([]); setSelectedVariantId(p.id); }
+    } catch { toast.error('Error loading product'); }
+    finally { setLoading(false); }
   };
 
-  const handleAddToCart = () => {
-    const chosen = variants.find(v => v.id === selectedVariantId) || product;
-    addToCart(chosen, quantity);
-  };
-
-  const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const handleAddToCart = () => { addToCart(variants.find(v => v.id === selectedVariantId) || product, quantity); };
+  const cartItemCount = cart.reduce((s, i) => s + i.quantity, 0);
   const selectedProduct = variants.find(v => v.id === selectedVariantId) || product;
 
   useEffect(() => {
-    if (!selectedProduct) return undefined;
-
-    const previousTitle = document.title;
-    const nextTitle = deriveProductSeoTitle(selectedProduct);
-    document.title = `${nextTitle} | KayiCom`;
-
-    let createdDescriptionMeta = false;
-    let descriptionMeta = document.querySelector('meta[name="description"]');
-    const previousDescription = descriptionMeta?.getAttribute('content') || '';
-    if (!descriptionMeta) {
-      descriptionMeta = document.createElement('meta');
-      descriptionMeta.setAttribute('name', 'description');
-      document.head.appendChild(descriptionMeta);
-      createdDescriptionMeta = true;
-    }
-    descriptionMeta.setAttribute('content', deriveProductSeoDescription(selectedProduct));
-
-    // Open Graph tags
-    const ogTags = {
-      'og:title': `${nextTitle} | KayiCom`,
-      'og:description': deriveProductSeoDescription(selectedProduct),
-      'og:url': `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`,
-      'og:type': 'product',
-      'og:site_name': 'KayiCom',
-    };
-    if (selectedProduct.image_url) ogTags['og:image'] = selectedProduct.image_url;
-    const createdOgTags = [];
-    Object.entries(ogTags).forEach(([prop, content]) => {
-      let tag = document.querySelector(`meta[property="${prop}"]`);
-      if (!tag) { tag = document.createElement('meta'); tag.setAttribute('property', prop); document.head.appendChild(tag); createdOgTags.push(tag); }
-      tag.setAttribute('content', content);
-    });
-
-    // Canonical URL
-    let canonical = document.querySelector('link[rel="canonical"]');
-    const createdCanonical = !canonical;
-    if (!canonical) { canonical = document.createElement('link'); canonical.setAttribute('rel', 'canonical'); document.head.appendChild(canonical); }
-    canonical.setAttribute('href', `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`);
-
-    const jsonLdScript = document.createElement('script');
-    jsonLdScript.type = 'application/ld+json';
-    jsonLdScript.id = 'product-seo-jsonld';
-    const productSchema = {
-      '@context': 'https://schema.org',
-      '@type': 'Product',
-      name: selectedProduct.name,
-      description: deriveProductSeoDescription(selectedProduct),
-      image: selectedProduct.image_url ? [selectedProduct.image_url] : undefined,
-      brand: {
-        '@type': 'Brand',
-        name: 'KayiCom',
-      },
-      offers: {
-        '@type': 'Offer',
-        priceCurrency: selectedProduct.currency || 'USD',
-        price: Number(selectedProduct.price || 0).toFixed(2),
-        availability: selectedProduct.stock_available
-          ? 'https://schema.org/InStock'
-          : 'https://schema.org/OutOfStock',
-        url: `https://kayicom.com/product/${selectedProduct.slug || selectedProduct.id}`,
-      },
-    };
-    jsonLdScript.text = JSON.stringify(productSchema);
-    document.head.appendChild(jsonLdScript);
-
-    return () => {
-      document.title = previousTitle;
-      if (descriptionMeta) {
-        if (createdDescriptionMeta) {
-          descriptionMeta.remove();
-        } else {
-          descriptionMeta.setAttribute('content', previousDescription);
-        }
-      }
-      jsonLdScript.remove();
-      createdOgTags.forEach(t => t.remove());
-      if (createdCanonical && canonical) canonical.remove();
-    };
+    if (!selectedProduct) return;
+    const prev = document.title;
+    document.title = `${deriveProductSeoTitle(selectedProduct)} | KayiCom`;
+    let dm = document.querySelector('meta[name="description"]'); const cd = !dm;
+    if (!dm) { dm = document.createElement('meta'); dm.setAttribute('name', 'description'); document.head.appendChild(dm); }
+    const pd = dm.getAttribute('content') || '';
+    dm.setAttribute('content', deriveProductSeoDescription(selectedProduct));
+    const js = document.createElement('script'); js.type = 'application/ld+json'; js.id = 'product-seo-jsonld';
+    js.text = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: selectedProduct.name, description: deriveProductSeoDescription(selectedProduct), image: selectedProduct.image_url ? [selectedProduct.image_url] : undefined, offers: { '@type': 'Offer', priceCurrency: 'USD', price: Number(selectedProduct.price || 0).toFixed(2), availability: selectedProduct.stock_available ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock' } });
+    document.head.appendChild(js);
+    return () => { document.title = prev; if (cd && dm) dm.remove(); else if (dm) dm.setAttribute('content', pd); js.remove(); };
   }, [selectedProduct]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a]">
-        <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
-        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Loading...</div>
-      </div>
-    );
-  }
+  if (loading) return (<div className="min-h-screen bg-[#0a0a0a]"><Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} /><div className="container mx-auto px-4 py-20 text-center text-white/40">Loading...</div></div>);
+  if (!product) return (<div className="min-h-screen bg-[#0a0a0a]"><Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} /><div className="container mx-auto px-4 py-20 text-center text-white/40">Product not found</div></div>);
 
-  if (!product) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a]">
-        <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
-        <div className="container mx-auto px-4 py-20 text-center text-white text-xl">Product not found</div>
-      </div>
-    );
-  }
-
-  const selectedDurationLabel = (() => {
-    if (selectedProduct?.subscription_duration_months) {
-      return formatSubscriptionDurationLabel(selectedProduct.subscription_duration_months);
-    }
-    if (selectedProduct?.category === 'subscription' && selectedProduct?.variant_name) {
-      return selectedProduct.variant_name;
-    }
-    return '';
-  })();
-  const totalOrdersCount = (() => {
-    if (variants.length > 0) {
-      return variants.reduce((sum, item) => sum + normalizeOrdersCount(item), 0);
-    }
-    return normalizeOrdersCount(selectedProduct);
-  })();
-  const getVariantLabel = (variant) => {
-    if (!variant) return '';
-    if (variant.variant_name) return variant.variant_name;
-    if (variant.subscription_duration_months) return formatSubscriptionDurationLabel(variant.subscription_duration_months);
-    return variant.name || '';
-  };
+  const totalOrdersCount = variants.length > 0 ? variants.reduce((s, i) => s + normalizeOrdersCount(i), 0) : normalizeOrdersCount(selectedProduct);
+  const getVariantLabel = (v) => v?.variant_name || (v?.subscription_duration_months ? formatSubscriptionDurationLabel(v.subscription_duration_months) : v?.name || '');
+  const catLabel = { giftcard: 'Gift Card', topup: 'Game Topup', subscription: 'Subscription', service: 'Service' }[selectedProduct.category] || selectedProduct.category;
+  const bestOffer = sellerOffers.length > 0 ? sellerOffers[0] : null;
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a]">
+    <div className="min-h-screen bg-[#0a0a0a] pb-20">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
-      <div className="container mx-auto px-4 py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          {/* Product Image */}
-          <div className="" data-testid="product-image">
-            <Card className="overflow-hidden bg-white/10 backdrop-blur-lg border-white/20">
-              <div className="aspect-square bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-                {product.image_url ? (
-                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                ) : (
-                  <Package className="text-white" size={128} />
-                )}
-              </div>
-            </Card>
+      {/* Breadcrumb */}
+      <div className="container mx-auto px-4 py-3">
+        <p className="text-white/40 text-xs">
+          <Link to="/" className="hover:text-white/60">Home</Link>
+          {' > '}
+          <Link to="/products" className="hover:text-white/60">Products</Link>
+          {selectedProduct.category && <>{' > '}<Link to={`/products/${selectedProduct.category}`} className="hover:text-white/60">{catLabel}</Link></>}
+        </p>
+      </div>
+
+      <div className="container mx-auto px-4">
+        {/* Product Info Card */}
+        <div className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden mb-6">
+          {/* Image */}
+          <div className="w-full aspect-[16/9] md:aspect-[21/9] bg-[#1c1c1c] flex items-center justify-center overflow-hidden" data-testid="product-image">
+            {product.image_url ? (
+              <img src={product.image_url} alt={product.name} className="w-full h-full object-contain" />
+            ) : (
+              <Package className="text-white/20" size={80} />
+            )}
           </div>
 
           {/* Product Details */}
-          <div className="text-white" data-testid="product-details">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4" data-testid="product-name">{selectedProduct.name}</h1>
-            
-            <div className="flex items-center gap-4 mb-6">
-              <span className="text-4xl font-bold" data-testid="product-price">${selectedProduct.price}</span>
-              {selectedProduct.stock_available ? (
-                <span className="flex items-center text-green-400 bg-green-400/20 px-3 py-1 rounded" data-testid="stock-status">
-                  <CheckCircle size={16} className="mr-1" />
-                  Available
-                </span>
-              ) : (
-                <span className="text-red-400 bg-red-400/20 px-3 py-1 rounded" data-testid="stock-status">
-                  Out of Stock
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 mb-6">
-              <p className="text-white/70 text-sm" data-testid="product-orders-count">
-                {Math.max(0, Math.floor(totalOrdersCount))} orders
-              </p>
-              {!selectedProduct.seller_id && (
-                <span className="text-xs bg-cyan-500/20 text-green-300 px-2 py-0.5 rounded-full">by KayiCom</span>
-              )}
-            </div>
+          <div className="p-5" data-testid="product-details">
+            <h1 className="text-xl md:text-2xl font-bold text-white mb-4" data-testid="product-name">{selectedProduct.name}</h1>
 
-            <div className="mb-6">
-              <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm" data-testid="product-category">
-                {selectedProduct.category === 'giftcard' && 'Gift Card'}
-                {selectedProduct.category === 'topup' && 'Game Topup'}
-                {selectedProduct.category === 'subscription' && 'Subscription'}
-                {selectedProduct.category === 'service' && 'Service'}
-              </span>
-              {selectedProduct.category === 'giftcard' && selectedProduct.giftcard_category && (
-                <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
-                  {selectedProduct.giftcard_category}
-                </span>
-              )}
-              {selectedProduct.category === 'giftcard' && selectedProduct.giftcard_subcategory && (
-                <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
-                  {selectedProduct.giftcard_subcategory}
-                </span>
-              )}
-              {selectedProduct.category === 'subscription' && selectedDurationLabel && (
-                <span className="inline-block bg-white/10 px-3 py-1 rounded text-sm ml-2">
-                  Duration: {selectedDurationLabel}
-                </span>
-              )}
-            </div>
-
-            <div className="mb-8">
-              <h2 className="text-2xl font-bold mb-3">Description</h2>
-              <p className="text-white/80 text-lg leading-relaxed" data-testid="product-description">{selectedProduct.description}</p>
-            </div>
-
-            {/* Variant selector */}
-            {variants.length > 1 && (
-              <div className="mb-6 rounded-xl bg-[#141414] border border-white/5 p-5">
-                <h3 className="text-xl font-bold mb-3">Choose an option</h3>
-                <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white">
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {variants.map(v => (
-                      <SelectItem key={v.id} value={v.id}>
-                        {getVariantLabel(v) ? `${getVariantLabel(v)} - $${Number(v.price).toFixed(2)}` : `${v.name} - $${Number(v.price).toFixed(2)}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-white/50"><Globe size={16} /> Region</span>
+                <span className="text-white font-semibold">{selectedProduct.region || 'Global'}</span>
               </div>
-            )}
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-white/50"><Monitor size={16} /> Platform</span>
+                <span className="text-white font-semibold">{catLabel}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-white/50"><Truck size={16} /> Delivery Method</span>
+                <span className="text-white font-semibold">{selectedProduct.delivery_type === 'automatic' ? 'Automatic' : 'Manual'}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-white/50"><Clock size={16} /> Estimated Delivery time</span>
+                <span className="text-white font-semibold">{selectedProduct.delivery_type === 'automatic' ? '1 Min' : '10 Mins'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            {/* Quantity & Add to Cart */}
-            <div className="rounded-xl bg-[#141414] border border-white/5 p-5">
-              <div className="flex items-center gap-4 mb-6">
-                <label className="text-lg font-semibold">Quantity:</label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-white text-white hover:bg-white/10 w-10 h-10"
-                    onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                    data-testid="decrease-quantity"
-                  >
-                    -
-                  </Button>
-                  <span className="text-xl font-bold w-12 text-center" data-testid="quantity-display">{quantity}</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-white text-white hover:bg-white/10 w-10 h-10"
-                    onClick={() => setQuantity(quantity + 1)}
-                    data-testid="increase-quantity"
-                  >
-                    +
-                  </Button>
+        {/* Variant Selector */}
+        {variants.length > 1 && (
+          <div className="mb-6">
+            <p className="text-green-400 text-sm font-semibold mb-2">Select Region</p>
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-4">
+              <Select value={selectedVariantId} onValueChange={setSelectedVariantId}>
+                <SelectTrigger className="bg-white/5 border-white/10 text-white">
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {variants.map(v => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {getVariantLabel(v) ? `${getVariantLabel(v)} - $${Number(v.price).toFixed(2)}` : `${v.name} - $${Number(v.price).toFixed(2)}`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {/* Description */}
+        {selectedProduct.description && (
+          <div className="mb-6">
+            <p className="text-white/50 text-xs mb-2">Description</p>
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-4">
+              <p className="text-white/70 text-sm leading-relaxed" data-testid="product-description">{selectedProduct.description}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Best Seller Card (if offers exist) */}
+        {bestOffer && (
+          <div className="rounded-xl bg-[#141414] border border-white/5 p-4 mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-[#1c1c1c] border-2 border-green-500/30 flex items-center justify-center flex-shrink-0">
+                <User size={24} className="text-white/40" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Link to={`/store/${bestOffer.seller_id}`} className="text-white font-semibold text-sm hover:text-green-400">{bestOffer.seller_name || 'Seller'}</Link>
+                <div className="flex items-center gap-3 mt-1 text-xs text-white/40">
+                  <span>Total Orders</span>
+                  {bestOffer.seller_rating > 0 && (
+                    <span className="flex items-center gap-1 text-green-400">
+                      <ThumbsUp size={12} /> {(bestOffer.seller_rating * 20).toFixed(0)}%
+                    </span>
+                  )}
+                  <span>|</span>
+                  <span>{bestOffer.codes_available || 0} Sold</span>
                 </div>
               </div>
-
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between text-lg">
-                  <span>Total:</span>
-                  <span className="text-2xl font-bold" data-testid="total-price">${(selectedProduct.price * quantity).toFixed(2)}</span>
-                </div>
-                <Button
-                  size="lg"
-                  className="w-full bg-white text-green-600 hover:bg-gray-100 text-lg py-6"
-                  onClick={handleAddToCart}
-                  disabled={!selectedProduct.stock_available}
-                  data-testid="add-to-cart-btn"
-                >
-                  <ShoppingCart className="mr-2" size={24} />
-                  Add to Cart
+              <Link to={`/messages?seller=${bestOffer.seller_id}`}>
+                <Button size="sm" variant="outline" className="border-white/20 text-white text-xs hover:bg-white/10">
+                  <MessageCircle size={14} className="mr-1" /> Chat
                 </Button>
-              </div>
+              </Link>
             </div>
+          </div>
+        )}
 
-            {/* Delivery Info */}
-            <div className="mt-6 rounded-xl bg-[#141414] border border-white/5 p-5">
-              <h3 className="text-xl font-bold mb-3">Delivery Information</h3>
-              <ul className="space-y-2 text-white/80">
-                {selectedProduct.delivery_type === 'automatic' ? (
-                  <>
-                    <li className="flex items-center">
-                      <span className="mr-2">⚡</span>
-                      Automatic delivery
-                    </li>
-                    <li className="flex items-center">
-                      <span className="mr-2">📬</span>
-                      Code sent by email
-                    </li>
-                  </>
-                ) : (
-                  <>
-                    <li className="flex items-center">
-                      <span className="mr-2">👤</span>
-                      Manual delivery
-                    </li>
-                    <li className="flex items-center">
-                      <span className="mr-2">⏱️</span>
-                      Instant delivery
-                    </li>
-                  </>
-                )}
-                <li className="flex items-center">
-                  <span className="mr-2">🔒</span>
-                  Secure transaction
-                </li>
-              </ul>
-            </div>
-
-            {/* Seller Offers */}
-            {sellerOffers.length > 0 && (
-              <div className="mt-6 rounded-xl bg-[#141414] border border-white/5 p-5">
-                <h3 className="text-lg font-bold text-white mb-4">Available from Sellers</h3>
-                <div className="space-y-3">
-                  {sellerOffers.map(offer => (
-                    <div key={offer.id} className="p-4 rounded-lg bg-white/5 border border-white/10 hover:border-green-500/30 transition">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <a href={`/store/${offer.seller_id}`} className="text-green-400 font-semibold text-sm hover:underline">
-                            {offer.seller_name || offer.seller_store_name || 'Seller'}
-                          </a>
-                          <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                            {offer.seller_rating > 0 && (
-                              <span className="flex items-center gap-1 text-xs">
-                                <span className="text-yellow-400">{'★'.repeat(Math.round(offer.seller_rating))}</span>
-                                <span className="text-yellow-400 font-bold">{Number(offer.seller_rating).toFixed(1)}</span>
-                              </span>
-                            )}
-                            <span className="text-white/30 text-xs">
-                              {offer.delivery_type === 'automatic' ? '⚡ Instant' : '📦 Manual'}
-                            </span>
-                            {offer.codes_available > 0 && (
-                              <span className="text-green-400/70 text-xs">{offer.codes_available} in stock</span>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end gap-2">
-                          <p className="text-green-400 font-bold text-lg">${Number(offer.price).toFixed(2)}</p>
-                          <button
-                            onClick={() => {
-                              const sellerProduct = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || offer.seller_store_name || 'Seller', _offer_id: offer.id };
-                              addToCart(sellerProduct, 1);
-                            }}
-                            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-black text-xs font-bold rounded-lg transition whitespace-nowrap"
-                          >
-                            Buy Now
-                          </button>
-                        </div>
+        {/* ALL Seller Offers - sorted by price (low to high) */}
+        {sellerOffers.length > 0 && (
+          <div className="mb-6">
+            <p className="text-white/50 text-xs mb-3">ALL ({sellerOffers.length})</p>
+            <div className="space-y-3">
+              {sellerOffers.map(offer => (
+                <div key={offer.id} className="rounded-xl bg-[#141414] border border-white/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[#1c1c1c] flex items-center justify-center flex-shrink-0">
+                      <User size={16} className="text-white/30" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <Link to={`/store/${offer.seller_id}`} className="text-white font-semibold text-sm hover:text-green-400">
+                        {offer.seller_name || 'Seller'}
+                      </Link>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {offer.seller_rating > 0 && (
+                          <span className="flex items-center gap-1 text-green-400 text-xs">
+                            <ThumbsUp size={10} /> {(offer.seller_rating * 20).toFixed(0)}%
+                          </span>
+                        )}
+                        <span className="text-white/30 text-xs">
+                          ⏱ {offer.delivery_type === 'automatic' ? '1min' : '10min/2min'}
+                        </span>
                       </div>
                     </div>
-                  ))}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-white font-bold">{Number(offer.price).toFixed(2)} <span className="text-white/40 text-xs">USD</span></p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            const sp = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || 'Seller', _offer_id: offer.id };
+                            addToCart(sp, 1);
+                          }}
+                          className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition"
+                        >
+                          <ShoppingCart size={16} className="text-white/60" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            const sp = { ...product, price: offer.price, _seller_id: offer.seller_id, _seller_name: offer.seller_name || 'Seller', _offer_id: offer.id };
+                            addToCart(sp, 1);
+                            toast.success('Added to cart!');
+                          }}
+                          className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-lg transition"
+                        >
+                          Buy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* KayiCom direct purchase (no seller offers or as fallback) */}
+        {sellerOffers.length === 0 && (
+          <div className="mb-6">
+            <p className="text-white/50 text-xs mb-3">Official</p>
+            <div className="rounded-xl bg-[#141414] border border-white/5 p-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle size={18} className="text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-white font-semibold text-sm">KayiCom Official</p>
+                  <p className="text-green-400 text-xs">✓ Verified · {Math.max(0, Math.floor(totalOrdersCount))} sold</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-white font-bold">{Number(selectedProduct.price).toFixed(2)} <span className="text-white/40 text-xs">USD</span></p>
                 </div>
               </div>
-            )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-white/10 z-40">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div>
+            <p className="text-white font-bold text-xl" data-testid="product-price">{Number(selectedProduct.price).toFixed(2)} <span className="text-white/40 text-sm font-normal">USD</span></p>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAddToCart}
+              disabled={!selectedProduct.stock_available}
+              className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition"
+            >
+              <ShoppingCart size={20} className="text-white/70" />
+            </button>
+            <Button
+              onClick={() => { handleAddToCart(); toast.success('Added to cart!'); }}
+              disabled={!selectedProduct.stock_available}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-bold px-8 py-3 rounded-full text-sm"
+              data-testid="add-to-cart-btn"
+            >
+              Buy Now
+            </Button>
           </div>
         </div>
       </div>
