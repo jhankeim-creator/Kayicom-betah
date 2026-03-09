@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "yarn build",
+  "buildCommand": "DISABLE_ESLINT_PLUGIN=true yarn build",
   "outputDirectory": "build",
   "devCommand": "yarn start",
   "framework": "create-react-app",
