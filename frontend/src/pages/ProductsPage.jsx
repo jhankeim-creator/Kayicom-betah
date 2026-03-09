@@ -270,9 +270,14 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
         </div>
         <div className="flex items-center justify-between text-white/60 text-xs mb-3">
           <span>{Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders</span>
-          {product._variant_count > 1 ? <span>{product._variant_count} options</span> : (
-            <span className="text-green-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
-          )}
+          <div className="flex items-center gap-2">
+            {Number(product.seller_offer_count) > 0 && (
+              <span className="text-blue-400/80 bg-blue-400/10 px-1.5 py-0.5 rounded text-[10px]">{product.seller_offer_count} seller{product.seller_offer_count > 1 ? 's' : ''}</span>
+            )}
+            {product._variant_count > 1 ? <span>{product._variant_count} options</span> : (
+              <span className="text-green-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <Link to={`/product/${product.slug || product.id}`} className="flex-1">

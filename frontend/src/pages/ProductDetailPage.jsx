@@ -29,6 +29,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [quantity, setQuantity] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [similarProducts, setSimilarProducts] = useState([]);
 
   useEffect(() => { loadProduct(); }, [slug]);
 
@@ -38,6 +39,7 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
       const p = response.data;
       setProduct(p);
       try { const r = await axiosInstance.get(`/products/${slug}/offers`); setSellerOffers(Array.isArray(r.data) ? r.data : []); } catch { setSellerOffers([]); }
+      try { const r = await axiosInstance.get(`/products/${slug}/similar`); setSimilarProducts(Array.isArray(r.data) ? r.data : []); } catch { setSimilarProducts([]); }
       const groupId = p.parent_product_id || p.id;
       try {
         const vr = await axiosInstance.get(`/products?parent_product_id=${groupId}`);
@@ -209,7 +211,8 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                       <Link to={`/store/${offer.seller_id}`} className="text-white font-semibold text-sm hover:text-green-400">
                         {offer.seller_name || 'Seller'}
                       </Link>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      {offer.custom_title && <p className="text-white/70 text-xs mt-0.5">{offer.custom_title}</p>}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         {offer.seller_rating > 0 && (
                           <span className="flex items-center gap-1 text-green-400 text-xs">
                             <ThumbsUp size={10} /> {(offer.seller_rating * 20).toFixed(0)}%
@@ -218,9 +221,13 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
                         <span className={`text-xs ${offer.delivery_type === 'automatic' ? 'text-green-400/70' : 'text-orange-400/70'}`}>
                           {offer.delivery_type === 'automatic' ? '⚡ Instant' : '👤 Manual'}
                         </span>
+                        {offer.region && <span className="text-xs text-blue-400/70"><Globe size={10} className="inline mr-0.5" />{offer.region}</span>}
+                        {offer.stock_quantity != null && <span className="text-xs text-white/40">{offer.stock_quantity} in stock</span>}
                       </div>
+                      {offer.description && <p className="text-white/40 text-xs mt-1 line-clamp-2">{offer.description}</p>}
+                      {offer.notes && <p className="text-white/30 text-xs mt-0.5 italic">{offer.notes}</p>}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-shrink-0">
                       <div className="text-right">
                         <p className="text-white font-bold">{Number(offer.price).toFixed(2)} <span className="text-white/40 text-xs">USD</span></p>
                       </div>
@@ -274,6 +281,40 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
           </div>
         )}
       </div>
+
+      {/* Similar Products */}
+      {similarProducts.length > 0 && (
+        <div className="container mx-auto px-4 mb-20">
+          <h2 className="text-white font-bold text-lg mb-4">Similar Products</h2>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {similarProducts.map(sp => (
+              <Link key={sp.id} to={`/product/${sp.slug || sp.id}`} className="block">
+                <div className="rounded-xl bg-[#141414] border border-white/5 hover:border-white/20 transition overflow-hidden">
+                  <div className="h-28 bg-gradient-to-br from-green-500/20 to-emerald-500/20 flex items-center justify-center">
+                    {sp.image_url ? (
+                      <img src={sp.image_url} alt={sp.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <Package className="text-white/30" size={32} />
+                    )}
+                  </div>
+                  <div className="p-3">
+                    <h3 className="text-white text-xs font-semibold truncate">{sp.name}</h3>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-green-400 font-bold text-sm">
+                        {sp._variant_count > 1 ? `From $${Number(sp._min_price).toFixed(2)}` : `$${Number(sp.price).toFixed(2)}`}
+                      </p>
+                      {(sp.seller_offer_count > 0) && (
+                        <span className="text-xs text-blue-400/70">{sp.seller_offer_count} offers</span>
+                      )}
+                    </div>
+                    <p className="text-white/30 text-[10px] mt-1">{Math.max(0, Math.floor(Number(sp.orders_count || sp._orders_count) || 0))} sold</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Sticky Bottom Bar */}
       <div className="fixed bottom-0 left-0 right-0 bg-[#1a1a1a] border-t border-white/10 z-40">

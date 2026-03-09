@@ -160,6 +160,11 @@ class SellerOfferCreate(BaseModel):
     price: float
     delivery_type: str = "automatic"
     stock_available: bool = True
+    custom_title: Optional[str] = None
+    description: Optional[str] = None
+    region: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    notes: Optional[str] = None
 
 
 # ==================== ESCROW / DISPUTE / MESSAGE MODELS ====================
@@ -2036,6 +2041,8 @@ async def get_products(
                     "seo_description": product.get("seo_description"),
                     "metadata": product.get("metadata", {}),
                     "created_at": created_at,
+                    "seller_id": product.get("seller_id"),
+                    "seller_offer_count": product.get("seller_offer_count", 0),
                 }
 
                 validated_products.append(validated_product)
@@ -2063,6 +2070,64 @@ async def get_product(product_id: str):
     if not product.get("slug"):
         product["slug"] = _slugify_text(product.get("name", "product"))
     return product
+
+@api_router.get("/products/{product_id}/similar")
+async def get_similar_products(product_id: str, limit: int = 8):
+    """Get similar products in the same category, excluding the current product's parent group."""
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        product = await db.products.find_one({"slug": product_id}, {"_id": 0})
+    if not product:
+        return []
+    category = product.get("category")
+    parent_id = product.get("parent_product_id") or product.get("id")
+    query: Dict[str, Any] = {
+        "category": category,
+        "parent_product_id": {"$nin": [parent_id, None]},
+        "product_status": {"$in": ["approved", None]},
+    }
+    candidates = await db.products.find(query, {"_id": 0}).to_list(200)
+    seen_parents: set = set()
+    grouped: list = []
+    for p in candidates:
+        pid = p.get("parent_product_id") or p.get("id")
+        if pid in seen_parents or pid == parent_id:
+            continue
+        seen_parents.add(pid)
+        siblings = [c for c in candidates if (c.get("parent_product_id") or c.get("id")) == pid]
+        rep = min(siblings, key=lambda x: x.get("price", 9999))
+        rep["_variant_count"] = len(siblings)
+        rep["_min_price"] = min(s.get("price", 9999) for s in siblings)
+        rep["orders_count"] = _normalize_orders_count_for_product(rep)
+        if not rep.get("slug"):
+            rep["slug"] = _slugify_text(rep.get("name", "product"))
+        offer_count = await db.seller_offers.count_documents({"product_id": {"$in": [s["id"] for s in siblings]}, "status": "active"})
+        rep["seller_offer_count"] = offer_count
+        grouped.append(rep)
+        if len(grouped) >= limit:
+            break
+    if len(grouped) < limit:
+        fallback_query: Dict[str, Any] = {
+            "product_status": {"$in": ["approved", None]},
+            "parent_product_id": {"$nin": list(seen_parents) + [parent_id, None]},
+            "category": {"$ne": category},
+        }
+        extras = await db.products.find(fallback_query, {"_id": 0}).to_list(100)
+        for p in extras:
+            pid = p.get("parent_product_id") or p.get("id")
+            if pid in seen_parents:
+                continue
+            seen_parents.add(pid)
+            p["_variant_count"] = 1
+            p["_min_price"] = p.get("price", 0)
+            p["orders_count"] = _normalize_orders_count_for_product(p)
+            if not p.get("slug"):
+                p["slug"] = _slugify_text(p.get("name", "product"))
+            grouped.append(p)
+            if len(grouped) >= limit:
+                break
+    return grouped
+
 
 @api_router.post("/products", response_model=Product)
 async def create_product(product_data: ProductCreate):
@@ -4165,6 +4230,11 @@ class SellerOfferUpdate(BaseModel):
     price: Optional[float] = None
     delivery_type: Optional[str] = None
     stock_available: Optional[bool] = None
+    custom_title: Optional[str] = None
+    description: Optional[str] = None
+    region: Optional[str] = None
+    stock_quantity: Optional[int] = None
+    notes: Optional[str] = None
 
 
 @api_router.post("/seller/product-requests")
@@ -4298,6 +4368,11 @@ async def seller_create_offer(payload: SellerOfferCreate, user_id: str):
         "price": payload.price,
         "delivery_type": payload.delivery_type,
         "stock_available": payload.stock_available,
+        "custom_title": (payload.custom_title or "").strip() or None,
+        "description": (payload.description or "").strip() or None,
+        "region": (payload.region or "").strip() or None,
+        "stock_quantity": payload.stock_quantity,
+        "notes": (payload.notes or "").strip() or None,
         "status": "active",
         "created_at": now,
     }
@@ -4339,6 +4414,16 @@ async def seller_update_offer(offer_id: str, updates: SellerOfferUpdate, user_id
         update_data["delivery_type"] = updates.delivery_type
     if updates.stock_available is not None:
         update_data["stock_available"] = bool(updates.stock_available)
+    if updates.custom_title is not None:
+        update_data["custom_title"] = updates.custom_title.strip() or None
+    if updates.description is not None:
+        update_data["description"] = updates.description.strip() or None
+    if updates.region is not None:
+        update_data["region"] = updates.region.strip() or None
+    if updates.stock_quantity is not None:
+        update_data["stock_quantity"] = updates.stock_quantity
+    if updates.notes is not None:
+        update_data["notes"] = updates.notes.strip() or None
     if not update_data:
         raise HTTPException(status_code=400, detail="No updates provided")
     await db.seller_offers.update_one({"id": offer_id}, {"$set": update_data})

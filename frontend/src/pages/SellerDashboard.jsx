@@ -53,6 +53,11 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [offerPrice, setOfferPrice] = useState('');
   const [offerDelivery, setOfferDelivery] = useState('automatic');
   const [offerStock, setOfferStock] = useState(true);
+  const [offerTitle, setOfferTitle] = useState('');
+  const [offerDesc, setOfferDesc] = useState('');
+  const [offerRegion, setOfferRegion] = useState('');
+  const [offerQty, setOfferQty] = useState('');
+  const [offerNotes, setOfferNotes] = useState('');
 
   // Offer edit dialog
   const [editDialog, setEditDialog] = useState(false);
@@ -60,6 +65,11 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [editPrice, setEditPrice] = useState('');
   const [editDelivery, setEditDelivery] = useState('automatic');
   const [editStock, setEditStock] = useState(true);
+  const [editTitle, setEditTitle] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editRegion, setEditRegion] = useState('');
+  const [editQty, setEditQty] = useState('');
+  const [editNotes, setEditNotes] = useState('');
 
   // Product request dialog
   const [reqDialog, setReqDialog] = useState(false);
@@ -135,6 +145,11 @@ const SellerDashboard = ({ user, logout, settings }) => {
     setOfferPrice(String(product.price));
     setOfferDelivery('automatic');
     setOfferStock(true);
+    setOfferTitle('');
+    setOfferDesc('');
+    setOfferRegion(product.region || '');
+    setOfferQty('');
+    setOfferNotes('');
     setOfferDialog(true);
   };
 
@@ -142,7 +157,15 @@ const SellerDashboard = ({ user, logout, settings }) => {
     if (!offerProduct || !offerPrice) { toast.error('Enter a price'); return; }
     try {
       await axiosInstance.post(`/seller/offers?user_id=${user.id}`, {
-        product_id: offerProduct.id, price: parseFloat(offerPrice), delivery_type: offerDelivery, stock_available: offerStock,
+        product_id: offerProduct.id,
+        price: parseFloat(offerPrice),
+        delivery_type: offerDelivery,
+        stock_available: offerStock,
+        custom_title: offerTitle || null,
+        description: offerDesc || null,
+        region: offerRegion || null,
+        stock_quantity: offerQty ? parseInt(offerQty) : null,
+        notes: offerNotes || null,
       });
       toast.success('Offer created!');
       setOfferDialog(false); loadCatalog(); loadData();
@@ -154,6 +177,11 @@ const SellerDashboard = ({ user, logout, settings }) => {
     setEditPrice(String(offer.price));
     setEditDelivery(offer.delivery_type || 'automatic');
     setEditStock(offer.stock_available ?? true);
+    setEditTitle(offer.custom_title || '');
+    setEditDesc(offer.description || '');
+    setEditRegion(offer.region || '');
+    setEditQty(offer.stock_quantity != null ? String(offer.stock_quantity) : '');
+    setEditNotes(offer.notes || '');
     setEditDialog(true);
   };
 
@@ -161,7 +189,14 @@ const SellerDashboard = ({ user, logout, settings }) => {
     if (!editOffer) return;
     try {
       await axiosInstance.put(`/seller/offers/${editOffer.id}?user_id=${user.id}`, {
-        price: parseFloat(editPrice), delivery_type: editDelivery, stock_available: editStock,
+        price: parseFloat(editPrice),
+        delivery_type: editDelivery,
+        stock_available: editStock,
+        custom_title: editTitle || null,
+        description: editDesc || null,
+        region: editRegion || null,
+        stock_quantity: editQty ? parseInt(editQty) : null,
+        notes: editNotes || null,
       });
       toast.success('Offer updated!');
       setEditDialog(false); loadData();
@@ -478,16 +513,21 @@ const SellerDashboard = ({ user, logout, settings }) => {
                     <div className="flex gap-3 mb-3">
                       {o.product_image && <img src={o.product_image} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-white font-bold text-sm truncate">{o.product_name}</h3>
+                        <h3 className="text-white font-bold text-sm truncate">{o.custom_title || o.product_name}</h3>
+                        {o.custom_title && <p className="text-white/40 text-xs truncate">{o.product_name}</p>}
                         <p className="text-green-300 font-bold">${Number(o.price).toFixed(2)}</p>
                         <div className="flex gap-1 mt-1 flex-wrap">
                           <Badge className={o.stock_available ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
                             {o.stock_available ? 'In Stock' : 'Out of Stock'}
                           </Badge>
                           <Badge className="bg-white/10 text-white/60">{o.delivery_type}</Badge>
+                          {o.region && <Badge className="bg-blue-500/20 text-blue-300">{o.region}</Badge>}
+                          {o.stock_quantity != null && <Badge className="bg-white/10 text-white/50">Qty: {o.stock_quantity}</Badge>}
                         </div>
                       </div>
                     </div>
+                    {o.description && <p className="text-white/50 text-xs mb-3 line-clamp-2">{o.description}</p>}
+                    {o.notes && <p className="text-white/30 text-xs mb-3 italic">{o.notes}</p>}
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" onClick={() => openEditDialog(o)}
                         className="flex-1 border-white/20 text-white hover:bg-white/10 text-xs">
@@ -800,21 +840,34 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
       {/* Create Offer Dialog */}
       <Dialog open={offerDialog} onOpenChange={setOfferDialog}>
-        <DialogContent className="max-w-md bg-gray-900 border-white/20">
+        <DialogContent className="max-w-lg bg-gray-900 border-white/20 max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-white">Sell: {offerProduct?.name}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-3 py-2">
             <div className="flex gap-3 items-center">
               {offerProduct?.image_url && <img src={offerProduct.image_url} alt="" className="w-16 h-16 rounded object-cover" />}
               <div><p className="text-white/60 text-xs">Catalog price: ${Number(offerProduct?.price || 0).toFixed(2)}</p></div>
             </div>
-            <div><Label className="text-white">Your Price (USD) *</Label><Input type="number" step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1" /></div>
-            <div>
-              <Label className="text-white">Delivery Type</Label>
-              <Select value={offerDelivery} onValueChange={setOfferDelivery}>
-                <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
-              </Select>
+            <div><Label className="text-white text-sm">Custom Title</Label><Input value={offerTitle} onChange={(e) => setOfferTitle(e.target.value)} placeholder="e.g. US Region - Fast Delivery" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+            <div><Label className="text-white text-sm">Description</Label><textarea value={offerDesc} onChange={(e) => setOfferDesc(e.target.value)} placeholder="Describe your offer, delivery details, etc." className="w-full bg-white/10 border border-white/20 text-white mt-1 text-sm rounded-md px-3 py-2 min-h-[60px]" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-white text-sm">Your Price (USD) *</Label><Input type="number" step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+              <div><Label className="text-white text-sm">Region</Label><Input value={offerRegion} onChange={(e) => setOfferRegion(e.target.value)} placeholder="e.g. US, EU, Global" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-white text-sm">Delivery Type</Label>
+                <Select value={offerDelivery} onValueChange={setOfferDelivery}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="automatic">Automatic (Instant)</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-white text-sm">Stock Quantity</Label><Input type="number" value={offerQty} onChange={(e) => setOfferQty(e.target.value)} placeholder="e.g. 50" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox checked={offerStock} onCheckedChange={setOfferStock} />
+              <Label className="text-white text-sm">In Stock</Label>
+            </div>
+            <div><Label className="text-white text-sm">Notes for buyer</Label><Input value={offerNotes} onChange={(e) => setOfferNotes(e.target.value)} placeholder="e.g. Delivery within 5 minutes" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
             <Button onClick={handleCreateOffer} className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white">Create Offer</Button>
           </div>
         </DialogContent>
@@ -822,21 +875,30 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
       {/* Edit Offer Dialog */}
       <Dialog open={editDialog} onOpenChange={setEditDialog}>
-        <DialogContent className="max-w-md bg-gray-900 border-white/20">
+        <DialogContent className="max-w-lg bg-gray-900 border-white/20 max-h-[90vh] overflow-y-auto">
           <DialogHeader><DialogTitle className="text-white">Edit Offer: {editOffer?.product_name}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <div><Label className="text-white">Price (USD) *</Label><Input type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1" /></div>
-            <div>
-              <Label className="text-white">Delivery Type</Label>
-              <Select value={editDelivery} onValueChange={setEditDelivery}>
-                <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1"><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
-              </Select>
+          <div className="space-y-3 py-2">
+            <div><Label className="text-white text-sm">Custom Title</Label><Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="e.g. US Region - Fast Delivery" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+            <div><Label className="text-white text-sm">Description</Label><textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Describe your offer..." className="w-full bg-white/10 border border-white/20 text-white mt-1 text-sm rounded-md px-3 py-2 min-h-[60px]" /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-white text-sm">Price (USD) *</Label><Input type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+              <div><Label className="text-white text-sm">Region</Label><Input value={editRegion} onChange={(e) => setEditRegion(e.target.value)} placeholder="e.g. US, EU, Global" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-white text-sm">Delivery Type</Label>
+                <Select value={editDelivery} onValueChange={setEditDelivery}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1 text-sm"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="automatic">Automatic (Instant)</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div><Label className="text-white text-sm">Stock Quantity</Label><Input type="number" value={editQty} onChange={(e) => setEditQty(e.target.value)} placeholder="e.g. 50" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
             </div>
             <div className="flex items-center gap-2">
               <Checkbox checked={editStock} onCheckedChange={setEditStock} />
               <Label className="text-white text-sm">In Stock</Label>
             </div>
+            <div><Label className="text-white text-sm">Notes for buyer</Label><Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="e.g. Delivery within 5 minutes" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
             <Button onClick={handleUpdateOffer} className="w-full bg-cyan-600 text-white">Save Changes</Button>
           </div>
         </DialogContent>
