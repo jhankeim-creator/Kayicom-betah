@@ -522,6 +522,12 @@ class SiteSettings(BaseModel):
             "MATIC": ""
         }
     }
+    # Seller marketplace settings
+    seller_commission_percent: Optional[float] = 10.0
+    seller_commission_fixed: Optional[float] = 0.0
+    seller_marketplace_enabled: Optional[bool] = True
+    customer_fee_payment_percent: Optional[float] = 0.5
+    customer_fee_wallet_percent: Optional[float] = 0.05
     # Minutes Transfer (international mobile minutes / airtime)
     minutes_transfer_enabled: Optional[bool] = False
     minutes_transfer_fee_type: Optional[str] = "percent"  # percent or fixed
@@ -577,6 +583,11 @@ class SettingsUpdate(BaseModel):
     payment_gateways: Optional[dict] = None
     crypto_payment_gateways: Optional[dict] = None
     crypto_settings: Optional[dict] = None
+    seller_commission_percent: Optional[float] = None
+    seller_commission_fixed: Optional[float] = None
+    seller_marketplace_enabled: Optional[bool] = None
+    customer_fee_payment_percent: Optional[float] = None
+    customer_fee_wallet_percent: Optional[float] = None
     minutes_transfer_enabled: Optional[bool] = None
     minutes_transfer_fee_type: Optional[str] = None
     minutes_transfer_fee_value: Optional[float] = None
@@ -5384,6 +5395,12 @@ async def seed_database(request: SeedRequest):
 
 # Include the router (must be after all endpoints are defined)
 app.include_router(api_router)
+
+# Seller / Multi-Vendor Marketplace routes
+from seller_api import seller_router, admin_seller_router, init as seller_init
+seller_init(db, pwd_context)
+app.include_router(seller_router)
+app.include_router(admin_seller_router)
 
 # Custom exception handler to ensure CORS headers on HTTPException errors
 @app.exception_handler(HTTPException)
