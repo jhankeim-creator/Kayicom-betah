@@ -3777,7 +3777,7 @@ async def seller_request_categories(payload: SellerCategoryAccessRequest, user_i
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("seller_status") != "approved":
         raise HTTPException(status_code=400, detail="Only approved sellers can request categories")
-    cats = [c.strip() for c in payload.categories if c.strip()]
+    cats = [c.strip().lower() for c in payload.categories if c.strip()]
     if not cats:
         raise HTTPException(status_code=400, detail="No categories provided")
     now = datetime.now(timezone.utc).isoformat()
@@ -3813,8 +3813,8 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("seller_status") != "approved":
         raise HTTPException(status_code=403, detail="Seller not approved")
-    approved = user.get("seller_approved_categories") or []
-    if product.category not in approved:
+    approved = [c.lower() for c in (user.get("seller_approved_categories") or [])]
+    if product.category.lower() not in approved:
         raise HTTPException(status_code=403, detail=f"Not approved to sell in category: {product.category}")
     product_slug = await _generate_unique_product_slug(product.name)
     new_product = Product(
@@ -3856,8 +3856,8 @@ async def seller_update_product(product_id: str, updates: ProductUpdate, user_id
         raise HTTPException(status_code=404, detail="Product not found or not owned by you")
     if updates.category:
         user = await db.users.find_one({"id": user_id}, {"_id": 0})
-        approved = (user or {}).get("seller_approved_categories") or []
-        if updates.category not in approved:
+        approved = [c.lower() for c in ((user or {}).get("seller_approved_categories") or [])]
+        if updates.category.lower() not in approved:
             raise HTTPException(status_code=403, detail=f"Not approved for category: {updates.category}")
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
     update_data.pop("seller_id", None)
@@ -4070,8 +4070,8 @@ async def admin_update_seller_categories(user_id: str, review: AdminCategoryAcce
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if review.action == "approve":
-        existing = user.get("seller_approved_categories") or []
-        merged = list(set(existing + review.categories))
+        existing = [c.lower() for c in (user.get("seller_approved_categories") or [])]
+        merged = list(set(existing + [c.lower() for c in review.categories]))
         await db.users.update_one({"id": user_id}, {"$set": {"seller_approved_categories": merged}})
         await db.seller_category_requests.update_many(
             {"user_id": user_id, "status": "pending"},
@@ -4127,7 +4127,7 @@ async def seller_browse_catalog(user_id: str, category: Optional[str] = None):
     user = await db.users.find_one({"id": user_id}, {"_id": 0})
     if not user or user.get("seller_status") != "approved":
         raise HTTPException(status_code=403, detail="Not an approved seller")
-    approved_cats = user.get("seller_approved_categories") or []
+    approved_cats = [c.lower() for c in (user.get("seller_approved_categories") or [])]
     if not approved_cats:
         return []
     query: Dict[str, Any] = {
@@ -4135,8 +4135,10 @@ async def seller_browse_catalog(user_id: str, category: Optional[str] = None):
         "seller_id": {"$in": [None, ""]},
         "category": {"$in": approved_cats},
     }
-    if category and category in approved_cats:
-        query["category"] = category
+    if category:
+        cat_lower = category.lower()
+        if cat_lower in approved_cats:
+            query["category"] = cat_lower
     products = await db.products.find(query, {"_id": 0}).to_list(500)
     existing_offers = await db.seller_offers.find(
         {"seller_id": user_id, "status": "active"}, {"product_id": 1, "_id": 0}
@@ -4281,8 +4283,8 @@ async def seller_create_offer(payload: SellerOfferCreate, user_id: str):
     product = await db.products.find_one({"id": payload.product_id}, {"_id": 0})
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
-    approved_cats = user.get("seller_approved_categories") or []
-    if product.get("category") not in approved_cats:
+    approved_cats = [c.lower() for c in (user.get("seller_approved_categories") or [])]
+    if (product.get("category") or "").lower() not in approved_cats:
         raise HTTPException(status_code=403, detail="Not approved for this category")
     existing = await db.seller_offers.find_one({"product_id": payload.product_id, "seller_id": user_id, "status": "active"})
     if existing:
@@ -4308,12 +4310,15 @@ async def seller_create_offer(payload: SellerOfferCreate, user_id: str):
 
 @api_router.get("/seller/offers")
 async def seller_list_offers(user_id: str):
-    """List seller's own offers."""
-    offers = await db.seller_offers.find({"seller_id": user_id}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    """List seller's own active offers."""
+    offers = await db.seller_offers.find(
+        {"seller_id": user_id, "status": {"$ne": "removed"}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
     for offer in offers:
         product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
         offer["product_name"] = (product or {}).get("name", "Unknown")
         offer["product_image"] = (product or {}).get("image_url")
+        offer["product_category"] = (product or {}).get("category")
     return offers
 
 

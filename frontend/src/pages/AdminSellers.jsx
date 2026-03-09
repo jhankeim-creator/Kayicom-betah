@@ -75,7 +75,7 @@ const AdminSellers = ({ user, logout, settings }) => {
 
   const handleAddCategories = async () => {
     if (!selectedSeller || !newCategories.trim()) return;
-    const cats = newCategories.split(',').map(c => c.trim()).filter(Boolean);
+    const cats = newCategories.split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
     try {
       await axiosInstance.put(`/admin/sellers/${selectedSeller.id}/categories`, {
         user_id: selectedSeller.id, categories: cats, action: 'approve',

@@ -79,7 +79,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [withdrawMethod, setWithdrawMethod] = useState('');
   const [withdrawAddress, setWithdrawAddress] = useState('');
 
-  const approvedCategories = user?.seller_approved_categories || [];
+  const approvedCategories = (user?.seller_approved_categories || []).map(c => c.toLowerCase());
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -124,7 +124,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
     if (!catRequest.trim()) { toast.error('Enter a category'); return; }
     try {
       await axiosInstance.post(`/seller/category-request?user_id=${user.id}`, {
-        categories: catRequest.split(',').map(c => c.trim()).filter(Boolean)
+        categories: catRequest.split(',').map(c => c.trim().toLowerCase()).filter(Boolean)
       });
       toast.success('Category request submitted'); setCatRequest('');
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
@@ -274,7 +274,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
     } catch (err) { toast.error(err.response?.data?.detail || 'Error submitting delivery'); }
   };
 
-  const filteredCatalog = catalogFilter === 'all' ? catalogProducts : catalogProducts.filter(p => p.category === catalogFilter);
+  const filteredCatalog = catalogFilter === 'all' ? catalogProducts : catalogProducts.filter(p => (p.category || '').toLowerCase() === catalogFilter.toLowerCase());
 
   const tabs = [
     { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={16} /> },
@@ -390,7 +390,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 {approvedCategories.map(c => {
                   const meta = getCatMeta(c);
                   const Icon = meta.icon;
-                  const count = catalogProducts.filter(p => p.category === c).length;
+                  const count = catalogProducts.filter(p => (p.category || '').toLowerCase() === c.toLowerCase()).length;
                   return (
                     <Button key={c} size="sm" onClick={() => setCatalogFilter(c)}
                       className={`${catalogFilter === c ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
