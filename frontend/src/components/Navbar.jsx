@@ -1,6 +1,6 @@
-import { useContext, useState } from 'react';
+import { useContext, useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShoppingCart, User, LogOut, Package, Settings, Heart, Menu, X, Search, ChevronRight } from 'lucide-react';
+import { ShoppingCart, User, LogOut, Package, Settings, Heart, Menu, X, Search, ChevronRight, Bell, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -9,13 +9,34 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import LanguageSwitcher from './LanguageSwitcher';
-import { LanguageContext } from '../App';
+import { LanguageContext, axiosInstance } from '../App';
 
 const Navbar = ({ user, logout, cartItemCount, settings }) => {
   const { t } = useContext(LanguageContext);
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+
+  const fetchBadges = useCallback(async () => {
+    if (!user) return;
+    const userId = user.user_id || user.id;
+    try {
+      const [notifRes, msgRes] = await Promise.all([
+        axiosInstance.get(`/notifications/unread-count?user_id=${userId}`),
+        axiosInstance.get(`/messages/unread-count?user_id=${userId}`),
+      ]);
+      setUnreadNotifs(notifRes.data?.unread_count || 0);
+      setUnreadMessages(msgRes.data?.unread || 0);
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    fetchBadges();
+    const interval = setInterval(fetchBadges, 30000);
+    return () => clearInterval(interval);
+  }, [fetchBadges]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -104,6 +125,31 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                   )}
                 </Button>
               </Link>
+
+              {user && (
+                <>
+                  <Link to="/messages" className="relative" data-testid="nav-messages">
+                    <Button variant="ghost" size="sm" className="text-white/70 hover:bg-white/5 hover:text-green-400 p-1.5 md:p-2">
+                      <MessageCircle size={18} className="md:w-5 md:h-5" />
+                      {unreadMessages > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 bg-blue-500 text-white text-[10px] rounded-full h-4 w-4 md:h-5 md:w-5 flex items-center justify-center font-bold">
+                          {unreadMessages > 99 ? '99+' : unreadMessages}
+                        </span>
+                      )}
+                    </Button>
+                  </Link>
+                  <Link to="/notifications" className="relative" data-testid="nav-notifications">
+                    <Button variant="ghost" size="sm" className="text-white/70 hover:bg-white/5 hover:text-green-400 p-1.5 md:p-2">
+                      <Bell size={18} className="md:w-5 md:h-5" />
+                      {unreadNotifs > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] rounded-full h-4 w-4 md:h-5 md:w-5 flex items-center justify-center font-bold">
+                          {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                        </span>
+                      )}
+                    </Button>
+                  </Link>
+                </>
+              )}
 
               {user ? (
                 <DropdownMenu>

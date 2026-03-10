@@ -16,6 +16,7 @@ import CheckoutPage from './pages/CheckoutPage';
 import RefundPolicy from './pages/RefundPolicy';
 import OrderTrackingPage from './pages/OrderTrackingPage';
 import CustomerDashboard from './pages/CustomerDashboard';
+import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminProducts from './pages/AdminProducts';
 import AdminOrders from './pages/AdminOrders';
@@ -293,6 +294,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <CustomerDashboard user={user} logout={logout} settings={settings} cart={cart} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <PurchaseOrdersPage user={user} logout={logout} settings={settings} cart={cart} />
               </ProtectedRoute>
             }
           />

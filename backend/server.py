@@ -4809,6 +4809,33 @@ async def send_message(payload: MessageCreate, user_id: str):
     }
     await db.messages.insert_one(msg)
     msg.pop("_id", None)
+    try:
+        sender_name = (sender or {}).get("full_name", "Someone")
+        await _create_notification(
+            payload.receiver_id, "new_message",
+            f"New message from {sender_name} on order #{payload.order_id[:8]}",
+            {"order_id": payload.order_id, "sender_id": user_id}
+        )
+    except Exception as e:
+        logging.error(f"Message notification error: {e}")
+    try:
+        receiver = await db.users.find_one({"id": payload.receiver_id}, {"_id": 0})
+        receiver_email = (receiver or {}).get("email")
+        if receiver_email:
+            settings_doc = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+            sender_name = (sender or {}).get("full_name", "A user")
+            html = (
+                f"<div style='font-family:Arial,sans-serif'>"
+                f"<h2>New message on your order</h2>"
+                f"<p><b>From:</b> {sender_name}</p>"
+                f"<p><b>Order:</b> #{payload.order_id[:8]}</p>"
+                f"<p style='background:#f3f4f6;padding:12px;border-radius:8px;margin:12px 0'>{payload.content.strip()}</p>"
+                f"<p>Log in to reply.</p>"
+                f"</div>"
+            )
+            _send_resend_email(settings_doc, receiver_email, f"New message from {sender_name}", html)
+    except Exception as e:
+        logging.error(f"Message email notification error: {e}")
     return msg
 
 

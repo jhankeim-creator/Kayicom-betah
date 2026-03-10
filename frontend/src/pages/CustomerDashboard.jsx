@@ -23,10 +23,18 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [walletBalance, setWalletBalance] = useState(0);
   const [creditsBalance, setCreditsBalance] = useState(0);
+  const [unreadMessages, setUnreadMessages] = useState(0);
 
   const userId = user?.user_id || user?.id;
 
-  useEffect(() => { if (user) { loadOrders(); loadWallet(); } }, [user]);
+  useEffect(() => { if (user) { loadOrders(); loadWallet(); loadUnread(); } }, [user]);
+
+  const loadUnread = async () => {
+    try {
+      const res = await axiosInstance.get(`/messages/unread-count?user_id=${userId}`);
+      setUnreadMessages(res.data?.unread || 0);
+    } catch {}
+  };
 
   useEffect(() => {
     const hasSubscriptions = orders.some((order) => order.subscription_end_date);
@@ -85,10 +93,10 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
     ] : [
       { icon: Store, label: 'Become a Seller', href: '/seller/apply', color: 'text-green-400' },
     ]),
-    { icon: ShoppingBag, label: 'Purchased Orders', href: '/dashboard#orders', color: 'text-white/70' },
+    { icon: ShoppingBag, label: 'Purchased Orders', href: '/orders', color: 'text-white/70' },
     { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
     { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
-    { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70' },
+    { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70', badge: unreadMessages > 0 ? `${unreadMessages} new` : null },
     { icon: HelpCircle, label: 'Help Center', href: '/', color: 'text-white/70' },
     { icon: Bell, label: 'Notification', href: '/notifications', color: 'text-white/70' },
     { icon: Settings, label: 'Setting', href: '/', color: 'text-white/70' },
