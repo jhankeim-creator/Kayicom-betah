@@ -3,6 +3,7 @@ export const translations = {
   en: {
     // Navigation
     home: 'Home',
+    marketplace: 'Marketplace',
     products: 'Products',
     login: 'Login',
     logout: 'Logout',
@@ -167,6 +168,7 @@ export const translations = {
   fr: {
     // Navigation
     home: 'Accueil',
+    marketplace: 'Marketplace',
     products: 'Produits',
     login: 'Connexion',
     logout: 'Déconnexion',
