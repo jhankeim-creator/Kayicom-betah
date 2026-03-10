@@ -4,7 +4,7 @@ import { axiosInstance, LanguageContext } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Button } from '@/components/ui/button';
-import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Star, TrendingUp, Package, Heart, Search, Store, ShieldCheck } from 'lucide-react';
+import { Gift, Gamepad2, Tv, Wrench, ArrowRight, Star, TrendingUp, Package, Heart, Search, Store, ShieldCheck, ShoppingCart, CheckCircle, XCircle, Truck } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
@@ -79,10 +79,28 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
     return acc;
   }, {});
 
+  const handleAddToCart = (item) => {
+    const cartItem = {
+      id: item.offer_id || item.id,
+      product_id: item.product_id || item.id,
+      name: item.name,
+      price: item.price,
+      image_url: item.image_url,
+      quantity: 1,
+      seller_id: item.seller_id,
+      _seller_id: item.seller_id,
+      _seller_name: item.seller_name,
+      _offer_id: item.offer_id,
+      delivery_type: item.delivery_type,
+    };
+    addToCart(cartItem, 1);
+    toast.success('Added to cart!');
+  };
+
   const renderCard = (item) => (
-    <Link to={`/product/${item.slug || item.product_id || item.id}`} key={item.offer_id || item.id}>
-      <div className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden hover:border-green-500/30 transition group">
-        <div className="relative h-36 md:h-44 bg-[#1c1c1c] overflow-hidden">
+    <div key={item.offer_id || item.id} className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden hover:border-green-500/30 transition group">
+      <Link to={`/product/${item.slug || item.product_id || item.id}`}>
+        <div className="relative h-32 md:h-40 bg-[#1c1c1c] overflow-hidden">
           {item.image_url ? (
             <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
@@ -90,34 +108,42 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
               <Gift className="text-white/15" size={40} />
             </div>
           )}
-          <button className="absolute top-2 left-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center">
-            <Heart size={14} className="text-white/60" />
-          </button>
           {item.seller_name && (
             <span className="absolute top-2 right-2 bg-green-500/90 text-black text-[10px] font-semibold px-2 py-0.5 rounded-full truncate max-w-[100px]">
               {item.seller_name}
             </span>
           )}
         </div>
-        <div className="p-3">
-          <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-green-400 font-bold">
-              ${Number(item.price).toFixed(2)}
-            </span>
-          </div>
-          <h3 className="text-white font-medium text-sm truncate">{item.name}</h3>
-          <div className="flex items-center justify-between mt-2">
-            <span className="text-white/40 text-xs px-2 py-0.5 rounded bg-white/5 border border-white/10">
-              {item.delivery_type === 'automatic' ? 'Instant' : 'Manual'}
-            </span>
-            <div className="flex items-center gap-1">
-              <Star size={12} className="text-yellow-500" fill="currentColor" />
-              <span className="text-white/50 text-xs">{item.seller_rating || 0}</span>
-            </div>
-          </div>
+      </Link>
+      <div className="p-3">
+        <h3 className="text-white font-medium text-sm truncate mb-1">{item.name}</h3>
+        {item.description && (
+          <p className="text-white/30 text-xs line-clamp-2 mb-2">{item.description.replace(/<[^>]+>/g, '').slice(0, 80)}</p>
+        )}
+        <div className="flex items-baseline gap-2 mb-2">
+          <span className="text-green-400 font-bold text-lg">${Number(item.price).toFixed(2)}</span>
         </div>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          <span className="text-white/40 text-[10px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 flex items-center gap-1">
+            <Truck size={10} /> {item.delivery_type === 'automatic' ? 'Instant' : 'Manual'}
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 ${item.stock_available !== false ? 'text-green-400/80 bg-green-400/10 border border-green-400/20' : 'text-red-400/80 bg-red-400/10 border border-red-400/20'}`}>
+            {item.stock_available !== false ? <><CheckCircle size={10} /> In Stock</> : <><XCircle size={10} /> Out of Stock</>}
+          </span>
+          <span className="text-white/40 text-[10px] px-1.5 py-0.5 rounded bg-white/5 border border-white/10 flex items-center gap-1">
+            <Star size={10} className="text-yellow-500" /> {item.seller_rating || 0}
+          </span>
+        </div>
+        <Button
+          size="sm"
+          className="w-full bg-green-500 hover:bg-green-600 text-black font-semibold text-xs py-2 rounded-lg"
+          disabled={item.stock_available === false}
+          onClick={() => handleAddToCart(item)}
+        >
+          <ShoppingCart size={14} className="mr-1" /> Add to Cart
+        </Button>
       </div>
-    </Link>
+    </div>
   );
 
   return (

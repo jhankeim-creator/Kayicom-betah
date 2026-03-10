@@ -970,7 +970,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 <Label className="text-white text-sm">In Stock</Label>
               </div>
             </div>
-            <div><Label className="text-white">Variant Name</Label><Input value={productForm.variant_name} onChange={(e) => setProductForm(p => ({ ...p, variant_name: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="e.g. Standard, Premium" /></div>
             <div>
               <Label className="text-white">Image</Label>
               <Input value={productForm.image_url} onChange={(e) => setProductForm(p => ({ ...p, image_url: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="URL or upload below" />
