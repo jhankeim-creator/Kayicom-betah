@@ -451,6 +451,14 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </div>
           )}
 
+          {order.escrow_status === 'refunded' && (
+            <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
+              <CheckCircle className="text-blue-400 mx-auto mb-2" size={24} />
+              <p className="text-blue-300 font-semibold text-sm">Dispute resolved — You have been refunded</p>
+              <p className="text-white/40 text-xs mt-1">The refund has been credited to your wallet</p>
+            </div>
+          )}
+
           {/* Message Seller */}
           {order.items?.some(i => i.seller_id) && order.payment_status === 'paid' && (
             <Card className="glass-effect border-green-500/20">

@@ -176,11 +176,13 @@ class EscrowConfirmRequest(BaseModel):
 
 class DisputeMessageCreate(BaseModel):
     content: str
+    evidence_url: Optional[str] = None
 
 
 class AdminDisputeResolve(BaseModel):
     resolution: str  # buyer_wins or seller_wins
     reason: Optional[str] = None
+    evidence_url: Optional[str] = None
 
 
 class MessageCreate(BaseModel):
@@ -220,6 +222,7 @@ CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").str
 _order_auto_cancel_task: Optional[asyncio.Task] = None
 _subscription_notification_task: Optional[asyncio.Task] = None
 _escrow_release_task: Optional[asyncio.Task] = None
+_dispute_deadline_task: Optional[asyncio.Task] = None
 SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS = max(
     60,
     int(os.environ.get("SUBSCRIPTION_NOTIFICATION_INTERVAL_SECONDS", "300")),
@@ -4634,12 +4637,14 @@ async def escrow_action(order_id: str, payload: EscrowConfirmRequest, user_id: s
         reason = (payload.reason or "").strip()
         if not reason:
             raise HTTPException(status_code=400, detail="Dispute reason required")
+        deadline = (now + timedelta(hours=24)).isoformat()
         dispute = {
             "id": str(uuid.uuid4()),
             "order_id": order_id,
             "buyer_id": order.get("user_id"),
             "buyer_email": order.get("user_email"),
             "seller_id": None,
+            "seller_email": None,
             "reason": reason,
             "status": "open",
             "messages": [{
@@ -4650,6 +4655,9 @@ async def escrow_action(order_id: str, payload: EscrowConfirmRequest, user_id: s
                 "created_at": now_iso,
             }],
             "resolution": None,
+            "waiting_for": "seller",
+            "response_deadline": deadline,
+            "last_message_by": "buyer",
             "created_at": now_iso,
             "updated_at": now_iso,
         }
@@ -4692,6 +4700,71 @@ async def _release_due_escrows():
             "updated_at": now.isoformat(),
         }})
         logging.info("Escrow released for order %s", order_id)
+
+
+async def _auto_close_expired_disputes():
+    """Auto-close disputes where a party exceeded the 24h response deadline."""
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+    cursor = db.disputes.find({
+        "status": {"$in": ["open", "in_review"]},
+        "response_deadline": {"$lte": now_iso},
+        "waiting_for": {"$in": ["buyer", "seller"]},
+    }, {"_id": 0})
+    async for dispute in cursor:
+        waiting_for = dispute.get("waiting_for")
+        order_id = dispute.get("order_id")
+        if waiting_for == "seller":
+            resolution = "buyer_wins"
+            reason = "Seller did not respond within 24 hours"
+        else:
+            resolution = "seller_wins"
+            reason = "Buyer did not respond within 24 hours"
+
+        if resolution == "buyer_wins":
+            await db.orders.update_one({"id": order_id}, {"$set": {"escrow_status": "refunded", "updated_at": now_iso}})
+            order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+            if order:
+                refund_amount = float(order.get("total_amount", 0))
+                await db.users.update_one({"id": order["user_id"]}, {"$inc": {"wallet_balance": refund_amount}})
+        else:
+            await db.orders.update_one({"id": order_id}, {"$set": {"escrow_status": "released", "escrow_released_at": now_iso, "updated_at": now_iso}})
+            await _credit_seller_earnings(order_id)
+
+        await db.disputes.update_one({"id": dispute["id"]}, {"$set": {
+            "status": f"resolved_{resolution}",
+            "resolution": resolution,
+            "resolution_reason": reason,
+            "resolved_at": now_iso,
+            "updated_at": now_iso,
+            "waiting_for": None,
+            "response_deadline": None,
+            "auto_resolved": True,
+        }})
+        try:
+            buyer_id = dispute.get("buyer_id")
+            seller_id = dispute.get("seller_id")
+            if buyer_id:
+                await _create_notification(buyer_id, "dispute_resolved",
+                    f"Dispute on order #{order_id[:8]} auto-resolved: {reason}",
+                    {"order_id": order_id, "dispute_id": dispute["id"]})
+            if seller_id:
+                await _create_notification(seller_id, "dispute_resolved",
+                    f"Dispute on order #{order_id[:8]} auto-resolved: {reason}",
+                    {"order_id": order_id, "dispute_id": dispute["id"]})
+        except Exception:
+            pass
+        logging.info("Dispute %s auto-resolved: %s", dispute["id"][:8], resolution)
+
+
+async def _dispute_deadline_worker():
+    """Periodically check for expired dispute deadlines."""
+    while True:
+        try:
+            await _auto_close_expired_disputes()
+        except Exception as e:
+            logging.error(f"Dispute deadline worker error: {e}")
+        await asyncio.sleep(300)
 
 
 # ==================== DISPUTE CENTER ====================
@@ -4738,11 +4811,20 @@ async def add_dispute_message(dispute_id: str, payload: DisputeMessageCreate, us
         "sender_role": sender_role,
         "sender_name": (user or {}).get("full_name", "User"),
         "content": payload.content.strip(),
+        "evidence_url": payload.evidence_url if payload.evidence_url else None,
         "created_at": now_iso,
     }
+    waiting_for = "seller" if sender_role == "buyer" else "buyer" if sender_role == "seller" else dispute.get("waiting_for")
+    deadline = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat() if sender_role in ("buyer", "seller") else dispute.get("response_deadline")
     await db.disputes.update_one({"id": dispute_id}, {
         "$push": {"messages": message},
-        "$set": {"updated_at": now_iso, "status": "in_review"},
+        "$set": {
+            "updated_at": now_iso,
+            "status": "in_review",
+            "waiting_for": waiting_for,
+            "response_deadline": deadline,
+            "last_message_by": sender_role,
+        },
     })
     return message
 
@@ -4776,13 +4858,31 @@ async def admin_resolve_dispute(dispute_id: str, payload: AdminDisputeResolve):
     else:
         raise HTTPException(status_code=400, detail="Resolution must be 'buyer_wins' or 'seller_wins'")
 
-    await db.disputes.update_one({"id": dispute_id}, {"$set": {
+    resolve_update = {
         "status": f"resolved_{payload.resolution}",
         "resolution": payload.resolution,
         "resolution_reason": payload.reason,
+        "resolution_evidence_url": payload.evidence_url if payload.evidence_url else None,
         "resolved_at": now_iso,
         "updated_at": now_iso,
-    }})
+        "waiting_for": None,
+        "response_deadline": None,
+    }
+    await db.disputes.update_one({"id": dispute_id}, {"$set": resolve_update})
+    try:
+        buyer_id = dispute.get("buyer_id")
+        seller_id = dispute.get("seller_id")
+        winner = "buyer" if payload.resolution == "buyer_wins" else "seller"
+        if buyer_id:
+            await _create_notification(buyer_id, "dispute_resolved",
+                f"Dispute on order #{order_id[:8]} resolved: {'You won — refund issued' if winner == 'buyer' else 'Seller wins — payment released'}",
+                {"order_id": order_id, "dispute_id": dispute_id})
+        if seller_id:
+            await _create_notification(seller_id, "dispute_resolved",
+                f"Dispute on order #{order_id[:8]} resolved: {'Buyer wins — refund issued' if winner == 'buyer' else 'You won — payment released'}",
+                {"order_id": order_id, "dispute_id": dispute_id})
+    except Exception as e:
+        logging.error(f"Dispute resolution notification error: {e}")
     return {"message": f"Dispute resolved: {payload.resolution}"}
 
 
@@ -8362,6 +8462,9 @@ async def startup_background_jobs():
     global _escrow_release_task
     if _escrow_release_task is None:
         _escrow_release_task = asyncio.create_task(_escrow_release_worker())
+
+    global _dispute_deadline_task
+    _dispute_deadline_task = asyncio.create_task(_dispute_deadline_worker())
 
 
 @app.on_event("shutdown")
