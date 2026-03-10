@@ -1983,7 +1983,10 @@ async def get_products(
     Also normalizes fields to ensure frontend compatibility.
     """
     try:
-        query: Dict[str, Any] = {"product_status": {"$in": ["approved", None]}}
+        query: Dict[str, Any] = {
+            "product_status": {"$in": ["approved", None]},
+            "$or": [{"seller_id": None}, {"seller_id": {"$exists": False}}, {"seller_id": ""}],
+        }
         if category:
             query["category"] = category
         if parent_product_id:
@@ -4328,6 +4331,77 @@ async def admin_review_product_request(request_id: str, action: str, reason: Opt
 
 # ==================== SELLER OFFERS ====================
 
+@api_router.get("/marketplace/products")
+async def get_marketplace_products(category: Optional[str] = None, q: Optional[str] = None):
+    """Return seller-created products and active seller offers for the marketplace (decoupled from official store)."""
+    seller_query: Dict[str, Any] = {
+        "seller_id": {"$ne": None},
+        "product_status": {"$in": ["approved", None]},
+    }
+    if category:
+        seller_query["category"] = category
+    if q:
+        q = q.strip()
+        if q:
+            seller_query["$or"] = [
+                {"name": {"$regex": q, "$options": "i"}},
+                {"description": {"$regex": q, "$options": "i"}},
+            ]
+    seller_products = await db.products.find(seller_query, {"_id": 0}).to_list(500)
+    items = []
+    for p in seller_products:
+        p = _normalize_product_doc(p)
+        seller = await db.users.find_one(
+            {"id": p.get("seller_id")},
+            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
+        )
+        items.append({
+            **p,
+            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
+            "seller_rating": (seller or {}).get("seller_rating"),
+            "source": "seller_product",
+            "orders_count": _normalize_orders_count_for_product(p),
+            "slug": p.get("slug") or _slugify_text(p.get("name", "product")),
+        })
+
+    offer_query: Dict[str, Any] = {"status": "active"}
+    offers = await db.seller_offers.find(offer_query, {"_id": 0}).sort("price", 1).to_list(500)
+    for offer in offers:
+        product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
+        if not product:
+            continue
+        if category and (product.get("category") or "").lower() != category.lower():
+            continue
+        if q:
+            name = (product.get("name") or "").lower()
+            desc = (product.get("description") or "").lower()
+            if q.lower() not in name and q.lower() not in desc:
+                continue
+        seller = await db.users.find_one(
+            {"id": offer.get("seller_id")},
+            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
+        )
+        items.append({
+            "id": offer.get("id"),
+            "offer_id": offer.get("id"),
+            "product_id": offer.get("product_id"),
+            "name": (offer.get("custom_title") or product.get("name") or "").strip(),
+            "description": offer.get("description") or product.get("description", ""),
+            "category": product.get("category", ""),
+            "price": float(offer.get("price", 0)),
+            "image_url": product.get("image_url"),
+            "slug": product.get("slug") or product.get("id"),
+            "stock_available": offer.get("stock_available", True),
+            "delivery_type": offer.get("delivery_type", "manual"),
+            "seller_id": offer.get("seller_id"),
+            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
+            "seller_rating": (seller or {}).get("seller_rating"),
+            "source": "seller_offer",
+            "orders_count": 0,
+        })
+    return items
+
+
 @api_router.get("/marketplace/seller-offers")
 async def get_marketplace_seller_offers():
     """Return all active seller offers enriched with product and seller info for the marketplace."""
@@ -4366,8 +4440,14 @@ async def get_marketplace_seller_offers():
 @api_router.get("/products/{product_id}/offers")
 async def get_product_offers(product_id: str):
     """Get all seller offers for a catalog product, sorted by price."""
+    resolved_id = product_id
+    product = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not product:
+        product = await db.products.find_one({"slug": product_id}, {"_id": 0})
+        if product:
+            resolved_id = product["id"]
     offers = await db.seller_offers.find(
-        {"product_id": product_id, "status": "active"},
+        {"product_id": resolved_id, "status": "active"},
         {"_id": 0}
     ).sort("price", 1).to_list(100)
     for offer in offers:
