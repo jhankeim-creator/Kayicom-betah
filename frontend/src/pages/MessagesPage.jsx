@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { axiosInstance } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -10,12 +11,31 @@ import { MessageSquare, Send, ArrowLeft, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 const MessagesPage = ({ user, logout, settings }) => {
+  const [searchParams] = useSearchParams();
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newMsg, setNewMsg] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [selectedReceiver, setSelectedReceiver] = useState(null);
+  const [receiverName, setReceiverName] = useState('');
   const chatEndRef = useRef(null);
+  const initDone = useRef(false);
+
+  useEffect(() => {
+    if (initDone.current) return;
+    initDone.current = true;
+    const orderParam = searchParams.get('order');
+    const sellerParam = searchParams.get('seller');
+    if (orderParam) {
+      setSelectedOrderId(orderParam);
+      if (sellerParam) {
+        setSelectedReceiver(sellerParam);
+        axiosInstance.get(`/users/${sellerParam}/profile`).then(r => {
+          setReceiverName(r.data?.seller_store_name || r.data?.full_name || 'Seller');
+        }).catch(() => setReceiverName('Seller'));
+      }
+    }
+  }, [searchParams]);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
@@ -56,21 +76,25 @@ const MessagesPage = ({ user, logout, settings }) => {
   const activeMessages = selectedOrderId ? messages.filter(m => m.order_id === selectedOrderId) : [];
 
   const sendMessage = async () => {
-    if (!newMsg.trim() || !selectedOrderId || !selectedReceiver) return;
+    if (!newMsg.trim() || !selectedOrderId || !selectedReceiver) {
+      if (!selectedOrderId) toast.error('No order selected');
+      if (!selectedReceiver) toast.error('No recipient selected');
+      return;
+    }
     try {
       await axiosInstance.post(`/messages?user_id=${user.id}`, {
         order_id: selectedOrderId, receiver_id: selectedReceiver, content: newMsg.trim(),
       });
       setNewMsg('');
       loadMessages();
-    } catch (err) { toast.error('Error sending'); }
+    } catch (err) { toast.error(err.response?.data?.detail || 'Error sending message'); }
   };
 
   const selectConversation = (conv) => {
     setSelectedOrderId(conv.orderId);
     const other = conv.messages.find(m => m.sender_id !== user?.id);
     setSelectedReceiver(other?.sender_id || null);
-    // Mark as read
+    setReceiverName(conv.otherUser || 'User');
     conv.messages.filter(m => m.receiver_id === user?.id && !m.read).forEach(m => {
       axiosInstance.put(`/messages/${m.id}/read?user_id=${user.id}`).catch(() => {});
     });
@@ -190,6 +214,33 @@ const MessagesPage = ({ user, logout, settings }) => {
                       </div>
                     ))}
                     {activeMessages.length === 0 && <p className="text-white/20 text-center text-sm py-8">Start the conversation</p>}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="p-3 border-t border-white/5 flex gap-2">
+                    <Input value={newMsg} onChange={(e) => setNewMsg(e.target.value)}
+                      placeholder="Type a message..." className="bg-white/5 border-white/10 text-white flex-1"
+                      onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }} />
+                    <Button onClick={sendMessage} className="bg-green-500 hover:bg-green-600 text-black"><Send size={16} /></Button>
+                  </div>
+                </div>
+              ) : selectedOrderId && selectedReceiver ? (
+                <div className="rounded-xl bg-[#141414] border border-white/5 flex flex-col h-[500px]">
+                  <div className="px-4 py-3 border-b border-white/5">
+                    <p className="text-white font-semibold text-sm">{receiverName || 'Seller'}</p>
+                    <p className="text-white/30 text-xs">Order #{selectedOrderId?.slice(0, 8)}</p>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                    {activeMessages.map(msg => (
+                      <div key={msg.id} className={`max-w-[70%] ${msg.sender_id === user?.id ? 'ml-auto' : ''}`}>
+                        <div className={`p-3 rounded-2xl text-sm ${msg.sender_id === user?.id ? 'bg-green-600 text-white rounded-br-md' : 'bg-white/5 text-white/90 rounded-bl-md'}`}>
+                          {msg.content}
+                        </div>
+                        <p className={`text-[10px] text-white/30 mt-0.5 ${msg.sender_id === user?.id ? 'text-right' : ''}`}>
+                          {msg.sender_name} • {msg.created_at ? new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </p>
+                      </div>
+                    ))}
+                    {activeMessages.length === 0 && <p className="text-white/20 text-center text-sm py-8">Send your first message</p>}
                     <div ref={chatEndRef} />
                   </div>
                   <div className="p-3 border-t border-white/5 flex gap-2">
