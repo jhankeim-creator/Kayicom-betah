@@ -3893,7 +3893,7 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         stock_available=product.stock_available,
         delivery_type=product.delivery_type,
         seller_id=user_id,
-        product_status="pending_review",
+        product_status="approved",
         subscription_duration_months=product.subscription_duration_months,
         variant_name=product.variant_name,
         parent_product_id=product.parent_product_id,
@@ -8112,6 +8112,16 @@ async def startup_background_jobs():
             logging.info(f"Backfilled slugs for {updated_slugs} product(s)")
     except Exception as e:
         logging.error(f"Failed to backfill product slugs: {e}")
+
+    try:
+        result = await db.products.update_many(
+            {"seller_id": {"$ne": None}, "product_status": "pending_review"},
+            {"$set": {"product_status": "approved"}},
+        )
+        if result.modified_count:
+            logging.info(f"Auto-approved {result.modified_count} seller product(s)")
+    except Exception as e:
+        logging.error(f"Failed to auto-approve seller products: {e}")
 
     if _order_auto_cancel_task is not None:
         try:
