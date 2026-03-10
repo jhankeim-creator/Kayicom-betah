@@ -4940,6 +4940,107 @@ async def add_dispute_message(dispute_id: str, payload: DisputeMessageCreate, us
     return message
 
 
+@api_router.post("/disputes/{dispute_id}/seller-accept")
+async def seller_accept_dispute(dispute_id: str, user_id: str):
+    """Seller accepts the dispute and agrees to refund the buyer (no admin needed)."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if dispute.get("seller_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not your dispute")
+    if dispute.get("status") not in ("open", "in_review"):
+        raise HTTPException(status_code=400, detail="Dispute already resolved")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    order_id = dispute.get("order_id")
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "escrow_status": "refunded", "updated_at": now_iso,
+    }})
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if order:
+        refund_amount = float(order.get("total_amount", 0))
+        await db.users.update_one({"id": order["user_id"]}, {"$inc": {"wallet_balance": refund_amount}})
+    await db.disputes.update_one({"id": dispute_id}, {"$set": {
+        "status": "resolved_buyer_wins", "resolution": "buyer_wins",
+        "resolution_reason": "Seller accepted refund", "resolved_at": now_iso,
+        "updated_at": now_iso, "waiting_for": None, "response_deadline": None,
+    }})
+    buyer_id = dispute.get("buyer_id")
+    if buyer_id:
+        await _create_notification(buyer_id, "dispute_resolved",
+            f"Seller accepted your dispute on order #{order_id[:8]}. Refund issued to your wallet.",
+            {"order_id": order_id, "dispute_id": dispute_id})
+    await _create_notification(user_id, "dispute_resolved",
+        f"You accepted the dispute on order #{order_id[:8]}. Buyer has been refunded.",
+        {"order_id": order_id, "dispute_id": dispute_id})
+    return {"message": "Dispute resolved — buyer refunded"}
+
+
+@api_router.post("/disputes/{dispute_id}/buyer-cancel")
+async def buyer_cancel_dispute(dispute_id: str, user_id: str):
+    """Buyer cancels the dispute (issue resolved with seller directly)."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if dispute.get("buyer_id") != user_id:
+        raise HTTPException(status_code=403, detail="Not your dispute")
+    if dispute.get("status") not in ("open", "in_review"):
+        raise HTTPException(status_code=400, detail="Dispute already resolved")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    order_id = dispute.get("order_id")
+    release_at = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "escrow_status": "buyer_confirmed", "escrow_confirmed_at": now_iso,
+        "escrow_release_at": release_at, "updated_at": now_iso,
+    }})
+    await db.disputes.update_one({"id": dispute_id}, {"$set": {
+        "status": "resolved_seller_wins", "resolution": "seller_wins",
+        "resolution_reason": "Buyer cancelled dispute — resolved with seller",
+        "resolved_at": now_iso, "updated_at": now_iso, "waiting_for": None, "response_deadline": None,
+    }})
+    seller_id = dispute.get("seller_id")
+    if seller_id:
+        await _create_notification(seller_id, "dispute_resolved",
+            f"Buyer cancelled the dispute on order #{order_id[:8]}. Payment will release in 3 days.",
+            {"order_id": order_id, "dispute_id": dispute_id})
+    await _create_notification(user_id, "dispute_resolved",
+        f"You cancelled the dispute on order #{order_id[:8]}. Seller payment releasing in 3 days.",
+        {"order_id": order_id, "dispute_id": dispute_id})
+    return {"message": "Dispute cancelled — seller payment releasing in 3 days"}
+
+
+@api_router.post("/disputes/{dispute_id}/escalate")
+async def escalate_dispute(dispute_id: str, user_id: str):
+    """Either party escalates the dispute to admin review."""
+    dispute = await db.disputes.find_one({"id": dispute_id}, {"_id": 0})
+    if not dispute:
+        raise HTTPException(status_code=404, detail="Dispute not found")
+    if user_id not in (dispute.get("buyer_id"), dispute.get("seller_id")):
+        raise HTTPException(status_code=403, detail="Not your dispute")
+    if dispute.get("status") not in ("open", "in_review"):
+        raise HTTPException(status_code=400, detail="Dispute already resolved")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.disputes.update_one({"id": dispute_id}, {"$set": {
+        "status": "escalated", "waiting_for": "admin",
+        "escalated_at": now_iso, "updated_at": now_iso,
+    }})
+    await _notify_admin_telegram("Dispute escalated to admin", [
+        f"Dispute: {dispute_id[:8]}",
+        f"Order: {dispute.get('order_id', '')[:8]}",
+        f"Escalated by: {'buyer' if user_id == dispute.get('buyer_id') else 'seller'}",
+    ])
+    buyer_id = dispute.get("buyer_id")
+    seller_id = dispute.get("seller_id")
+    if buyer_id:
+        await _create_notification(buyer_id, "dispute_escalated",
+            f"Dispute on order #{dispute.get('order_id', '')[:8]} escalated to admin. Resolution may take up to 3 days.",
+            {"dispute_id": dispute_id})
+    if seller_id:
+        await _create_notification(seller_id, "dispute_escalated",
+            f"Dispute on order #{dispute.get('order_id', '')[:8]} escalated to admin. Resolution may take up to 3 days.",
+            {"dispute_id": dispute_id})
+    return {"message": "Dispute escalated to admin review. Resolution may take up to 3 days."}
+
+
 @api_router.put("/disputes/{dispute_id}/resolve")
 async def admin_resolve_dispute(dispute_id: str, payload: AdminDisputeResolve):
     """Admin resolves a dispute."""

@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 const statusColors = {
   open: 'bg-red-500/20 text-red-300',
   in_review: 'bg-yellow-500/20 text-yellow-300',
+  escalated: 'bg-orange-500/20 text-orange-300',
   resolved_buyer_wins: 'bg-green-500/20 text-green-300',
   resolved_seller_wins: 'bg-blue-500/20 text-blue-300',
 };
@@ -124,7 +125,7 @@ const DisputeCenterPage = ({ user, logout, settings }) => {
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
   };
 
-  const isOpen = (s) => s && !s.startsWith('resolved');
+  const isOpen = (s) => s && !s.startsWith('resolved') && s !== 'closed';
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -259,6 +260,51 @@ const DisputeCenterPage = ({ user, logout, settings }) => {
                           <button onClick={() => setEvidenceUrl('')} className="text-red-400 text-xs hover:text-red-300">✕</button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Self-resolution (buyer + seller) */}
+                {isOpen(selected.status) && user?.role !== 'admin' && (
+                  <div className="p-4 bg-yellow-500/5 rounded-lg border border-yellow-500/20 space-y-3">
+                    <p className="text-yellow-300 font-bold text-sm">💡 Resolve it yourselves — faster than admin!</p>
+                    <p className="text-white/40 text-xs">Admin resolution can take up to 3 days. If you and the other party agree, resolve it now.</p>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {userId === selected.seller_id && (
+                        <Button className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-xs" onClick={async () => {
+                          if (!window.confirm('Accept the dispute and refund the buyer? This cannot be undone.')) return;
+                          try {
+                            await axiosInstance.post(`/disputes/${selected.id}/seller-accept?user_id=${userId}`);
+                            toast.success('Dispute resolved — buyer refunded');
+                            setDetailOpen(false); loadDisputes();
+                          } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+                        }}>
+                          <CheckCircle size={14} className="mr-1" /> Accept & Refund Buyer
+                        </Button>
+                      )}
+                      {userId === selected.buyer_id && (
+                        <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white text-xs" onClick={async () => {
+                          if (!window.confirm('Cancel the dispute? The seller will be paid after 3 days.')) return;
+                          try {
+                            await axiosInstance.post(`/disputes/${selected.id}/buyer-cancel?user_id=${userId}`);
+                            toast.success('Dispute cancelled — issue resolved');
+                            setDetailOpen(false); loadDisputes();
+                          } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+                        }}>
+                          <CheckCircle size={14} className="mr-1" /> Cancel Dispute (Resolved)
+                        </Button>
+                      )}
+                      <Button variant="outline" className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 text-xs" onClick={async () => {
+                        if (!window.confirm('Escalate to admin? This may take up to 3 days to resolve.')) return;
+                        try {
+                          await axiosInstance.post(`/disputes/${selected.id}/escalate?user_id=${userId}`);
+                          toast.success('Dispute escalated to admin');
+                          const res = await axiosInstance.get(`/disputes/${selected.id}`);
+                          setSelected(res.data);
+                        } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
+                      }}>
+                        <AlertTriangle size={14} className="mr-1" /> Escalate to Admin
+                      </Button>
                     </div>
                   </div>
                 )}
