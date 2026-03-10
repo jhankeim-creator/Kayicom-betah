@@ -4730,12 +4730,17 @@ async def admin_approve_product(product_id: str, action: str = "approve"):
 
 @api_router.put("/admin/products/approve-all-seller")
 async def admin_approve_all_seller_products():
-    """Bulk-approve all pending seller products."""
+    """Bulk-approve all non-approved seller products regardless of current status."""
     result = await db.products.update_many(
-        {"seller_id": {"$ne": None}, "product_status": "pending_review"},
+        {"seller_id": {"$ne": None}, "product_status": {"$ne": "approved"}},
         {"$set": {"product_status": "approved"}},
     )
-    return {"message": f"Approved {result.modified_count} seller product(s)"}
+    also = await db.products.update_many(
+        {"seller_id": {"$ne": None}, "product_status": {"$exists": False}},
+        {"$set": {"product_status": "approved"}},
+    )
+    total = result.modified_count + also.modified_count
+    return {"message": f"Approved {total} seller product(s)"}
 
 
 @api_router.get("/admin/products/pending")
@@ -8124,12 +8129,17 @@ async def startup_background_jobs():
         logging.error(f"Failed to backfill product slugs: {e}")
 
     try:
-        result = await db.products.update_many(
-            {"seller_id": {"$ne": None}, "product_status": "pending_review"},
+        r1 = await db.products.update_many(
+            {"seller_id": {"$ne": None}, "product_status": {"$nin": ["approved", None]}},
             {"$set": {"product_status": "approved"}},
         )
-        if result.modified_count:
-            logging.info(f"Auto-approved {result.modified_count} seller product(s)")
+        r2 = await db.products.update_many(
+            {"seller_id": {"$ne": None}, "product_status": {"$exists": False}},
+            {"$set": {"product_status": "approved"}},
+        )
+        total = r1.modified_count + r2.modified_count
+        if total:
+            logging.info(f"Auto-approved {total} seller product(s)")
     except Exception as e:
         logging.error(f"Failed to auto-approve seller products: {e}")
 
