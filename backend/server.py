@@ -4334,22 +4334,21 @@ async def admin_review_product_request(request_id: str, action: str, reason: Opt
 
 @api_router.get("/marketplace/products")
 async def get_marketplace_products(category: Optional[str] = None, q: Optional[str] = None):
-    """Return only seller-created products for the marketplace (fully decoupled from official store)."""
+    """Return all seller listings for the marketplace: seller-created products + seller offers on catalog items."""
+    items = []
+
     seller_query: Dict[str, Any] = {
         "seller_id": {"$ne": None},
         "product_status": {"$in": ["approved", None]},
     }
     if category:
         seller_query["category"] = category
-    if q:
-        q = q.strip()
-        if q:
-            seller_query["$or"] = [
-                {"name": {"$regex": q, "$options": "i"}},
-                {"description": {"$regex": q, "$options": "i"}},
-            ]
+    if q and q.strip():
+        seller_query["$or"] = [
+            {"name": {"$regex": q.strip(), "$options": "i"}},
+            {"description": {"$regex": q.strip(), "$options": "i"}},
+        ]
     seller_products = await db.products.find(seller_query, {"_id": 0}).to_list(500)
-    items = []
     for p in seller_products:
         p = _normalize_product_doc(p)
         seller = await db.users.find_one(
@@ -4362,6 +4361,44 @@ async def get_marketplace_products(category: Optional[str] = None, q: Optional[s
             "seller_rating": (seller or {}).get("seller_rating"),
             "orders_count": _normalize_orders_count_for_product(p),
             "slug": p.get("slug") or _slugify_text(p.get("name", "product")),
+            "source": "seller_product",
+        })
+
+    offers = await db.seller_offers.find({"status": "active"}, {"_id": 0}).sort("price", 1).to_list(500)
+    for offer in offers:
+        product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
+        if not product:
+            continue
+        cat = (product.get("category") or "").lower()
+        if category and cat != category.lower():
+            continue
+        if q and q.strip():
+            ql = q.strip().lower()
+            name = (offer.get("custom_title") or product.get("name") or "").lower()
+            desc = (offer.get("description") or product.get("description") or "").lower()
+            if ql not in name and ql not in desc:
+                continue
+        seller = await db.users.find_one(
+            {"id": offer.get("seller_id")},
+            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
+        )
+        items.append({
+            "id": offer.get("id"),
+            "offer_id": offer.get("id"),
+            "product_id": offer.get("product_id"),
+            "name": (offer.get("custom_title") or product.get("name") or "").strip(),
+            "description": offer.get("description") or product.get("description", ""),
+            "category": product.get("category", ""),
+            "price": float(offer.get("price", 0)),
+            "image_url": product.get("image_url"),
+            "slug": product.get("slug") or product.get("id"),
+            "stock_available": offer.get("stock_available", True),
+            "delivery_type": offer.get("delivery_type", "manual"),
+            "seller_id": offer.get("seller_id"),
+            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
+            "seller_rating": (seller or {}).get("seller_rating"),
+            "orders_count": 0,
+            "source": "seller_offer",
         })
     return items
 
