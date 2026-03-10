@@ -796,6 +796,27 @@ class SiteSettings(BaseModel):
     minutes_transfer_min_amount: Optional[float] = 1.0
     minutes_transfer_max_amount: Optional[float] = 500.0
     minutes_transfer_instructions: Optional[str] = None
+    # FAQ (editable from admin)
+    faq_buyer: Optional[list] = [
+        {"q": "How do I place an order?", "a": "Browse products, add to cart, proceed to checkout, choose your payment method, and complete your order."},
+        {"q": "What payment methods are accepted?", "a": "We accept cryptocurrency (BTC, ETH, USDT), Binance Pay (auto and manual), PayPal, Skrill, MonCash, Zelle, and Cash App."},
+        {"q": "How long does delivery take?", "a": "Automatic delivery products are instant. Manual delivery products are processed within 24 hours."},
+        {"q": "What is escrow?", "a": "For marketplace orders, your payment is held in escrow until you confirm delivery. This protects both buyers and sellers."},
+        {"q": "How do I open a dispute?", "a": "On the order tracking page, click 'Open Dispute'. Each party has 24 hours to respond. If the other party doesn't respond, you win automatically."},
+        {"q": "How do refunds work?", "a": "If you win a dispute, the refund is credited to your wallet balance for future purchases."},
+        {"q": "Where do I find my delivery codes?", "a": "Go to Dashboard > Purchased Orders > click the order. Codes appear in the 'Order Delivered' section."},
+        {"q": "How do I contact the seller?", "a": "On the order tracking page, click 'Contact the seller'. You'll receive notifications when they reply."},
+    ]
+    faq_seller: Optional[list] = [
+        {"q": "How do I become a seller?", "a": "Go to Dashboard > 'Become a Seller' > submit your KYC application. Once approved, you can list products."},
+        {"q": "How do I deliver an order?", "a": "Go to Seller Center > Orders. Find the order and click 'Deliver'. Enter codes/credentials and a note."},
+        {"q": "How does escrow work for sellers?", "a": "Payment is held in escrow after purchase. After delivery and buyer confirmation, payment releases after 3 days."},
+        {"q": "What is the pending balance?", "a": "Pending balance shows earnings from orders still in escrow. Once released, it moves to your available balance."},
+        {"q": "How do I withdraw my earnings?", "a": "Go to Seller Center > Earn & Withdraw. Choose a method, enter your address and amount. Fees vary by method."},
+        {"q": "What are the withdrawal fees?", "a": "Each method has its own fee (% + flat). See the exact fees in the withdrawal form before submitting."},
+        {"q": "What happens during a dispute?", "a": "You have 24 hours to respond with evidence. If you don't respond, the dispute auto-resolves in the buyer's favor."},
+        {"q": "What commission does the platform take?", "a": "Commission is shown in your Seller Center (typically 10%). The rest is credited after escrow release."},
+    ]
     # Seller withdrawal settings
     seller_withdrawal_fee_percent: Optional[float] = 0.0
     seller_withdrawal_fee_fixed: Optional[float] = 0.0

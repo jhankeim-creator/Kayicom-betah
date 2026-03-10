@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Save, Settings as SettingsIcon, Key, Package, Mail, Plus, X } from 'lucide-react';
+import { Save, Settings as SettingsIcon, Key, Package, Mail, Plus, X, HelpCircle, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
@@ -213,6 +213,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           minutes_transfer_max_amount: currentSettings.minutes_transfer_max_amount ?? 500,
           minutes_transfer_instructions: currentSettings.minutes_transfer_instructions || '',
           seller_withdrawal_min_amount: currentSettings.seller_withdrawal_min_amount ?? 5,
+          faq_buyer: currentSettings.faq_buyer || [],
+          faq_seller: currentSettings.faq_seller || [],
           withdrawal_methods: currentSettings.withdrawal_methods || {
             binance_pay: { label: 'Binance Pay', enabled: true, fee_percent: 0, fee_fixed: 0, placeholder: 'Binance Pay ID' },
             usdt_bep20: { label: 'USDT (BEP20)', enabled: true, fee_percent: 1, fee_fixed: 0.5, placeholder: 'BEP20 Wallet Address' },
@@ -599,6 +601,10 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                   <TabsTrigger value="email" data-testid="tab-email">
                     <Mail size={16} className="mr-2" />
                     Bulk Email
+                  </TabsTrigger>
+                  <TabsTrigger value="faq">
+                    <HelpCircle size={16} className="mr-2" />
+                    FAQ
                   </TabsTrigger>
                 </TabsList>
 
@@ -1903,6 +1909,84 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             <strong>Note:</strong> Configure Resend API key in API Keys tab first.
                           </p>
                         </div>
+                      </div>
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="faq" className="space-y-6">
+                    {/* Buyer FAQ */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-white font-bold text-lg">Buyer FAQ</h3>
+                        <Button type="button" size="sm" className="bg-green-600 text-white text-xs" onClick={() => {
+                          setFormData(prev => ({...prev, faq_buyer: [...(prev.faq_buyer || []), {q: '', a: ''}]}));
+                        }}><Plus size={14} className="mr-1" /> Add</Button>
+                      </div>
+                      <div className="space-y-3">
+                        {(formData.faq_buyer || []).map((item, i) => (
+                          <div key={i} className="bg-white/5 p-3 rounded-lg border border-white/10">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 space-y-2">
+                                <Input value={item.q} placeholder="Question"
+                                  onChange={(e) => {
+                                    const arr = [...(formData.faq_buyer || [])];
+                                    arr[i] = {...arr[i], q: e.target.value};
+                                    setFormData(prev => ({...prev, faq_buyer: arr}));
+                                  }}
+                                  className="bg-white/5 border-white/10 text-white text-sm" />
+                                <Textarea value={item.a} placeholder="Answer" rows={2}
+                                  onChange={(e) => {
+                                    const arr = [...(formData.faq_buyer || [])];
+                                    arr[i] = {...arr[i], a: e.target.value};
+                                    setFormData(prev => ({...prev, faq_buyer: arr}));
+                                  }}
+                                  className="bg-white/5 border-white/10 text-white text-sm" />
+                              </div>
+                              <button type="button" className="text-red-400 hover:text-red-300 p-1 mt-1" onClick={() => {
+                                const arr = (formData.faq_buyer || []).filter((_, idx) => idx !== i);
+                                setFormData(prev => ({...prev, faq_buyer: arr}));
+                              }}><Trash2 size={16} /></button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Seller FAQ */}
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-white font-bold text-lg">Seller FAQ</h3>
+                        <Button type="button" size="sm" className="bg-orange-600 text-white text-xs" onClick={() => {
+                          setFormData(prev => ({...prev, faq_seller: [...(prev.faq_seller || []), {q: '', a: ''}]}));
+                        }}><Plus size={14} className="mr-1" /> Add</Button>
+                      </div>
+                      <div className="space-y-3">
+                        {(formData.faq_seller || []).map((item, i) => (
+                          <div key={i} className="bg-white/5 p-3 rounded-lg border border-white/10">
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 space-y-2">
+                                <Input value={item.q} placeholder="Question"
+                                  onChange={(e) => {
+                                    const arr = [...(formData.faq_seller || [])];
+                                    arr[i] = {...arr[i], q: e.target.value};
+                                    setFormData(prev => ({...prev, faq_seller: arr}));
+                                  }}
+                                  className="bg-white/5 border-white/10 text-white text-sm" />
+                                <Textarea value={item.a} placeholder="Answer" rows={2}
+                                  onChange={(e) => {
+                                    const arr = [...(formData.faq_seller || [])];
+                                    arr[i] = {...arr[i], a: e.target.value};
+                                    setFormData(prev => ({...prev, faq_seller: arr}));
+                                  }}
+                                  className="bg-white/5 border-white/10 text-white text-sm" />
+                              </div>
+                              <button type="button" className="text-red-400 hover:text-red-300 p-1 mt-1" onClick={() => {
+                                const arr = (formData.faq_seller || []).filter((_, idx) => idx !== i);
+                                setFormData(prev => ({...prev, faq_seller: arr}));
+                              }}><Trash2 size={16} /></button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </TabsContent>
