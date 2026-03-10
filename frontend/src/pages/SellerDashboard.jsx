@@ -30,7 +30,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [catalogFilter, setCatalogFilter] = useState('all');
   const [myOffers, setMyOffers] = useState([]);
   const [orders, setOrders] = useState([]);
-  const [earnings, setEarnings] = useState({ balance: 0, total_earned: 0, total_orders: 0, commission_rate: 10 });
+  const [earnings, setEarnings] = useState({ balance: 0, pending_balance: 0, total_earned: 0, total_orders: 0, commission_rate: 10 });
   const [withdrawalInfo, setWithdrawalInfo] = useState({ methods: [], fee_percent: 0, fee_fixed: 0, min_amount: 5 });
   const [productRequests, setProductRequests] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -284,7 +284,10 @@ const SellerDashboard = ({ user, logout, settings }) => {
 
   const calcFee = (amt) => {
     const a = parseFloat(amt) || 0;
-    return Math.round((a * (withdrawalInfo.fee_percent / 100) + withdrawalInfo.fee_fixed) * 100) / 100;
+    const selectedMethod = withdrawalInfo.methods.find(m => m.id === withdrawMethod);
+    const pct = selectedMethod?.fee_percent ?? withdrawalInfo.fee_percent ?? 0;
+    const fixed = selectedMethod?.fee_fixed ?? withdrawalInfo.fee_fixed ?? 0;
+    return Math.round((a * (pct / 100) + fixed) * 100) / 100;
   };
 
   const handleWithdraw = async () => {
@@ -375,7 +378,8 @@ const SellerDashboard = ({ user, logout, settings }) => {
           {[
             { label: 'My Offers', value: myOffers.length, color: 'text-white' },
             { label: 'Orders', value: earnings.total_orders, color: 'text-white' },
-            { label: 'Balance', value: `$${earnings.balance.toFixed(2)}`, color: 'text-green-400' },
+            { label: 'Available', value: `$${earnings.balance.toFixed(2)}`, color: 'text-green-400' },
+            { label: 'Pending', value: `$${(earnings.pending_balance || 0).toFixed(2)}`, color: 'text-yellow-400' },
             { label: 'Total Earned', value: `$${earnings.total_earned.toFixed(2)}`, color: 'text-orange-400' },
           ].map(s => (
             <div key={s.label} className="rounded-xl bg-[#141414] border border-white/5 p-3 md:p-4">
@@ -664,10 +668,15 @@ const SellerDashboard = ({ user, logout, settings }) => {
             {/* Earnings Summary - matches screenshot */}
             <div className="rounded-xl bg-[#141414] border border-white/5 p-5">
               <h2 className="text-white font-bold text-lg mb-4">Earnings Summary</h2>
-              <div className="flex gap-8 mb-3">
+              <div className="flex gap-6 flex-wrap mb-3">
                 <div>
-                  <p className="text-white/50 text-sm">Available Balance</p>
+                  <p className="text-white/50 text-sm">Available</p>
                   <p className="text-green-400 font-bold text-2xl">${earnings.balance.toFixed(2)}</p>
+                </div>
+                <div>
+                  <p className="text-white/50 text-sm">Pending</p>
+                  <p className="text-yellow-400 font-bold text-2xl">${(earnings.pending_balance || 0).toFixed(2)}</p>
+                  <p className="text-white/20 text-[10px]">In escrow</p>
                 </div>
                 <div>
                   <p className="text-white/50 text-sm">Total Earned</p>

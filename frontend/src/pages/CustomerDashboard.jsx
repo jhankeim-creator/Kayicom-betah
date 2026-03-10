@@ -97,9 +97,9 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
     { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
     { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
     { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70', badge: unreadMessages > 0 ? `${unreadMessages} new` : null },
-    { icon: HelpCircle, label: 'Help Center', href: '/', color: 'text-white/70' },
+    { icon: HelpCircle, label: 'Help Center', href: '/help', color: 'text-white/70' },
     { icon: Bell, label: 'Notification', href: '/notifications', color: 'text-white/70' },
-    { icon: Settings, label: 'Setting', href: '/', color: 'text-white/70' },
+    { icon: Settings, label: 'Terms & Conditions', href: '/terms', color: 'text-white/70' },
   ];
 
   return (

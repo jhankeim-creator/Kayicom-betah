@@ -212,6 +212,14 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           minutes_transfer_min_amount: currentSettings.minutes_transfer_min_amount ?? 1,
           minutes_transfer_max_amount: currentSettings.minutes_transfer_max_amount ?? 500,
           minutes_transfer_instructions: currentSettings.minutes_transfer_instructions || '',
+          seller_withdrawal_min_amount: currentSettings.seller_withdrawal_min_amount ?? 5,
+          withdrawal_methods: currentSettings.withdrawal_methods || {
+            binance_pay: { label: 'Binance Pay', enabled: true, fee_percent: 0, fee_fixed: 0, placeholder: 'Binance Pay ID' },
+            usdt_bep20: { label: 'USDT (BEP20)', enabled: true, fee_percent: 1, fee_fixed: 0.5, placeholder: 'BEP20 Wallet Address' },
+            usdt_trc20: { label: 'USDT (TRC20)', enabled: true, fee_percent: 1, fee_fixed: 0.5, placeholder: 'TRC20 Wallet Address' },
+            paypal: { label: 'PayPal', enabled: true, fee_percent: 3, fee_fixed: 0.3, placeholder: 'PayPal Email' },
+            moncash: { label: 'MonCash', enabled: true, fee_percent: 2, fee_fixed: 0, placeholder: 'MonCash Phone' },
+          },
           social_links: currentSettings.social_links || {
             facebook: '',
             instagram: '',
@@ -1767,6 +1775,61 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             />
                           </div>
                         </div>
+                      </div>
+
+                      {/* Seller Withdrawal Methods & Fees */}
+                      <div className="bg-white/5 p-4 rounded-lg mb-4 border border-orange-500/20">
+                        <h4 className="text-white font-semibold flex items-center gap-2 mb-3">
+                          <span>💸</span> Seller Withdrawal Methods & Fees
+                        </h4>
+                        <p className="text-white/50 text-xs mb-3">Configure withdrawal methods, fees (% + flat), and min amount for sellers.</p>
+                        <div className="space-y-2 mb-3">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <Label className="text-white/70 text-xs">Min Withdrawal ($)</Label>
+                              <Input type="number" step="0.01"
+                                value={formData.seller_withdrawal_min_amount ?? 5}
+                                onChange={(e) => setFormData(prev => ({...prev, seller_withdrawal_min_amount: parseFloat(e.target.value)}))}
+                                className="bg-white/10 border-white/20 text-white mt-1" />
+                            </div>
+                          </div>
+                        </div>
+                        {Object.entries(formData.withdrawal_methods || {}).map(([key, cfg]) => (
+                          <div key={key} className="bg-white/5 p-3 rounded-lg mb-2">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-white text-sm font-semibold">{cfg.label || key}</span>
+                              <label className="flex items-center gap-2">
+                                <input type="checkbox" checked={cfg.enabled !== false}
+                                  onChange={(e) => setFormData(prev => ({...prev, withdrawal_methods: {...prev.withdrawal_methods, [key]: {...(prev.withdrawal_methods?.[key] || {}), enabled: e.target.checked}}}))}
+                                  className="w-4 h-4" />
+                                <span className="text-white/60 text-xs">Enabled</span>
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <Label className="text-white/50 text-[10px]">Fee %</Label>
+                                <Input type="number" step="0.1"
+                                  value={cfg.fee_percent ?? 0}
+                                  onChange={(e) => setFormData(prev => ({...prev, withdrawal_methods: {...prev.withdrawal_methods, [key]: {...(prev.withdrawal_methods?.[key] || {}), fee_percent: parseFloat(e.target.value)}}}))}
+                                  className="bg-white/10 border-white/20 text-white mt-0.5 text-xs" />
+                              </div>
+                              <div>
+                                <Label className="text-white/50 text-[10px]">Fee $ (flat)</Label>
+                                <Input type="number" step="0.01"
+                                  value={cfg.fee_fixed ?? 0}
+                                  onChange={(e) => setFormData(prev => ({...prev, withdrawal_methods: {...prev.withdrawal_methods, [key]: {...(prev.withdrawal_methods?.[key] || {}), fee_fixed: parseFloat(e.target.value)}}}))}
+                                  className="bg-white/10 border-white/20 text-white mt-0.5 text-xs" />
+                              </div>
+                              <div>
+                                <Label className="text-white/50 text-[10px]">Placeholder</Label>
+                                <Input
+                                  value={cfg.placeholder || ''}
+                                  onChange={(e) => setFormData(prev => ({...prev, withdrawal_methods: {...prev.withdrawal_methods, [key]: {...(prev.withdrawal_methods?.[key] || {}), placeholder: e.target.value}}}))}
+                                  className="bg-white/10 border-white/20 text-white mt-0.5 text-xs" />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
 
                       <Button type="submit" className="w-full bg-white text-green-600 hover:bg-gray-100">

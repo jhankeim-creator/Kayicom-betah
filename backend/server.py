@@ -800,6 +800,13 @@ class SiteSettings(BaseModel):
     seller_withdrawal_fee_percent: Optional[float] = 0.0
     seller_withdrawal_fee_fixed: Optional[float] = 0.0
     seller_withdrawal_min_amount: Optional[float] = 5.0
+    withdrawal_methods: Optional[dict] = {
+        "binance_pay": {"label": "Binance Pay", "enabled": True, "fee_percent": 0.0, "fee_fixed": 0.0, "placeholder": "Binance Pay ID"},
+        "usdt_bep20": {"label": "USDT (BEP20)", "enabled": True, "fee_percent": 1.0, "fee_fixed": 0.50, "placeholder": "BEP20 Wallet Address"},
+        "usdt_trc20": {"label": "USDT (TRC20)", "enabled": True, "fee_percent": 1.0, "fee_fixed": 0.50, "placeholder": "TRC20 Wallet Address"},
+        "paypal": {"label": "PayPal", "enabled": True, "fee_percent": 3.0, "fee_fixed": 0.30, "placeholder": "PayPal Email"},
+        "moncash": {"label": "MonCash", "enabled": True, "fee_percent": 2.0, "fee_fixed": 0.0, "placeholder": "MonCash Phone Number"},
+    }
     # Social links (follow buttons)
     social_links: Optional[dict] = {
         "facebook": "",
@@ -4001,13 +4008,34 @@ async def seller_get_orders(user_id: str):
 
 @api_router.get("/seller/earnings")
 async def seller_get_earnings(user_id: str):
-    """Get seller earnings summary."""
+    """Get seller earnings summary including pending balance."""
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0, "password_hash": 0})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     commission = float(user.get("seller_commission_rate", 10.0))
+    pending_balance = 0.0
+    try:
+        seller_product_ids = [
+            p["id"] async for p in db.products.find({"seller_id": user_id}, {"id": 1, "_id": 0})
+        ]
+        escrow_query = {
+            "payment_status": "paid",
+            "escrow_status": {"$in": ["held", "buyer_confirmed"]},
+            "seller_earnings_credited": {"$ne": True},
+            "$or": [{"items.seller_id": user_id}],
+        }
+        if seller_product_ids:
+            escrow_query["$or"].append({"items.product_id": {"$in": seller_product_ids}})
+        async for order in db.orders.find(escrow_query, {"_id": 0, "items": 1}):
+            for item in order.get("items", []):
+                if item.get("seller_id") == user_id or item.get("product_id") in seller_product_ids:
+                    item_total = float(item.get("price", 0)) * int(item.get("quantity", 1))
+                    pending_balance += round(item_total * (1.0 - commission / 100.0), 2)
+    except Exception as e:
+        logging.error(f"Pending balance calc error: {e}")
     return {
         "balance": float(user.get("seller_balance", 0.0)),
+        "pending_balance": round(pending_balance, 2),
         "total_earned": float(user.get("seller_total_earned", 0.0)),
         "total_orders": int(user.get("seller_total_orders", 0)),
         "commission_rate": commission,
@@ -4024,12 +4052,25 @@ class SellerWithdrawalRequest(BaseModel):
 async def seller_withdrawal_info():
     """Get withdrawal methods and fee info for sellers."""
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    configured_methods = settings.get("withdrawal_methods", {})
+    methods = []
+    for method_id, cfg in configured_methods.items():
+        if cfg.get("enabled", True):
+            methods.append({
+                "id": method_id,
+                "label": cfg.get("label", method_id),
+                "placeholder": cfg.get("placeholder", "Address"),
+                "fee_percent": float(cfg.get("fee_percent", 0)),
+                "fee_fixed": float(cfg.get("fee_fixed", 0)),
+            })
+    if not methods:
+        methods = [
+            {"id": "binance_pay", "label": "Binance Pay", "placeholder": "Binance Pay ID", "fee_percent": 0, "fee_fixed": 0},
+            {"id": "usdt_bep20", "label": "USDT (BEP20)", "placeholder": "BEP20 wallet address", "fee_percent": 1, "fee_fixed": 0.5},
+            {"id": "usdt_trc20", "label": "USDT (TRC20)", "placeholder": "TRC20 wallet address", "fee_percent": 1, "fee_fixed": 0.5},
+        ]
     return {
-        "methods": [
-            {"id": "binance_pay", "label": "Binance Pay", "placeholder": "Binance Pay ID (email or UID)"},
-            {"id": "usdt_bep20", "label": "USDT (BEP20)", "placeholder": "BEP20 wallet address (BSC)"},
-            {"id": "usdt_trc20", "label": "USDT (TRC20)", "placeholder": "TRC20 wallet address (TRON)"},
-        ],
+        "methods": methods,
         "fee_percent": float(settings.get("seller_withdrawal_fee_percent", 0)),
         "fee_fixed": float(settings.get("seller_withdrawal_fee_fixed", 0)),
         "min_amount": float(settings.get("seller_withdrawal_min_amount", 5)),
@@ -4044,14 +4085,16 @@ async def seller_request_withdrawal(payload: SellerWithdrawalRequest, user_id: s
         raise HTTPException(status_code=404, detail="User not found")
     if user.get("seller_status") != "approved":
         raise HTTPException(status_code=403, detail="Not an approved seller")
-    if payload.method not in ("binance_pay", "usdt_bep20", "usdt_trc20"):
-        raise HTTPException(status_code=400, detail="Invalid withdrawal method. Use: binance_pay, usdt_bep20, usdt_trc20")
     if not payload.wallet_address or not payload.wallet_address.strip():
-        raise HTTPException(status_code=400, detail="Wallet address / Binance Pay ID is required")
+        raise HTTPException(status_code=400, detail="Wallet address / Pay ID is required")
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    configured_methods = settings.get("withdrawal_methods", {})
+    method_cfg = configured_methods.get(payload.method)
+    if not method_cfg or not method_cfg.get("enabled", True):
+        raise HTTPException(status_code=400, detail=f"Withdrawal method '{payload.method}' is not available")
     min_amount = float(settings.get("seller_withdrawal_min_amount", 5))
-    fee_pct = float(settings.get("seller_withdrawal_fee_percent", 0))
-    fee_fixed = float(settings.get("seller_withdrawal_fee_fixed", 0))
+    fee_pct = float(method_cfg.get("fee_percent", settings.get("seller_withdrawal_fee_percent", 0)))
+    fee_fixed = float(method_cfg.get("fee_fixed", settings.get("seller_withdrawal_fee_fixed", 0)))
     amount = float(payload.amount)
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")

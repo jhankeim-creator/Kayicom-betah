@@ -14,6 +14,8 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import CartPage from './pages/CartPage';
 import CheckoutPage from './pages/CheckoutPage';
 import RefundPolicy from './pages/RefundPolicy';
+import HelpCenterPage from './pages/HelpCenterPage';
+import TermsPage from './pages/TermsPage';
 import OrderTrackingPage from './pages/OrderTrackingPage';
 import CustomerDashboard from './pages/CustomerDashboard';
 import PurchaseOrdersPage from './pages/PurchaseOrdersPage';
@@ -280,6 +282,8 @@ function App() {
           <Route path="/cart" element={<CartPage user={user} logout={logout} cart={cart} removeFromCart={removeFromCart} updateCartQuantity={updateCartQuantity} settings={settings} />} />
           <Route path="/checkout" element={<CheckoutPage user={user} logout={logout} cart={cart} clearCart={clearCart} settings={settings} />} />
           <Route path="/refund-policy" element={<RefundPolicy user={user} logout={logout} cart={cart} settings={settings} />} />
+          <Route path="/help" element={<HelpCenterPage user={user} logout={logout} settings={settings} cart={cart} />} />
+          <Route path="/terms" element={<TermsPage user={user} logout={logout} settings={settings} cart={cart} />} />
           <Route path="/blog" element={<BlogPage user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/blog/:slug" element={<BlogDetailPage user={user} logout={logout} cart={cart} settings={settings} />} />
           <Route path="/track/:orderId" element={<OrderTrackingPage user={user} logout={logout} settings={settings} />} />

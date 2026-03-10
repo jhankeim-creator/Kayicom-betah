@@ -98,9 +98,11 @@ const Footer = ({ settings }) => {
 
         <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row justify-between items-center gap-4 text-sm text-white/40">
           <div className="flex gap-4">
-            <a href="/refund-policy" className="hover:text-white/70 transition">Privacy Policy</a>
+            <a href="/refund-policy" className="hover:text-white/70 transition">Refund Policy</a>
             <span>|</span>
-            <a href="/refund-policy" className="hover:text-white/70 transition">Terms & Conditions</a>
+            <a href="/terms" className="hover:text-white/70 transition">Terms & Conditions</a>
+            <span>|</span>
+            <a href="/help" className="hover:text-white/70 transition">Help</a>
           </div>
           <p>&copy;{new Date().getFullYear()} {settings?.site_name || 'KayiCom'} {t('allRightsReserved')}</p>
         </div>
