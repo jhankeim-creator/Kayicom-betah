@@ -1876,14 +1876,6 @@ async def login(credentials: LoginRequest):
         await db.users.update_one({"id": user["id"]}, {"$set": {"customer_id": cid}})
         user["customer_id"] = cid
 
-    await _notify_admin_telegram(
-        "User login",
-        [
-            f"Email: {user.get('email')}",
-            f"Role: {user.get('role')}",
-        ],
-    )
-
     return {
         "user_id": user['id'],
         "id": user['id'],
@@ -3160,10 +3152,13 @@ class DeliveryInfo(BaseModel):
 
 @api_router.put("/orders/{order_id}/delivery")
 async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):
-    """Update order with delivery information and mark as completed"""
+    """Update order with delivery information and mark as completed. Admin cannot deliver seller products."""
     order = await db.orders.find_one({"id": order_id}, {"_id": 0})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    has_seller_items = any(item.get("seller_id") for item in (order.get("items") or []))
+    if has_seller_items:
+        raise HTTPException(status_code=403, detail="Seller products must be delivered by the seller, not admin")
 
     existing_info = order.get("delivery_info") or {}
     details = delivery_info.delivery_details
@@ -4751,6 +4746,16 @@ async def escrow_action(order_id: str, payload: EscrowConfirmRequest, user_id: s
             f"Buyer: {order.get('user_email')}",
             f"Reason: {reason[:100]}",
         ])
+        try:
+            await _create_notification(user_id, "dispute_opened",
+                f"Your dispute on order #{order_id[:8]} has been opened. We'll review it shortly.",
+                {"order_id": order_id, "dispute_id": dispute["id"]})
+            if dispute.get("seller_id"):
+                await _create_notification(dispute["seller_id"], "dispute_opened",
+                    f"A buyer opened a dispute on order #{order_id[:8]}. Please respond in the Dispute Center.",
+                    {"order_id": order_id, "dispute_id": dispute["id"]})
+        except Exception:
+            pass
         return {"message": "Dispute opened", "dispute_id": dispute["id"]}
     else:
         raise HTTPException(status_code=400, detail="Action must be 'confirm' or 'dispute'")
@@ -4898,6 +4903,19 @@ async def add_dispute_message(dispute_id: str, payload: DisputeMessageCreate, us
             "last_message_by": sender_role,
         },
     })
+    try:
+        order_id = dispute.get("order_id", "")
+        sender_name = (user or {}).get("full_name", "User")
+        if sender_role != "buyer" and dispute.get("buyer_id"):
+            await _create_notification(dispute["buyer_id"], "dispute_message",
+                f"New message in dispute for order #{order_id[:8]} from {sender_name}",
+                {"order_id": order_id, "dispute_id": dispute_id})
+        if sender_role != "seller" and dispute.get("seller_id"):
+            await _create_notification(dispute["seller_id"], "dispute_message",
+                f"New message in dispute for order #{order_id[:8]} from {sender_name}",
+                {"order_id": order_id, "dispute_id": dispute_id})
+    except Exception:
+        pass
     return message
 
 

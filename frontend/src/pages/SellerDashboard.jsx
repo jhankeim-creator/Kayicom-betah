@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench, Package, BarChart3, Star, Truck, MessageCircle } from 'lucide-react';
+import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench, Package, BarChart3, Star, Truck, MessageCircle, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CATEGORY_META = {
@@ -325,6 +325,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
     { id: 'offers', label: 'My Offers', icon: <Tag size={16} /> },
     { id: 'products', label: 'My Products', icon: <Package size={16} /> },
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={16} /> },
+    { id: 'disputes', label: 'Disputes', icon: <ShieldAlert size={16} /> },
     { id: 'earnings', label: 'Earnings', icon: <DollarSign size={16} /> },
     { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={16} /> },
   ];
@@ -725,6 +726,20 @@ const SellerDashboard = ({ user, logout, settings }) => {
                   className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full py-3">Submit Withdrawal</Button>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ===== DISPUTES TAB ===== */}
+        {tab === 'disputes' && (
+          <div className="rounded-xl bg-[#141414] border border-white/5 p-6 text-center">
+            <ShieldAlert size={40} className="text-red-400 mx-auto mb-3" />
+            <h3 className="text-white font-bold text-lg mb-2">Dispute Center</h3>
+            <p className="text-white/40 text-sm mb-4">View and manage all your disputes with buyers.</p>
+            <Link to="/disputes">
+              <Button className="bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg px-6">
+                Open Dispute Center
+              </Button>
+            </Link>
           </div>
         )}
 

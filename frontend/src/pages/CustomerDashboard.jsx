@@ -6,7 +6,7 @@ import Footer from '../components/Footer';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Package, Eye, Clock, Copy, ChevronRight, Wallet, ShoppingBag, Gift, Users, HelpCircle, Bell, Settings, MessageCircle, Store } from 'lucide-react';
+import { Package, Eye, Clock, Copy, ChevronRight, Wallet, ShoppingBag, Gift, Users, HelpCircle, Bell, Settings, MessageCircle, Store, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 
 const formatSubscriptionDurationLabel = (months) => {
@@ -97,6 +97,7 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
     { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
     { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
     { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70', badge: unreadMessages > 0 ? `${unreadMessages} new` : null },
+    { icon: ShieldAlert, label: 'Disputes', href: '/disputes', color: 'text-red-400' },
     { icon: HelpCircle, label: 'Help Center', href: '/help', color: 'text-white/70' },
     { icon: Bell, label: 'Notification', href: '/notifications', color: 'text-white/70' },
     { icon: Settings, label: 'Terms & Conditions', href: '/terms', color: 'text-white/70' },
