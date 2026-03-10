@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { axiosInstance } from '../App';
+import { axiosInstance, LanguageContext } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Package, ShoppingCart } from 'lucide-react';
+import { Gift, Package, ShoppingCart, Heart, Star, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeOrdersCount } from '../utils/ordersCount';
 
@@ -17,6 +17,7 @@ const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
 }));
 
 const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
+  const { t } = useContext(LanguageContext);
   const { category } = useParams();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -244,175 +245,164 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   const selectedCategoryLabel = categories.find((cat) => cat.value === selectedCategory)?.label || 'All';
 
   const renderProductCard = (product) => (
-    <Card key={product.id} className="product-card overflow-hidden bg-white/10 backdrop-blur-lg border-white/20 hover:border-white/40" data-testid={`product-card-${product.id}`}>
-      <div className="h-48 bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center">
-        {product.image_url ? (
-          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-        ) : (
-          <Package className="text-white" size={64} />
-        )}
-      </div>
-      <CardContent className="p-4">
-        <h3 className="text-lg font-bold text-white mb-2">{product.name}</h3>
-        <p className="text-white/70 text-sm mb-2 line-clamp-2">{product.description}</p>
-        {product.category === 'giftcard' && product.giftcard_subcategory && (
-          <p className="text-white/60 text-xs mb-2">{product.giftcard_subcategory}</p>
-        )}
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-2xl font-bold text-white">
-            {product._variant_count > 1 ? `From $${Number(product._min_price).toFixed(2)}` : `$${Number(product.price).toFixed(2)}`}
-          </span>
-          {product.stock_available ? (
-            <span className="text-xs text-green-400 bg-green-400/20 px-2 py-1 rounded">Available</span>
+    <Link to={`/product/${product.slug || product.id}`} key={product.id}>
+      <div className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden hover:border-green-500/30 transition group" data-testid={`product-card-${product.id}`}>
+        <div className="relative h-36 md:h-44 bg-[#1c1c1c] overflow-hidden">
+          {product.image_url ? (
+            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
           ) : (
-            <span className="text-xs text-red-400 bg-red-400/20 px-2 py-1 rounded">Out of Stock</span>
+            <div className="w-full h-full flex items-center justify-center">
+              <Gift className="text-white/15" size={40} />
+            </div>
           )}
+          <button className="absolute top-2 left-2 w-7 h-7 rounded-full bg-black/50 flex items-center justify-center">
+            <Heart size={14} className="text-white/60" />
+          </button>
         </div>
-        <div className="flex items-center justify-between text-white/60 text-xs mb-3">
-          <span>{Math.max(0, Math.floor(Number(product._orders_count) || 0))} orders</span>
-          <div className="flex items-center gap-2">
-            {Number(product.seller_offer_count) > 0 && (
-              <span className="text-blue-400/80 bg-blue-400/10 px-1.5 py-0.5 rounded text-[10px]">{product.seller_offer_count} seller{product.seller_offer_count > 1 ? 's' : ''}</span>
-            )}
-            {product._variant_count > 1 ? <span>{product._variant_count} options</span> : (
-              <span className="text-green-400/80">{product.seller_id ? '' : 'by KayiCom'}</span>
+        <div className="p-3">
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-green-400 font-bold">
+              ${Number(product._variant_count > 1 ? product._min_price : product.price).toFixed(2)}
+            </span>
+            {product.original_price && product.original_price > product.price && (
+              <span className="text-white/30 text-xs line-through">${Number(product.original_price).toFixed(2)}</span>
             )}
           </div>
+          <h3 className="text-white font-medium text-sm truncate">{product.name}</h3>
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-white/40 text-xs px-2 py-0.5 rounded bg-white/5 border border-white/10">
+              {Math.max(0, Math.floor(Number(product._orders_count) || 0))} Sale
+            </span>
+            <div className="flex items-center gap-1">
+              <Star size={12} className="text-yellow-500" fill="currentColor" />
+              <span className="text-white/50 text-xs">0</span>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Link to={`/product/${product.slug || product.id}`} className="flex-1">
-            <Button size="sm" variant="outline" className="w-full border-white text-white hover:bg-white/10" data-testid={`view-btn-${product.id}`}>
-              Details
-            </Button>
-          </Link>
-          <Button 
-            size="sm" 
-            className="bg-white text-green-600 hover:bg-gray-100"
-            onClick={() => {
-              addToCart(product);
-              toast.success('Product added to cart');
-            }}
-            data-testid={`add-to-cart-${product.id}`}
-          >
-            <ShoppingCart size={16} />
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Link>
   );
 
   return (
-    <div className="min-h-screen gradient-bg">
+    <div className="min-h-screen bg-[#0a0a0a]">
       <Navbar user={user} logout={logout} cartItemCount={cartItemCount} settings={settings} />
 
-      <div className="container mx-auto px-4 py-12">
-        <h1 className="text-4xl md:text-5xl font-bold text-white text-center mb-3" data-testid="products-title">
-          {selectedCategory ? `${selectedCategoryLabel} Products` : 'All Products'}
-        </h1>
-        <p className="text-center text-white/70 mb-8">Find the best digital deals instantly.</p>
+      {/* Header */}
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-b from-green-500/10 to-transparent" />
+        <div className="relative container mx-auto px-4 py-10 lg:py-14">
+          <div className="text-center max-w-2xl mx-auto">
+            <p className="text-green-400 text-sm font-semibold mb-2">Unlimited Offer</p>
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-4" data-testid="products-title">
+              {selectedCategory ? `${selectedCategoryLabel}` : 'All Products'}
+            </h1>
+            <p className="text-white/50 text-sm md:text-base mb-6">Find the best digital deals instantly.</p>
+          </div>
 
-        {/* Search */}
-        <div className="max-w-xl mx-auto mb-6">
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                loadProducts();
-              }
-            }}
-            className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-            placeholder="Search products..."
-          />
-          <div className="flex gap-2 justify-center mt-3">
-            <Button type="button" className="bg-white text-green-600 hover:bg-gray-100" onClick={loadProducts}>
-              Search
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-white/20 text-white"
-              onClick={() => {
-                setSearch('');
-                setTimeout(() => loadProducts(), 0);
-              }}
-            >
-              Clear
-            </Button>
+          {/* Search */}
+          <div className="max-w-xl mx-auto">
+            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden">
+              <Search size={18} className="text-white/40 ml-4" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    loadProducts();
+                  }
+                }}
+                placeholder="Search products..."
+                className="flex-1 bg-transparent px-3 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={loadProducts}
+                className="bg-green-500 hover:bg-green-600 text-black font-semibold px-5 py-3 text-sm transition"
+              >
+                Search
+              </button>
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Category Filter */}
-        <div className="flex flex-wrap gap-3 justify-center mb-12">
+      {/* Category Filter */}
+      <div className="container mx-auto px-4 pb-4">
+        <div className="flex flex-wrap gap-2 justify-center">
           {categories.map((cat) => (
-            <Button
+            <button
               key={cat.value}
               onClick={() => setSelectedCategory(cat.value)}
-              variant={selectedCategory === cat.value ? 'default' : 'outline'}
-              className={selectedCategory === cat.value 
-                ? 'bg-white text-green-600 hover:bg-gray-100' 
-                : 'border-white text-white hover:bg-white/10'
-              }
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                selectedCategory === cat.value
+                  ? 'bg-green-500 text-black'
+                  : 'bg-white/5 text-white/70 hover:bg-white/10 border border-white/10'
+              }`}
               data-testid={`filter-${cat.value || 'all'}`}
             >
               {cat.label}
-            </Button>
+            </button>
           ))}
         </div>
+      </div>
 
-        {/* Products */}
-        {loading ? (
-          <div className="text-center text-white text-xl">Loading products...</div>
-        ) : selectedCategory === 'giftcard' && giftcardSections.length > 0 ? (
-          <div className="space-y-10" data-testid="giftcard-sections">
-            {giftcardSections.map((section) => (
-              <div key={section.name}>
-                <div className="flex items-center justify-between mb-4">
+      {/* Products */}
+      {loading ? (
+        <div className="text-center text-white/40 text-lg py-20">{t('loading')}</div>
+      ) : selectedCategory === 'giftcard' && giftcardSections.length > 0 ? (
+        <div data-testid="giftcard-sections">
+          {giftcardSections.map((section) => (
+            <div key={section.name} className="container mx-auto px-4 py-6">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <p className="text-green-400 text-sm font-semibold mb-1">Unlimited Offer</p>
                   <h2 className="text-2xl md:text-3xl font-bold text-white">{section.name}</h2>
-                  <span className="text-white/60 text-sm">{section.products.length} items</span>
                 </div>
-                {section.subSections.length > 0 ? (
-                  <div className="space-y-6">
-                    {section.subSections.map((subSection) => (
-                      <div key={`${section.name}-${subSection.name}`}>
-                        <div className="flex items-center justify-between mb-3">
-                          <h3 className="text-xl md:text-2xl font-semibold text-white">{subSection.name}</h3>
-                          <span className="text-white/60 text-sm">{subSection.products.length} items</span>
-                        </div>
-                        {subSection.products.length ? (
-                          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                            {subSection.products.map(renderProductCard)}
-                          </div>
-                        ) : (
-                          <p className="text-white/50 text-sm">No products yet.</p>
-                        )}
+                <span className="text-white/40 text-sm">{section.products.length} items</span>
+              </div>
+              {section.subSections.length > 0 ? (
+                <div className="space-y-6">
+                  {section.subSections.map((subSection) => (
+                    <div key={`${section.name}-${subSection.name}`}>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xl md:text-2xl font-semibold text-white">{subSection.name}</h3>
+                        <span className="text-white/40 text-sm">{subSection.products.length} items</span>
                       </div>
-                    ))}
+                      {subSection.products.length ? (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {subSection.products.map(renderProductCard)}
+                        </div>
+                      ) : (
+                        <p className="text-white/50 text-sm">No products yet.</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                section.products.length ? (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    {section.products.map(renderProductCard)}
                   </div>
                 ) : (
-                  section.products.length ? (
-                    <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-                      {section.products.map(renderProductCard)}
-                    </div>
-                  ) : (
-                    <p className="text-white/50 text-sm">No products yet.</p>
-                  )
-                )}
-              </div>
-            ))}
-          </div>
-        ) : groupedProducts.length > 0 ? (
-          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6" data-testid="products-grid">
+                  <p className="text-white/50 text-sm">No products yet.</p>
+                )
+              )}
+            </div>
+          ))}
+        </div>
+      ) : groupedProducts.length > 0 ? (
+        <div className="container mx-auto px-4 py-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4" data-testid="products-grid">
             {groupedProducts.map(renderProductCard)}
           </div>
-        ) : (
-          <div className="text-center text-white/70 py-12" data-testid="no-products">
-            <Package className="mx-auto mb-4" size={64} />
-            <p>No products available in this category</p>
-          </div>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="text-center text-white/40 text-lg py-20" data-testid="no-products">
+          No products available in this category
+        </div>
+      )}
 
       <Footer settings={settings} />
     </div>
