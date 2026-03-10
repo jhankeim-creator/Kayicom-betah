@@ -191,6 +191,12 @@ class MessageCreate(BaseModel):
     content: str
 
 
+class PrePurchaseInquiry(BaseModel):
+    seller_id: str
+    product_id: Optional[str] = None
+    content: str
+
+
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
@@ -501,6 +507,7 @@ class Product(BaseModel):
     image_url: Optional[str] = None
     stock_available: bool = True
     delivery_type: str = "automatic"  # automatic or manual
+    delivery_time: Optional[str] = None  # "instant", "1h", "24h"
     seller_id: Optional[str] = None  # null = admin product, set = seller product
     product_status: str = "approved"  # approved, pending_review, rejected (seller products start as pending)
     seller_offer_count: int = 0  # how many sellers offer this product
@@ -531,6 +538,7 @@ class ProductCreate(BaseModel):
     image_url: Optional[str] = None
     stock_available: bool = True
     delivery_type: str = "automatic"
+    delivery_time: Optional[str] = None
     seller_id: Optional[str] = None
     subscription_duration_months: Optional[int] = None
     subscription_auto_check: bool = False
@@ -3896,6 +3904,10 @@ async def seller_create_product(product: ProductCreate, user_id: str):
     if product.category.lower() not in approved:
         raise HTTPException(status_code=403, detail=f"Not approved to sell in category: {product.category}")
     product_slug = await _generate_unique_product_slug(product.name)
+    if not product.image_url:
+        raise HTTPException(status_code=400, detail="Image is required for marketplace products")
+    if len((product.description or "").strip()) < 50:
+        raise HTTPException(status_code=400, detail="Description must be at least 50 characters")
     new_product = Product(
         name=product.name,
         slug=product_slug,
@@ -3906,6 +3918,7 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         image_url=product.image_url,
         stock_available=product.stock_available,
         delivery_type=product.delivery_type,
+        delivery_time=product.delivery_time,
         seller_id=user_id,
         product_status="approved",
         subscription_duration_months=product.subscription_duration_months,
@@ -4359,16 +4372,24 @@ async def get_marketplace_products(category: Optional[str] = None, q: Optional[s
             {"description": {"$regex": q.strip(), "$options": "i"}},
         ]
     seller_products = await db.products.find(seller_query, {"_id": 0}).to_list(500)
+    seller_cache: Dict[str, dict] = {}
     for p in seller_products:
         p = _normalize_product_doc(p)
-        seller = await db.users.find_one(
-            {"id": p.get("seller_id")},
-            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
-        )
+        sid = p.get("seller_id")
+        if sid and sid not in seller_cache:
+            seller_cache[sid] = await db.users.find_one(
+                {"id": sid},
+                {"_id": 0, "seller_store_name": 1, "seller_rating": 1, "seller_total_orders": 1, "seller_review_count": 1}
+            ) or {}
+        seller = seller_cache.get(sid, {})
+        total_orders = int(seller.get("seller_total_orders", 0))
+        seller_level = "top_seller" if total_orders >= 50 and float(seller.get("seller_rating", 0)) >= 4.5 else "verified" if total_orders >= 5 else "new"
         items.append({
             **p,
-            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
-            "seller_rating": (seller or {}).get("seller_rating"),
+            "seller_name": seller.get("seller_store_name", "Unknown"),
+            "seller_rating": seller.get("seller_rating"),
+            "seller_total_orders": total_orders,
+            "seller_level": seller_level,
             "orders_count": _normalize_orders_count_for_product(p),
             "slug": p.get("slug") or _slugify_text(p.get("name", "product")),
             "source": "seller_product",
@@ -4388,10 +4409,15 @@ async def get_marketplace_products(category: Optional[str] = None, q: Optional[s
             desc = (offer.get("description") or product.get("description") or "").lower()
             if ql not in name and ql not in desc:
                 continue
-        seller = await db.users.find_one(
-            {"id": offer.get("seller_id")},
-            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
-        )
+        sid = offer.get("seller_id")
+        if sid and sid not in seller_cache:
+            seller_cache[sid] = await db.users.find_one(
+                {"id": sid},
+                {"_id": 0, "seller_store_name": 1, "seller_rating": 1, "seller_total_orders": 1}
+            ) or {}
+        seller = seller_cache.get(sid, {})
+        total_orders = int(seller.get("seller_total_orders", 0))
+        seller_level = "top_seller" if total_orders >= 50 and float(seller.get("seller_rating", 0)) >= 4.5 else "verified" if total_orders >= 5 else "new"
         items.append({
             "id": offer.get("id"),
             "offer_id": offer.get("id"),
@@ -4404,9 +4430,12 @@ async def get_marketplace_products(category: Optional[str] = None, q: Optional[s
             "slug": product.get("slug") or product.get("id"),
             "stock_available": offer.get("stock_available", True),
             "delivery_type": offer.get("delivery_type", "manual"),
-            "seller_id": offer.get("seller_id"),
-            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
-            "seller_rating": (seller or {}).get("seller_rating"),
+            "delivery_time": offer.get("delivery_time"),
+            "seller_id": sid,
+            "seller_name": seller.get("seller_store_name", "Unknown"),
+            "seller_rating": seller.get("seller_rating"),
+            "seller_total_orders": total_orders,
+            "seller_level": seller_level,
             "orders_count": 0,
             "source": "seller_offer",
         })
@@ -4961,6 +4990,43 @@ async def get_unread_count(user_id: str):
     """Get count of unread messages."""
     count = await db.messages.count_documents({"receiver_id": user_id, "read": False})
     return {"unread": count}
+
+
+@api_router.post("/messages/inquiry")
+async def send_inquiry(payload: PrePurchaseInquiry, user_id: str):
+    """Send a pre-purchase inquiry to a seller (no order required)."""
+    sender = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not sender:
+        raise HTTPException(status_code=404, detail="User not found")
+    seller = await db.users.find_one({"id": payload.seller_id}, {"_id": 0})
+    if not seller:
+        raise HTTPException(status_code=404, detail="Seller not found")
+    inquiry_id = f"inquiry-{str(uuid.uuid4())[:8]}"
+    now_iso = datetime.now(timezone.utc).isoformat()
+    msg = {
+        "id": str(uuid.uuid4()),
+        "order_id": inquiry_id,
+        "sender_id": user_id,
+        "sender_name": sender.get("full_name", "User"),
+        "sender_role": "customer",
+        "receiver_id": payload.seller_id,
+        "content": payload.content.strip(),
+        "read": False,
+        "created_at": now_iso,
+        "is_inquiry": True,
+        "product_id": payload.product_id,
+    }
+    await db.messages.insert_one(msg)
+    msg.pop("_id", None)
+    try:
+        await _create_notification(
+            payload.seller_id, "new_message",
+            f"New inquiry from {sender.get('full_name', 'Buyer')}",
+            {"sender_id": user_id}
+        )
+    except Exception:
+        pass
+    return msg
 
 
 # ==================== PRODUCT APPROVAL ====================

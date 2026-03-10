@@ -44,7 +44,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [productForm, setProductForm] = useState({
     name: '', description: '', category: '', price: '', image_url: '',
-    stock_available: true, delivery_type: 'automatic', variant_name: '', region: '',
+    stock_available: true, delivery_type: 'automatic', delivery_time: 'instant',
   });
 
   // Offer create dialog
@@ -212,13 +212,19 @@ const SellerDashboard = ({ user, logout, settings }) => {
   };
 
   const resetProductForm = () => {
-    setProductForm({ name: '', description: '', category: approvedCategories[0] || '', price: '', image_url: '', stock_available: true, delivery_type: 'automatic', variant_name: '', region: '' });
+    setProductForm({ name: '', description: '', category: approvedCategories[0] || '', price: '', image_url: '', stock_available: true, delivery_type: 'automatic', delivery_time: 'instant' });
     setEditingProduct(null);
   };
 
   const handleProductSubmit = async () => {
     if (!productForm.name || !productForm.price || !productForm.category) {
       toast.error('Fill name, price and category'); return;
+    }
+    if (!productForm.image_url) {
+      toast.error('Image is required'); return;
+    }
+    if ((productForm.description || '').trim().length < 50) {
+      toast.error('Description must be at least 50 characters'); return;
     }
     try {
       const payload = { ...productForm, price: parseFloat(productForm.price) };
@@ -227,7 +233,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
         toast.success('Product updated');
       } else {
         await axiosInstance.post(`/seller/products?user_id=${user.id}`, payload);
-        toast.success('Product created — pending admin review');
+        toast.success('Product created and listed on marketplace!');
       }
       setProductDialog(false); resetProductForm(); loadData();
     } catch (err) { toast.error(err.response?.data?.detail || 'Error saving product'); }
@@ -943,41 +949,61 @@ const SellerDashboard = ({ user, logout, settings }) => {
       {/* Add/Edit Product Dialog */}
       <Dialog open={productDialog} onOpenChange={(o) => { setProductDialog(o); if (!o) resetProductForm(); }}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto bg-gray-900 border-white/20">
-          <DialogHeader><DialogTitle className="text-white">{editingProduct ? 'Edit Product' : 'New Product'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="text-white">{editingProduct ? 'Edit Product' : 'New Marketplace Product'}</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
-            <div><Label className="text-white">Name *</Label><Input value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} className="bg-white/10 border-white/20 text-white" /></div>
-            <div><Label className="text-white">Description</Label><Textarea value={productForm.description} onChange={(e) => setProductForm(p => ({ ...p, description: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} /></div>
+            <div><Label className="text-white text-sm">Product Name *</Label><Input value={productForm.name} onChange={(e) => setProductForm(p => ({ ...p, name: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="e.g. Netflix Premium 1 Month" /></div>
+            <div>
+              <Label className="text-white text-sm">Description * <span className="text-white/40">(min 50 chars)</span></Label>
+              <Textarea value={productForm.description} onChange={(e) => setProductForm(p => ({ ...p, description: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={3} placeholder="Describe your product in detail — what the buyer gets, how delivery works, etc." />
+              <p className={`text-xs mt-1 ${(productForm.description || '').length >= 50 ? 'text-green-400' : 'text-white/30'}`}>{(productForm.description || '').length}/50 characters</p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white">Category *</Label>
+                <Label className="text-white text-sm">Category *</Label>
                 <Select value={productForm.category} onValueChange={(v) => setProductForm(p => ({ ...p, category: v }))}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>{approvedCategories.map(c => <SelectItem key={c} value={c}>{getCatMeta(c).label}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
-              <div><Label className="text-white">Price *</Label><Input type="number" step="0.01" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} className="bg-white/10 border-white/20 text-white" /></div>
+              <div><Label className="text-white text-sm">Price (USD) *</Label><Input type="number" step="0.01" value={productForm.price} onChange={(e) => setProductForm(p => ({ ...p, price: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="0.00" /></div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label className="text-white">Delivery</Label>
+                <Label className="text-white text-sm">Delivery Method</Label>
                 <Select value={productForm.delivery_type} onValueChange={(v) => setProductForm(p => ({ ...p, delivery_type: v }))}>
                   <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="automatic">Automatic</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
                 </Select>
               </div>
-              <div className="flex items-center gap-2 pt-6">
-                <Checkbox checked={productForm.stock_available} onCheckedChange={(v) => setProductForm(p => ({ ...p, stock_available: v }))} />
-                <Label className="text-white text-sm">In Stock</Label>
+              <div>
+                <Label className="text-white text-sm">Delivery Time</Label>
+                <Select value={productForm.delivery_time} onValueChange={(v) => setProductForm(p => ({ ...p, delivery_time: v }))}>
+                  <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="instant">Instant</SelectItem>
+                    <SelectItem value="1h">Within 1 Hour</SelectItem>
+                    <SelectItem value="24h">Within 24 Hours</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox checked={productForm.stock_available} onCheckedChange={(v) => setProductForm(p => ({ ...p, stock_available: v }))} />
+              <Label className="text-white text-sm">In Stock</Label>
+            </div>
             <div>
-              <Label className="text-white">Image</Label>
-              <Input value={productForm.image_url} onChange={(e) => setProductForm(p => ({ ...p, image_url: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="URL or upload below" />
+              <Label className="text-white text-sm">Image * <span className="text-white/40">(required)</span></Label>
+              {productForm.image_url && (
+                <div className="w-full h-24 rounded-lg overflow-hidden bg-[#1c1c1c] mb-2">
+                  <img src={productForm.image_url} alt="Preview" className="w-full h-full object-cover" onError={(e) => { e.target.style.display = 'none'; }} />
+                </div>
+              )}
+              <Input value={productForm.image_url} onChange={(e) => setProductForm(p => ({ ...p, image_url: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="Paste image URL" />
               <Input type="file" accept="image/*" className="bg-white/10 border-white/20 text-white mt-2 cursor-pointer"
                 onChange={async (e) => { const url = await uploadImage(e.target.files?.[0]); if (url) setProductForm(p => ({ ...p, image_url: url })); }} />
             </div>
-            <Button onClick={handleProductSubmit} className="w-full bg-white text-green-600 hover:bg-gray-100">
-              {editingProduct ? 'Update' : 'Create Product'}
+            <Button onClick={handleProductSubmit} className="w-full bg-green-500 hover:bg-green-600 text-black font-semibold py-3 rounded-lg">
+              {editingProduct ? 'Update Product' : 'List on Marketplace'}
             </Button>
           </div>
         </DialogContent>
