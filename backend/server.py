@@ -4728,6 +4728,16 @@ async def admin_approve_product(product_id: str, action: str = "approve"):
     return {"message": f"Product {new_status}"}
 
 
+@api_router.put("/admin/products/approve-all-seller")
+async def admin_approve_all_seller_products():
+    """Bulk-approve all pending seller products."""
+    result = await db.products.update_many(
+        {"seller_id": {"$ne": None}, "product_status": "pending_review"},
+        {"$set": {"product_status": "approved"}},
+    )
+    return {"message": f"Approved {result.modified_count} seller product(s)"}
+
+
 @api_router.get("/admin/products/pending")
 async def admin_get_pending_products():
     """Get products awaiting approval."""
