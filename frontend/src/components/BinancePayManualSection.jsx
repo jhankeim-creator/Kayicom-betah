@@ -97,7 +97,7 @@ const BinancePayManualSection = ({ order, settings, onSubmitted }) => {
   const binanceUid = settings?.payment_gateways?.binance_pay_manual?.email || '';
   const instructions = settings?.payment_gateways?.binance_pay_manual?.instructions || '';
   const amount = order?.total_amount ? Number(order.total_amount).toFixed(2) : '0.00';
-  const orderNumber = order?.id ? order.id.slice(0, 8).toUpperCase() : '';
+  const orderNumber = order?.id ? order.id.slice(0, 8) : '';
 
   const handleCopy = async (text, type) => {
     try {
