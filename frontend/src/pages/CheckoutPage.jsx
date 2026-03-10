@@ -354,10 +354,30 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                         <div className="flex items-center gap-2">
                           <CreditCard className="text-green-400" size={20} />
                           <span className="text-white font-semibold">Binance Pay</span>
+                          <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 text-[10px] font-bold uppercase tracking-wider">Auto</span>
                         </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
+                        <p className="text-white/70 text-sm mt-1">Auto-verified via Binance API</p>
                         {settings.payment_gateways.binance_pay.email && (
                           <p className="text-white/60 text-xs mt-1">ID: {settings.payment_gateways.binance_pay.email}</p>
+                        )}
+                      </div>
+                    </label>
+                  )}
+
+                  {settings?.payment_gateways?.binance_pay_manual?.enabled && (
+                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
+                      paymentMethod === 'binance_pay_manual' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
+                    }`}>
+                      <RadioGroupItem value="binance_pay_manual" className="mt-1" />
+                      <div className="ml-4">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="text-yellow-400" size={20} />
+                          <span className="text-white font-semibold">Binance Pay</span>
+                          <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 text-[10px] font-bold uppercase tracking-wider">Manual</span>
+                        </div>
+                        <p className="text-white/70 text-sm mt-1">Send payment &amp; upload proof for admin verification</p>
+                        {settings.payment_gateways.binance_pay_manual.email && (
+                          <p className="text-white/60 text-xs mt-1">Pay ID: {settings.payment_gateways.binance_pay_manual.email}</p>
                         )}
                       </div>
                     </label>
@@ -401,7 +421,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                 </div>
               </RadioGroup>
 
-              {['paypal', 'airtm', 'skrill'].includes(paymentMethod) && settings?.payment_gateways?.[paymentMethod] && (
+              {['paypal', 'airtm', 'skrill', 'binance_pay_manual'].includes(paymentMethod) && settings?.payment_gateways?.[paymentMethod] && (
                 <div className="mt-6 p-4 bg-yellow-400/10 border border-yellow-400/30 rounded-lg">
                   <p className="text-yellow-200 text-sm mb-2">
                     <strong>Payment Instructions:</strong>

@@ -12,6 +12,7 @@ import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageS
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import BinancePaySection from '../components/BinancePaySection';
+import BinancePayManualSection from '../components/BinancePayManualSection';
 
 const OrderTrackingPage = ({ user, logout, settings }) => {
   const { orderId } = useParams();
@@ -171,7 +172,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     : [];
   const hasDeliveryInfo = order.delivery_info && (deliveryDetails || deliveryItems.length > 0);
   const autoDeliveryFailed = order.auto_delivery_failed_reason && !hasDeliveryInfo;
-  const manualPaymentMethods = ['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'];
+  const manualPaymentMethods = ['paypal', 'skrill', 'moncash', 'binance_pay', 'binance_pay_manual', 'zelle', 'cashapp'];
   const isManualPayment = manualPaymentMethods.includes(order.payment_method);
   const proofSubmitted = Boolean(order.payment_proof_url);
   const isAwaitingReview = order.payment_status === 'pending_verification' || proofSubmitted;
@@ -223,7 +224,8 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                   <span className="text-white font-semibold">{
                     order.payment_method === 'crypto_plisio' ? 'Cryptocurrency (Plisio)' :
                     order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
-                    order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                    order.payment_method === 'binance_pay' ? 'Binance Pay (Auto)' :
+                    order.payment_method === 'binance_pay_manual' ? 'Binance Pay (Manual)' :
                     order.payment_method
                   }</span>
                 </div>
@@ -529,8 +531,17 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             />
           )}
 
+          {/* Binance Pay manual section */}
+          {showManualProofForm && order.payment_method === 'binance_pay_manual' && (
+            <BinancePayManualSection
+              order={order}
+              settings={settings}
+              onSubmitted={() => loadOrder()}
+            />
+          )}
+
           {/* Manual Payment Proof Upload (non-Binance methods) */}
-          {showManualProofForm && order.payment_method !== 'binance_pay' && (
+          {showManualProofForm && !['binance_pay', 'binance_pay_manual'].includes(order.payment_method) && (
             <Card className="glass-effect border-white/20" data-testid="payment-proof-form">
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold text-white mb-4 flex items-center">
