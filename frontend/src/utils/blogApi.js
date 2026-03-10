@@ -112,12 +112,29 @@ const ensureUniqueSlug = (posts, slug, currentId = null) => {
   return candidate;
 };
 
+let _staticBlogCache = null;
+const loadStaticBlog = async () => {
+  if (_staticBlogCache) return _staticBlogCache;
+  try {
+    const resp = await fetch('/blog-data.json');
+    if (!resp.ok) return [];
+    const data = await resp.json();
+    _staticBlogCache = Array.isArray(data) ? data.map(normalizePost) : [];
+    return _staticBlogCache;
+  } catch { return []; }
+};
+
 export const listBlogPosts = async ({ publishedOnly = true, limit = 100 } = {}) => {
   try {
     const response = await axiosInstance.get(`/blog/posts?published_only=${publishedOnly ? 'true' : 'false'}&limit=${limit}`);
     const posts = Array.isArray(response.data) ? response.data.map(normalizePost) : [];
     return { posts: sortPosts(posts), source: 'api' };
   } catch (error) {
+    const staticPosts = await loadStaticBlog();
+    if (staticPosts.length > 0) {
+      const filtered = publishedOnly ? staticPosts.filter((p) => p.published !== false) : staticPosts;
+      return { posts: sortPosts(filtered).slice(0, Math.max(1, Number(limit) || 100)), source: 'static' };
+    }
     if (!isMissingBlogApi(error)) throw error;
     const fallback = await readFallbackPosts();
     const filtered = publishedOnly ? fallback.filter((post) => post.published) : fallback;
@@ -136,11 +153,19 @@ export const getBlogPostBySlugOrId = async (slugOrId) => {
         const byId = await axiosInstance.get(`/blog/posts/${encoded}`);
         return { post: normalizePost(byId.data), source: 'api' };
       } catch (secondaryError) {
-        if (!isMissingBlogApi(secondaryError)) throw secondaryError;
+        if (!isMissingBlogApi(secondaryError)) {
+          /* fall through to static */
+        }
       }
     }
-    const fallback = await readFallbackPosts();
+    const staticPosts = await loadStaticBlog();
     const key = String(slugOrId || '').trim().toLowerCase();
+    const staticFound = staticPosts.find(
+      (post) => (post.slug || '').toLowerCase() === key || (post.id || '').toLowerCase() === key || slugify(post.slug || post.title || post.id) === slugify(key)
+    );
+    if (staticFound) return { post: normalizePost(staticFound), source: 'static' };
+
+    const fallback = await readFallbackPosts();
     const found = fallback.find(
       (post) => post.id.toLowerCase() === key || slugify(post.slug || post.title || post.id) === slugify(key)
     );
