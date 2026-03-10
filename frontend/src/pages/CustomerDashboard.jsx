@@ -196,7 +196,8 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
                             <p className="text-white/70 text-xs mt-0.5 capitalize">{
                               order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
                               order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
-                              order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                              order.payment_method === 'binance_pay' ? 'Binance Pay (Auto)' :
+                              order.payment_method === 'binance_pay_manual' ? 'Binance Pay (Manual)' :
                               order.payment_method
                             }</p>
                           </div>

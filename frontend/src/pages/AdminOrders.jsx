@@ -397,7 +397,8 @@ const AdminOrders = ({ user, logout, settings }) => {
                           <p><strong>Payment Method:</strong> {
                             order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
                             order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
-                            order.payment_method === 'binance_pay' ? 'Binance Pay' :
+                            order.payment_method === 'binance_pay' ? 'Binance Pay (Auto)' :
+                            order.payment_method === 'binance_pay_manual' ? 'Binance Pay (Manual)' :
                             order.payment_method
                           }</p>
                           <p><strong>Total:</strong> ${order.total_amount.toFixed(2)}</p>
@@ -548,7 +549,7 @@ const AdminOrders = ({ user, logout, settings }) => {
                           </Button>
                         </Link>
 
-                        {['paypal', 'skrill', 'moncash', 'binance_pay', 'zelle', 'cashapp'].includes(order.payment_method)
+                        {['paypal', 'skrill', 'moncash', 'binance_pay', 'binance_pay_manual', 'zelle', 'cashapp'].includes(order.payment_method)
                           && order.payment_status === 'pending_verification' && (
                           <>
                             <Button

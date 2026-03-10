@@ -139,6 +139,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     skrill: { enabled: true, email: '', instructions: '' },
     moncash: { enabled: true, email: '', instructions: '' },
     binance_pay: { enabled: true, email: '', instructions: '' },
+    binance_pay_manual: { enabled: true, email: '', instructions: '' },
     zelle: { enabled: true, email: '', instructions: '' },
     cashapp: { enabled: true, email: '', instructions: '' }
   }), []);
@@ -1475,6 +1476,46 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             <p className="text-white/30 text-xs mt-1">Deploy the Cloudflare Worker from /cloudflare-worker/binance-proxy.js</p>
                           </div>
                           <p className="text-white/40 text-xs">Binance &rarr; Account &rarr; <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">API Management</a> &rarr; Create API Key (enable "Pay" permission)</p>
+                        </div>
+                      </div>
+
+                      {/* Binance Pay Manual */}
+                      <div className="bg-white/5 p-4 rounded-lg mb-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="text-white font-semibold flex items-center gap-2">
+                            <span>🟡</span> Binance Pay (Manual)
+                          </h4>
+                          <label className="flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              checked={formData.payment_gateways?.binance_pay_manual?.enabled || false}
+                              onChange={(e) => handlePaymentGatewayChange('binance_pay_manual', 'enabled', e.target.checked)}
+                              className="w-4 h-4" 
+                            />
+                            <span className="text-white text-sm">Enabled</span>
+                          </label>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-white/70 text-sm">Binance Pay ID / UID</Label>
+                            <Input
+                              placeholder="Your Binance Pay UID (e.g. 589353477)"
+                              value={formData.payment_gateways?.binance_pay_manual?.email || ""}
+                              onChange={(e) => handlePaymentGatewayChange('binance_pay_manual', 'email', e.target.value)}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Instructions for Customers</Label>
+                            <Textarea
+                              placeholder="Send USDT via Binance Pay to the ID above, then submit your transaction ID."
+                              value={formData.payment_gateways?.binance_pay_manual?.instructions || ""}
+                              onChange={(e) => handlePaymentGatewayChange('binance_pay_manual', 'instructions', e.target.value)}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                              rows={2}
+                            />
+                          </div>
+                          <p className="text-white/40 text-xs">Customer sends payment via Binance Pay, then submits the Transaction ID. Admin verifies and approves manually.</p>
                         </div>
                       </div>
 

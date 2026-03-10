@@ -596,7 +596,7 @@ class Order(BaseModel):
     credits_awarded: Optional[int] = None
     credits_recorded: Optional[bool] = None
     currency: str = "USD"
-    payment_method: str  # wallet, crypto_plisio, payerurl, paypal, skrill, moncash, binance_pay, zelle, cashapp
+    payment_method: str  # wallet, crypto_plisio, payerurl, paypal, skrill, moncash, binance_pay, binance_pay_manual, zelle, cashapp
     payment_status: str = "pending"  # pending, paid, failed, cancelled
     order_status: str = "pending"  # pending, processing, completed, cancelled
     payerurl_payment_url: Optional[str] = None
@@ -751,6 +751,7 @@ class SiteSettings(BaseModel):
         "skrill": {"enabled": True, "email": "", "instructions": ""},
         "moncash": {"enabled": True, "email": "", "instructions": ""},
         "binance_pay": {"enabled": True, "email": "", "instructions": ""},
+        "binance_pay_manual": {"enabled": True, "email": "", "instructions": ""},
         "zelle": {"enabled": True, "email": "", "instructions": ""},
         "cashapp": {"enabled": True, "email": "", "instructions": ""},
         # Legacy key kept for backwards compatibility
