@@ -2973,23 +2973,22 @@ async def _try_auto_deliver(order_id: str) -> bool:
         return False
 
     reserved_codes: List[dict] = []
-    all_auto = True
+    skipped_manual = []
     fail_reason = None
 
     for item in items:
         product = await db.products.find_one({"id": item.get("product_id")}, {"_id": 0})
         if not product:
-            all_auto = False
-            fail_reason = f"Product not found: {item.get('product_id')}"
-            break
+            skipped_manual.append(item.get("product_name", item.get("product_id", "Unknown")))
+            continue
 
         if product.get("delivery_type") != "automatic":
-            all_auto = False
-            fail_reason = f"Product '{product.get('name', '')}' has delivery_type='{product.get('delivery_type', 'manual')}', not automatic"
-            break
+            skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
+            continue
 
         qty = max(int(item.get("quantity", 1)), 1)
         item_codes = []
+        item_failed = False
         for _ in range(qty):
             code_doc = await db.product_codes.find_one_and_update(
                 {"product_id": product["id"], "status": "available"},
@@ -3001,13 +3000,19 @@ async def _try_auto_deliver(order_id: str) -> bool:
                 return_document=True,
             )
             if not code_doc:
-                all_auto = False
+                item_failed = True
                 fail_reason = f"No available codes for product '{product.get('name', '')}' (needed {qty}, got {len(item_codes)})"
+                for rollback_code in item_codes:
+                    await db.product_codes.update_one(
+                        {"id": rollback_code["id"], "status": "reserved", "order_id": order_id},
+                        {"$set": {"status": "available", "order_id": None, "delivered_at": None}},
+                    )
                 break
             item_codes.append(code_doc)
 
-        if not all_auto:
-            break
+        if item_failed:
+            skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
+            continue
         reserved_codes.append({
             "product_id": product["id"],
             "product_name": item.get("product_name", product.get("name", "")),
@@ -3015,13 +3020,7 @@ async def _try_auto_deliver(order_id: str) -> bool:
             "codes": item_codes,
         })
 
-    if not all_auto or not reserved_codes:
-        for entry in reserved_codes:
-            for code_doc in entry["codes"]:
-                await db.product_codes.update_one(
-                    {"id": code_doc["id"], "status": "reserved", "order_id": order_id},
-                    {"$set": {"status": "available", "order_id": None, "delivered_at": None}},
-                )
+    if not reserved_codes:
         if fail_reason:
             logging.warning("Auto-delivery failed for order %s: %s", order_id, fail_reason)
             await db.orders.update_one(
@@ -3049,17 +3048,25 @@ async def _try_auto_deliver(order_id: str) -> bool:
         })
         all_details_parts.append(f"{entry['product_name']}:\n{codes_text}")
 
+    has_manual_remaining = len(skipped_manual) > 0
+    final_order_status = "processing" if has_manual_remaining else "completed"
+
     now_iso = datetime.now(timezone.utc).isoformat()
+    delivery_info_data = {
+        "details": "\n\n".join(all_details_parts),
+        "items": delivery_items,
+        "delivered_at": now_iso,
+        "auto_delivered": True,
+    }
+    if has_manual_remaining:
+        delivery_info_data["partial"] = True
+        delivery_info_data["pending_manual"] = skipped_manual
+
     await db.orders.update_one(
         {"id": order_id},
         {"$set": {
-            "delivery_info": {
-                "details": "\n\n".join(all_details_parts),
-                "items": delivery_items,
-                "delivered_at": now_iso,
-                "auto_delivered": True,
-            },
-            "order_status": "completed",
+            "delivery_info": delivery_info_data,
+            "order_status": final_order_status,
             "payment_status": "paid",
             "updated_at": now_iso,
         }}
@@ -4962,9 +4969,33 @@ async def seller_deliver_order(order_id: str, payload: SellerDeliverySubmit, use
         "note": payload.delivery_note,
         "delivered_at": now,
     }
+    codes_text = "\n".join(payload.delivery_codes)
+    seller_items_info = []
+    for si in seller_items:
+        seller_items_info.append({
+            "product_id": si.get("product_id", ""),
+            "product_name": si.get("product_name", "Item"),
+            "quantity": si.get("quantity", 1),
+            "details": codes_text,
+        })
+    details_parts = []
+    for si in seller_items_info:
+        details_parts.append(f"{si['product_name']}:\n{si['details']}")
+    delivery_info_update = {
+        "details": "\n\n".join(details_parts),
+        "items": seller_items_info,
+        "delivered_at": now,
+        "seller_delivered": True,
+    }
+    if payload.delivery_note:
+        delivery_info_update["details"] += f"\n\nNote: {payload.delivery_note}"
     await db.orders.update_one({"id": order_id}, {
         "$push": {"seller_deliveries": delivery_record},
-        "$set": {"order_status": "completed", "updated_at": now}
+        "$set": {
+            "order_status": "completed",
+            "delivery_info": delivery_info_update,
+            "updated_at": now,
+        }
     })
     buyer_id = order.get("user_id")
     if buyer_id:
@@ -4973,6 +5004,26 @@ async def seller_deliver_order(order_id: str, payload: SellerDeliverySubmit, use
             f"Your order #{order_id[:8]} has been delivered by the seller!",
             {"order_id": order_id}
         )
+    try:
+        settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+        user_email = order.get("user_email")
+        if user_email:
+            codes_html = "".join(
+                f"<li><b>{si['product_name']}:</b><pre style='background:#111827;color:#D1D5DB;padding:8px;border-radius:6px;white-space:pre-wrap;margin:6px 0'>{si['details']}</pre></li>"
+                for si in seller_items_info
+            )
+            html = (
+                f"<div style='font-family:Arial,sans-serif'>"
+                f"<h2>Your order has been delivered!</h2>"
+                f"<p><b>Order:</b> #{order_id[:8]}</p>"
+                f"<p><b>Your codes / credentials:</b></p><ul>{codes_html}</ul>"
+                f"{'<p><b>Note:</b> ' + payload.delivery_note + '</p>' if payload.delivery_note else ''}"
+                f"<p>Thank you for your purchase!</p>"
+                f"</div>"
+            )
+            _send_resend_email(settings, user_email, "Your order has been delivered!", html)
+    except Exception as e:
+        logging.error(f"Seller delivery email error: {e}")
     return {"message": "Delivery submitted successfully"}
 
 

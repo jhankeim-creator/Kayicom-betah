@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageSquare, AlertTriangle, Star } from 'lucide-react';
+import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageSquare, AlertTriangle, Star, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import BinancePaySection from '../components/BinancePaySection';
@@ -258,37 +258,127 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
               <CardContent className="p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <CheckCircle className="text-green-400" size={28} />
-                  <h3 className="text-2xl font-bold text-green-400">Order Delivered!</h3>
+                  <h3 className="text-2xl font-bold text-green-400">
+                    {order.delivery_info?.partial ? 'Partial Delivery' : 'Order Delivered!'}
+                  </h3>
                 </div>
-                <p className="text-white/70 text-sm mb-4">
-                  Delivered on: {new Date(order.delivery_info.delivered_at).toLocaleString('en-US')}
-                </p>
-                {deliveryDetails && (
-                  <div className="bg-white/5 border border-white/10 rounded-lg p-4">
-                    <Label className="text-white font-semibold mb-2 block">Delivery Notes:</Label>
-                    <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm">
-                      {deliveryDetails}
-                    </pre>
+                {order.delivery_info?.delivered_at && (
+                  <p className="text-white/70 text-sm mb-4">
+                    Delivered on: {new Date(order.delivery_info.delivered_at).toLocaleString('en-US')}
+                  </p>
+                )}
+                {order.delivery_info?.partial && order.delivery_info?.pending_manual?.length > 0 && (
+                  <div className="mb-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <p className="text-yellow-300 text-sm font-semibold">Some items require manual delivery:</p>
+                    <ul className="text-yellow-200/80 text-sm mt-1 list-disc list-inside">
+                      {order.delivery_info.pending_manual.map((name, i) => (
+                        <li key={i}>{name}</li>
+                      ))}
+                    </ul>
                   </div>
                 )}
                 {deliveryItems.length > 0 && (
-                  <div className="mt-4 space-y-3">
-                    <Label className="text-white font-semibold block">Item Delivery Details:</Label>
+                  <div className="space-y-3">
+                    <Label className="text-white font-semibold block">Your Codes / Credentials:</Label>
                     {deliveryItems.map((item, index) => (
                       <div
                         key={`${item.product_id || item.product_name || 'item'}-${index}`}
                         className="bg-white/5 border border-white/10 rounded-lg p-4"
                       >
-                        <p className="text-white/80 text-sm font-semibold mb-2">
-                          {item.product_name || item.product_id || `Item ${index + 1}`}
-                        </p>
-                        <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-white/80 text-sm font-semibold">
+                            {item.product_name || item.product_id || `Item ${index + 1}`}
+                          </p>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(item.details).catch(() => {
+                                const el = document.createElement('textarea');
+                                el.value = item.details;
+                                document.body.appendChild(el);
+                                el.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(el);
+                              });
+                              toast.success('Code copied!');
+                            }}
+                            className="text-white/40 hover:text-green-400 transition p-1.5 rounded hover:bg-white/5"
+                            title="Copy code"
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
+                        <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm bg-black/20 rounded p-3">
                           {item.details}
                         </pre>
                       </div>
                     ))}
                   </div>
                 )}
+                {deliveryDetails && deliveryItems.length === 0 && (
+                  <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-white font-semibold">Delivery Details:</Label>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(deliveryDetails).catch(() => {});
+                          toast.success('Copied!');
+                        }}
+                        className="text-white/40 hover:text-green-400 transition p-1.5 rounded hover:bg-white/5"
+                        title="Copy"
+                      >
+                        <Copy size={14} />
+                      </button>
+                    </div>
+                    <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm bg-black/20 rounded p-3">
+                      {deliveryDetails}
+                    </pre>
+                  </div>
+                )}
+                <p className="text-white/60 text-xs mt-3">
+                  💡 Please save this information. Contact support if you have any issues.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Seller Deliveries fallback (for orders before the fix) */}
+          {!hasDeliveryInfo && order.seller_deliveries?.length > 0 && (
+            <Card className="glass-effect border-green-500/30 border-2" data-testid="seller-delivery-info">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <CheckCircle className="text-green-400" size={28} />
+                  <h3 className="text-2xl font-bold text-green-400">Order Delivered!</h3>
+                </div>
+                {order.seller_deliveries.map((sd, sdIdx) => (
+                  <div key={sdIdx} className="mb-3">
+                    {sd.delivered_at && (
+                      <p className="text-white/70 text-sm mb-2">
+                        Delivered on: {new Date(sd.delivered_at).toLocaleString('en-US')}
+                      </p>
+                    )}
+                    <div className="bg-white/5 border border-white/10 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-white font-semibold">Your Codes:</Label>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(sd.codes.join('\n')).catch(() => {});
+                            toast.success('Codes copied!');
+                          }}
+                          className="text-white/40 hover:text-green-400 transition p-1.5 rounded hover:bg-white/5"
+                          title="Copy codes"
+                        >
+                          <Copy size={14} />
+                        </button>
+                      </div>
+                      <pre className="text-green-300 whitespace-pre-wrap break-words font-mono text-sm bg-black/20 rounded p-3">
+                        {sd.codes.join('\n')}
+                      </pre>
+                    </div>
+                    {sd.note && (
+                      <p className="text-white/60 text-sm mt-2">Note: {sd.note}</p>
+                    )}
+                  </div>
+                ))}
                 <p className="text-white/60 text-xs mt-3">
                   💡 Please save this information. Contact support if you have any issues.
                 </p>
@@ -682,15 +772,34 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
               <CardContent className="p-6">
                 <h3 className="text-xl font-bold text-white mb-4">Payment Proof Submitted</h3>
                 <div className="space-y-2">
-                  <p className="text-white/70">Transaction ID: <span className="text-white font-semibold">{order.transaction_id}</span></p>
-                  <a 
-                    href={order.payment_proof_url} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:underline"
-                  >
-                    View Payment Proof
-                  </a>
+                  {order.transaction_id && (
+                    <div className="flex items-center gap-2">
+                      <p className="text-white/70">Transaction ID: <span className="text-white font-semibold font-mono">{order.transaction_id}</span></p>
+                      <button
+                        onClick={() => { navigator.clipboard.writeText(order.transaction_id).catch(() => {}); toast.success('Transaction ID copied!'); }}
+                        className="text-white/40 hover:text-green-400 transition p-1"
+                        title="Copy Transaction ID"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </div>
+                  )}
+                  {order.payment_proof_url.startsWith('http') || order.payment_proof_url.startsWith('data:') ? (
+                    <a 
+                      href={order.payment_proof_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:underline"
+                    >
+                      View Payment Proof
+                    </a>
+                  ) : (
+                    <p className="text-white/50 text-sm">
+                      {order.payment_proof_url.startsWith('binance-pay') ? 'Verified via Binance Pay' :
+                       order.payment_proof_url.startsWith('binance-') ? 'Binance payment reference' :
+                       'Proof submitted'}
+                    </p>
+                  )}
                 </div>
               </CardContent>
             </Card>

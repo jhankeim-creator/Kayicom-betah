@@ -85,7 +85,7 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
     ] : [
       { icon: Store, label: 'Become a Seller', href: '/seller/apply', color: 'text-green-400' },
     ]),
-    { icon: ShoppingBag, label: 'Purchased Orders', href: '#orders', color: 'text-white/70' },
+    { icon: ShoppingBag, label: 'Purchased Orders', href: '/dashboard#orders', color: 'text-white/70' },
     { icon: Gift, label: 'Coupon', href: '/products', color: 'text-orange-400' },
     { icon: Users, label: 'Referral', href: '/referral', color: 'text-white/70' },
     { icon: MessageCircle, label: 'Messages', href: '/messages', color: 'text-white/70' },
@@ -159,11 +159,11 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
           </div>
 
           {/* Recent Orders */}
-          <div className="mb-6">
+          <div className="mb-6" id="orders">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-white font-bold text-lg">Recent Orders</h2>
-              <div className="flex gap-2">
-                {['all', 'pending', 'processing', 'completed'].map((status) => (
+              <h2 className="text-white font-bold text-lg">My Orders</h2>
+              <div className="flex gap-2 flex-wrap">
+                {['all', 'pending', 'processing', 'completed', 'cancelled'].map((status) => (
                   <button
                     key={status}
                     onClick={() => setStatusFilter(status)}
@@ -181,14 +181,22 @@ const CustomerDashboard = ({ user, logout, settings, cart }) => {
               <div className="text-white/40 text-center py-8">Loading...</div>
             ) : filteredOrders.length > 0 ? (
               <div className="space-y-3" data-testid="orders-list">
-                {filteredOrders.slice(0, 10).map((order) => {
+                {filteredOrders.map((order) => {
                   const date = parseDate(order.created_at);
                   return (
                     <Link to={`/track/${order.id}`} key={order.id}>
                       <div className="p-4 rounded-xl bg-[#141414] border border-white/5 hover:border-green-500/20 transition" data-testid={`order-${order.id}`}>
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-white font-semibold text-sm">Order #{order.id.slice(0, 8)}</span>
-                          <span className={`text-xs px-2 py-0.5 rounded font-semibold ${getPaymentBadgeClass(order.payment_status)}`}>{order.payment_status}</span>
+                          <div className="flex gap-1.5">
+                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${
+                              order.order_status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                              order.order_status === 'cancelled' ? 'bg-red-500/20 text-red-400' :
+                              order.order_status === 'processing' ? 'bg-blue-500/20 text-blue-400' :
+                              'bg-yellow-500/20 text-yellow-400'
+                            }`}>{order.order_status}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded font-semibold ${getPaymentBadgeClass(order.payment_status)}`}>{order.payment_status}</span>
+                          </div>
                         </div>
                         <div className="flex items-center justify-between">
                           <div>
