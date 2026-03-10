@@ -63,6 +63,9 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
               <Link to="/" className="text-white/80 font-medium hover:text-green-400 transition" data-testid="nav-home">
                 Home
               </Link>
+              <Link to="/marketplace" className="text-white/80 font-medium hover:text-green-400 transition">
+                Marketplace
+              </Link>
               <Link to="/products" className="text-white/80 font-medium hover:text-green-400 transition">
                 Products
               </Link>
@@ -233,6 +236,20 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
                 placeholder="Search your products..."
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-green-500/50"
               />
+            </div>
+
+            <div className="border-b border-white/5 pb-2">
+              <Link
+                to="/marketplace"
+                className="flex items-center justify-between px-4 py-3 text-white/80 hover:bg-white/5 transition"
+                onClick={() => setSideMenuOpen(false)}
+              >
+                <span className="flex items-center gap-3">
+                  <span className="text-lg">🏪</span>
+                  <span className="text-sm font-semibold text-green-400">Marketplace</span>
+                </span>
+                <ChevronRight size={16} className="text-white/30" />
+              </Link>
             </div>
 
             <div className="border-b border-white/5 pb-2">

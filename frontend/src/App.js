@@ -46,6 +46,7 @@ import SellerStorePage from './pages/SellerStorePage';
 import DisputeCenterPage from './pages/DisputeCenterPage';
 import MessagesPage from './pages/MessagesPage';
 import NotificationsPage from './pages/NotificationsPage';
+import MarketplacePage from './pages/MarketplacePage';
 import WhatsAppButton from './components/WhatsAppButton';
 
 const BACKEND_URL = (process.env.REACT_APP_BACKEND_URL || '').replace(/\/+$/, ''); // Remove trailing slashes
@@ -271,6 +272,7 @@ function App() {
         <div className="App">
           <Routes>
             <Route path="/" element={<HomePage user={user} logout={logout} cart={cart} settings={settings} />} />
+          <Route path="/marketplace" element={<MarketplacePage user={user} logout={logout} addToCart={addToCart} cart={cart} settings={settings} />} />
           <Route path="/products" element={<ProductsPage user={user} logout={logout} addToCart={addToCart} cart={cart} settings={settings} />} />
           <Route path="/products/:category" element={<ProductsPage user={user} logout={logout} addToCart={addToCart} cart={cart} settings={settings} />} />
           <Route path="/product/:slug" element={<ProductDetailPage user={user} logout={logout} addToCart={addToCart} cart={cart} settings={settings} />} />
