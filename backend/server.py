@@ -4328,6 +4328,41 @@ async def admin_review_product_request(request_id: str, action: str, reason: Opt
 
 # ==================== SELLER OFFERS ====================
 
+@api_router.get("/marketplace/seller-offers")
+async def get_marketplace_seller_offers():
+    """Return all active seller offers enriched with product and seller info for the marketplace."""
+    offers = await db.seller_offers.find(
+        {"status": "active"}, {"_id": 0}
+    ).sort("price", 1).to_list(500)
+    results = []
+    for offer in offers:
+        product = await db.products.find_one({"id": offer.get("product_id")}, {"_id": 0})
+        if not product:
+            continue
+        seller = await db.users.find_one(
+            {"id": offer.get("seller_id")},
+            {"_id": 0, "seller_store_name": 1, "seller_rating": 1}
+        )
+        results.append({
+            "id": offer.get("id"),
+            "offer_id": offer.get("id"),
+            "product_id": offer.get("product_id"),
+            "name": (product.get("name") or "").strip(),
+            "description": product.get("description", ""),
+            "category": product.get("category", ""),
+            "price": float(offer.get("price", 0)),
+            "image_url": product.get("image_url"),
+            "slug": product.get("slug") or product.get("id"),
+            "stock_available": offer.get("stock_available", True),
+            "delivery_type": offer.get("delivery_type", "manual"),
+            "seller_id": offer.get("seller_id"),
+            "seller_name": (seller or {}).get("seller_store_name", "Unknown"),
+            "seller_rating": (seller or {}).get("seller_rating"),
+            "is_seller_offer": True,
+        })
+    return results
+
+
 @api_router.get("/products/{product_id}/offers")
 async def get_product_offers(product_id: str):
     """Get all seller offers for a catalog product, sorted by price."""

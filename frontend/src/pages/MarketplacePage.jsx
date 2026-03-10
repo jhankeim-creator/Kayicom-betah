@@ -13,6 +13,7 @@ const CORE_CATEGORIES = ['giftcard', 'topup', 'subscription', 'service'];
 const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
   const { t } = useContext(LanguageContext);
   const [allProducts, setAllProducts] = useState([]);
+  const [sellerOffers, setSellerOffers] = useState([]);
   const [filteredProducts, setFilteredProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -20,6 +21,7 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
 
   useEffect(() => {
     loadProducts();
+    loadSellerOffers();
   }, []);
 
   useEffect(() => {
@@ -61,6 +63,15 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
       toast.error('Error loading products');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSellerOffers = async () => {
+    try {
+      const response = await axiosInstance.get('/marketplace/seller-offers');
+      setSellerOffers(response.data || []);
+    } catch (error) {
+      console.error('Error loading seller offers:', error);
     }
   };
 
@@ -187,34 +198,33 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
       ) : activeCategory === 'all' ? (
         /* Show all products grouped by category, with seller products section */
         <>
-          {/* Seller Products Section */}
+          {/* Seller Offers Section */}
           {(() => {
-            const sellerProducts = allProducts.filter((p) => p.seller_id);
-            if (sellerProducts.length === 0) return null;
+            if (sellerOffers.length === 0) return null;
             const filtered = searchQuery.trim()
-              ? sellerProducts.filter((p) => {
+              ? sellerOffers.filter((o) => {
                   const q = searchQuery.trim().toLowerCase();
-                  return (p.name || '').toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
+                  return (o.name || '').toLowerCase().includes(q) || (o.description || '').toLowerCase().includes(q);
                 })
-              : sellerProducts;
+              : sellerOffers;
             if (filtered.length === 0) return null;
             return (
               <div className="container mx-auto px-4 py-6">
                 <div className="flex items-center justify-between mb-5">
                   <div>
                     <p className="text-green-400 text-sm font-semibold mb-1 flex items-center gap-1">
-                      <Store size={14} /> Seller Products
+                      <Store size={14} /> Seller Offers
                     </p>
                     <h2 className="text-2xl md:text-3xl font-bold text-white">Marketplace</h2>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {filtered.map((product) => (
-                    <Link to={`/product/${product.slug || product.id}`} key={product.id}>
+                  {filtered.map((offer) => (
+                    <Link to={`/product/${offer.slug || offer.product_id}`} key={offer.offer_id || offer.id}>
                       <div className="rounded-xl bg-[#141414] border border-white/5 overflow-hidden hover:border-green-500/30 transition group">
                         <div className="relative h-36 md:h-44 bg-[#1c1c1c] overflow-hidden">
-                          {product.image_url ? (
-                            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                          {offer.image_url ? (
+                            <img src={offer.image_url} alt={offer.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <Gift className="text-white/15" size={40} />
@@ -224,26 +234,23 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
                             <Heart size={14} className="text-white/60" />
                           </button>
                           <span className="absolute top-2 right-2 bg-green-500/90 text-black text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                            Seller
+                            {offer.seller_name || 'Seller'}
                           </span>
                         </div>
                         <div className="p-3">
                           <div className="flex items-baseline gap-2 mb-1">
                             <span className="text-green-400 font-bold">
-                              ${Number(product._variant_count > 1 ? product._min_price : product.price).toFixed(2)}
+                              ${Number(offer.price).toFixed(2)}
                             </span>
-                            {product.original_price && product.original_price > product.price && (
-                              <span className="text-white/30 text-xs line-through">${Number(product.original_price).toFixed(2)}</span>
-                            )}
                           </div>
-                          <h3 className="text-white font-medium text-sm truncate">{product.name}</h3>
+                          <h3 className="text-white font-medium text-sm truncate">{offer.name}</h3>
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-white/40 text-xs px-2 py-0.5 rounded bg-white/5 border border-white/10">
-                              {Math.max(0, Math.floor(Number(product._orders_count) || 0))} Sale
+                              {offer.delivery_type === 'automatic' ? 'Instant' : 'Manual'}
                             </span>
                             <div className="flex items-center gap-1">
                               <Star size={12} className="text-yellow-500" fill="currentColor" />
-                              <span className="text-white/50 text-xs">0</span>
+                              <span className="text-white/50 text-xs">{offer.seller_rating || 0}</span>
                             </div>
                           </div>
                         </div>
