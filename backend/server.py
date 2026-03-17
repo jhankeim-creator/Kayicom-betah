@@ -6845,12 +6845,11 @@ async def update_crypto_transaction_status(
     return {"message": "Transaction status updated"}
 
 
-# ---------- uploads directory ----------
-UPLOADS_DIR = ROOT_DIR / "uploads"
-UPLOADS_DIR.mkdir(exist_ok=True)
-
+# ---------- image uploads (stored in MongoDB) ----------
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+MIME_TO_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp", "image/svg+xml": ".svg"}
 
 
 def _public_base_url(request: Request) -> str:
@@ -6864,10 +6863,23 @@ def _public_base_url(request: Request) -> str:
     return f"{proto}://{host}"
 
 
+@api_router.get("/uploads/{filename}")
+async def serve_uploaded_image(filename: str):
+    """Serve an image stored in MongoDB."""
+    doc = await db.uploaded_images.find_one({"filename": filename})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return Response(
+        content=doc["data"],
+        media_type=doc.get("mime_type", "image/jpeg"),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
 # File Upload Endpoint
 @api_router.post("/upload/image")
 async def upload_image(request: Request, file: UploadFile = File(...)):
-    """Upload image, save to disk, and return a public URL."""
+    """Upload image, store in MongoDB, and return a public URL."""
     try:
         contents = await file.read()
         if len(contents) > MAX_IMAGE_SIZE:
@@ -6877,12 +6889,17 @@ async def upload_image(request: Request, file: UploadFile = File(...)):
         if mime_type not in ALLOWED_IMAGE_TYPES:
             raise HTTPException(status_code=400, detail=f"Unsupported image type: {mime_type}")
 
-        ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
-        if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}:
-            ext = ".jpg"
+        ext = MIME_TO_EXT.get(mime_type, Path(file.filename).suffix.lower() if file.filename else ".jpg")
         filename = f"{uuid.uuid4().hex}{ext}"
 
-        (UPLOADS_DIR / filename).write_bytes(contents)
+        await db.uploaded_images.insert_one({
+            "filename": filename,
+            "data": contents,
+            "mime_type": mime_type,
+            "original_name": file.filename,
+            "size": len(contents),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
 
         public_url = f"{_public_base_url(request)}/api/uploads/{filename}"
         return {"url": public_url, "filename": file.filename}
@@ -8220,10 +8237,6 @@ async def sitemap_xml():
 
 # Include the router (must be after all endpoints are defined)
 app.include_router(api_router)
-
-# Serve uploaded images as static files
-from fastapi.staticfiles import StaticFiles  # noqa: E402
-app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Custom exception handler to ensure CORS headers on HTTPException errors
 @app.exception_handler(HTTPException)
