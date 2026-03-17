@@ -14,6 +14,78 @@ import { Package, Plus, Edit2, Trash2, Key } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductCodesManager from '../components/ProductCodesManager';
 
+const G2BulkProductPicker = ({ value, onChange, disabled }) => {
+  const [g2Products, setG2Products] = useState([]);
+  const [g2Loading, setG2Loading] = useState(false);
+  const [g2Error, setG2Error] = useState(null);
+  const [g2Search, setG2Search] = useState('');
+  const [g2Loaded, setG2Loaded] = useState(false);
+
+  const loadG2Products = async () => {
+    setG2Loading(true);
+    setG2Error(null);
+    try {
+      const res = await axiosInstance.get('/admin/g2bulk/products');
+      const data = res.data;
+      setG2Products(Array.isArray(data) ? data : data?.data || data?.products || []);
+      setG2Loaded(true);
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Failed to load G2Bulk products. Check API key in Settings.';
+      setG2Error(msg);
+    } finally { setG2Loading(false); }
+  };
+
+  const filtered = g2Search.trim()
+    ? g2Products.filter(p => (p.title || p.name || '').toLowerCase().includes(g2Search.toLowerCase()))
+    : g2Products;
+
+  const selected = g2Products.find(p => p.id === value);
+
+  return (
+    <div className="space-y-2">
+      <Label className="text-white">G2Bulk Product <span className="text-white/40 font-normal">(auto topup)</span></Label>
+      {value && (
+        <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+          <span className="text-green-300 text-sm flex-1">
+            {selected ? `${selected.title || selected.name} — $${selected.unit_price || selected.price || '?'}` : `ID: ${value}`}
+          </span>
+          <button onClick={() => onChange(null)} className="text-red-400 text-xs hover:text-red-300" disabled={disabled}>✕ Remove</button>
+        </div>
+      )}
+      {!g2Loaded && !g2Loading && (
+        <Button type="button" size="sm" variant="outline" onClick={loadG2Products} disabled={disabled}
+          className="border-white/20 text-white text-xs hover:bg-white/10">
+          Load G2Bulk Products
+        </Button>
+      )}
+      {g2Loading && <p className="text-white/40 text-xs">Loading G2Bulk products...</p>}
+      {g2Error && <p className="text-red-400 text-xs">{g2Error}</p>}
+      {g2Loaded && !g2Loading && (
+        <>
+          <Input value={g2Search} onChange={(e) => setG2Search(e.target.value)}
+            placeholder="Search G2Bulk products..." className="bg-white/10 border-white/20 text-white text-xs" />
+          <div className="max-h-48 overflow-y-auto space-y-1 border border-white/10 rounded-lg p-1">
+            {filtered.length === 0 && <p className="text-white/30 text-xs text-center py-3">No products found</p>}
+            {filtered.map(p => (
+              <button key={p.id} type="button" disabled={disabled}
+                onClick={() => { onChange(p.id); setG2Search(''); }}
+                className={`w-full text-left px-3 py-2 rounded text-xs transition ${
+                  value === p.id ? 'bg-green-500/20 text-green-300' : 'text-white/70 hover:bg-white/10'
+                }`}>
+                <span className="font-medium">{p.title || p.name}</span>
+                <span className="text-white/40 ml-2">${p.unit_price || p.price || '?'}</span>
+                {p.stock != null && <span className="text-white/30 ml-2">({p.stock} in stock)</span>}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={loadG2Products} className="text-white/30 text-xs hover:text-white/50">↻ Refresh list</button>
+        </>
+      )}
+      <p className="text-white/40 text-xs">Select a G2Bulk product to auto-fulfill topup orders. Leave empty for manual delivery.</p>
+    </div>
+  );
+};
+
 const SUBSCRIPTION_DURATION_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const DEFAULT_CATEGORIES = ['topup', 'giftcard', 'subscription', 'service'];
 const DEFAULT_GIFTCARD_CATEGORIES = ['Shopping', 'Gaming', 'Entertainment', 'Food', 'Travel', 'Other'];
@@ -60,6 +132,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     image_url: '',
     stock_available: true,
     delivery_type: 'manual',
+    g2bulk_product_id: null,
     requires_player_id: false,
     requires_credentials: false,
     player_id_label: 'Player ID',
@@ -336,6 +409,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       image_url: parent?.image_url || product.image_url || '',
       stock_available: parent?.stock_available ?? product.stock_available ?? true,
       delivery_type: parent?.delivery_type || product.delivery_type,
+      g2bulk_product_id: product.g2bulk_product_id || null,
       requires_player_id: parent?.requires_player_id ?? product.requires_player_id ?? false,
       player_id_label: parent?.player_id_label || product.player_id_label || 'Player ID',
       requires_credentials: parent?.requires_credentials ?? product.requires_credentials ?? false,
@@ -378,6 +452,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       image_url: '',
       stock_available: true,
       delivery_type: 'manual',
+      g2bulk_product_id: null,
       requires_player_id: false,
       requires_credentials: false,
       player_id_label: 'Player ID',
@@ -868,6 +943,14 @@ const AdminProducts = ({ user, logout, settings }) => {
                     <Label htmlFor="stock" className="text-white">In Stock</Label>
                   </div>
                 </div>
+
+                {formData.category === 'topup' && (
+                  <G2BulkProductPicker
+                    value={formData.g2bulk_product_id}
+                    onChange={(id) => handleChange('g2bulk_product_id', id)}
+                    disabled={isVariantForm}
+                  />
+                )}
 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                   <div className="flex items-center space-x-2">
