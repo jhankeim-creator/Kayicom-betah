@@ -522,6 +522,7 @@ class Product(BaseModel):
     region: Optional[str] = None  # For gift cards: US, EU, ASIA, etc.
     giftcard_category: Optional[str] = None  # For gift cards: Shopping, Gaming, Entertainment, etc.
     giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
+    g2bulk_product_id: Optional[int] = None  # G2Bulk product ID for automatic topup fulfillment
     is_subscription: bool = False  # Track if this triggers referral payout
     orders_count: int = 0  # Total purchased quantity for this product
     seo_title: Optional[str] = None
@@ -551,6 +552,7 @@ class ProductCreate(BaseModel):
     region: Optional[str] = None
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
+    g2bulk_product_id: Optional[int] = None
     is_subscription: bool = False
     orders_count: int = 0
     seo_title: Optional[str] = None
@@ -577,6 +579,7 @@ class ProductUpdate(BaseModel):
     region: Optional[str] = None
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
+    g2bulk_product_id: Optional[int] = None
     is_subscription: Optional[bool] = None
     orders_count: Optional[int] = None
     seo_title: Optional[str] = None
@@ -723,6 +726,7 @@ class SiteSettings(BaseModel):
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
+    g2bulk_api_key: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None  # e.g. "KayiCom <no-reply@yourdomain.com>"
     telegram_notifications_enabled: Optional[bool] = None
@@ -855,6 +859,7 @@ class SettingsUpdate(BaseModel):
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
+    g2bulk_api_key: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None
     telegram_notifications_enabled: Optional[bool] = None
@@ -2999,6 +3004,68 @@ async def update_order_status(
     return {"message": "Order updated successfully"}
 
 
+# ==================== G2BULK INTEGRATION (TOPUP ONLY) ====================
+
+G2BULK_BASE_URL = "https://api.g2bulk.com/v1"
+
+
+async def _get_g2bulk_api_key() -> Optional[str]:
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0})
+    return (settings or {}).get("g2bulk_api_key") or os.environ.get("G2BULK_API_KEY")
+
+
+async def _g2bulk_request(method: str, path: str, json_body: dict = None) -> dict:
+    api_key = await _get_g2bulk_api_key()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="G2Bulk API key not configured")
+    headers = {"X-API-Key": api_key, "Content-Type": "application/json", "Accept": "application/json"}
+    url = f"{G2BULK_BASE_URL}{path}"
+    try:
+        resp = requests.request(method, url, headers=headers, json=json_body, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.HTTPError as e:
+        detail = str(e)
+        try:
+            detail = resp.json().get("message", detail)
+        except Exception:
+            pass
+        raise HTTPException(status_code=resp.status_code, detail=f"G2Bulk error: {detail}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"G2Bulk request failed: {str(e)}")
+
+
+async def _g2bulk_purchase(product_id: int, quantity: int = 1) -> dict:
+    """Purchase a product from G2Bulk. Returns order with delivery_items (codes)."""
+    return await _g2bulk_request("POST", f"/products/{product_id}/purchase", {"quantity": quantity})
+
+
+@api_router.get("/admin/g2bulk/balance")
+async def admin_g2bulk_balance():
+    """Check G2Bulk account balance."""
+    return await _g2bulk_request("GET", "/getMe")
+
+
+@api_router.get("/admin/g2bulk/categories")
+async def admin_g2bulk_categories():
+    """List G2Bulk product categories."""
+    return await _g2bulk_request("GET", "/category")
+
+
+@api_router.get("/admin/g2bulk/products")
+async def admin_g2bulk_products(category_id: Optional[int] = None):
+    """List G2Bulk products, optionally filtered by category."""
+    if category_id:
+        return await _g2bulk_request("GET", f"/category/{category_id}")
+    return await _g2bulk_request("GET", "/products")
+
+
+@api_router.get("/admin/g2bulk/products/{product_id}")
+async def admin_g2bulk_product_detail(product_id: int):
+    """Get G2Bulk product details."""
+    return await _g2bulk_request("GET", f"/products/{product_id}")
+
+
 # ==================== AUTO-DELIVERY LOGIC ====================
 
 async def _try_auto_deliver(order_id: str) -> bool:
@@ -3035,6 +3102,29 @@ async def _try_auto_deliver(order_id: str) -> bool:
             continue
 
         qty = max(int(item.get("quantity", 1)), 1)
+
+        g2bulk_pid = product.get("g2bulk_product_id")
+        if g2bulk_pid and product.get("category") == "topup":
+            try:
+                g2_result = await _g2bulk_purchase(int(g2bulk_pid), qty)
+                g2_codes = g2_result.get("delivery_items") or []
+                if not g2_codes:
+                    raise ValueError("G2Bulk returned no delivery items")
+                code_docs = [{"code": c, "id": f"g2b-{uuid.uuid4().hex[:8]}", "source": "g2bulk", "g2bulk_order_id": g2_result.get("order_id")} for c in g2_codes]
+                reserved_codes.append({
+                    "product_id": product["id"],
+                    "product_name": item.get("product_name", product.get("name", "")),
+                    "quantity": qty,
+                    "codes": code_docs,
+                })
+                logging.info("G2Bulk delivery for order %s product %s: %d codes", order_id, product.get("name"), len(g2_codes))
+                continue
+            except Exception as e:
+                logging.error("G2Bulk purchase failed for order %s: %s", order_id, str(e))
+                fail_reason = f"G2Bulk topup failed for '{product.get('name', '')}': {str(e)}"
+                skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
+                continue
+
         item_codes = []
         item_failed = False
         for _ in range(qty):
