@@ -68,6 +68,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     mtcgame_api_key: '',
     gosplit_api_key: '',
     z2u_api_key: '',
+    g2bulk_api_key: '',
     resend_api_key: '',
     resend_from_email: '',
     telegram_notifications_enabled: false,
@@ -183,6 +184,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           mtcgame_api_key: currentSettings.mtcgame_api_key || '',
           gosplit_api_key: currentSettings.gosplit_api_key || '',
           z2u_api_key: currentSettings.z2u_api_key || '',
+          g2bulk_api_key: currentSettings.g2bulk_api_key || '',
           resend_api_key: currentSettings.resend_api_key || '',
           resend_from_email: currentSettings.resend_from_email || '',
           telegram_notifications_enabled: currentSettings.telegram_notifications_enabled ?? false,
@@ -826,6 +828,19 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         placeholder="••••••••"
                         data-testid="plisio-key-input"
                       />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="g2bulk_api_key" className="text-white">G2Bulk API Key (Game Top-Up)</Label>
+                      <Input
+                        id="g2bulk_api_key"
+                        type="password"
+                        value={formData.g2bulk_api_key}
+                        onChange={(e) => handleChange('g2bulk_api_key', e.target.value)}
+                        className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
+                        placeholder="••••••••"
+                      />
+                      <p className="text-white/40 text-xs mt-1">Get from <a href="https://t.me/G2BULKBOT" target="_blank" rel="noopener noreferrer" className="text-green-400 underline">@G2BULKBOT on Telegram</a>. Used for automatic game topup delivery.</p>
                     </div>
 
                     <div>

@@ -60,6 +60,7 @@ const AdminProducts = ({ user, logout, settings }) => {
     image_url: '',
     stock_available: true,
     delivery_type: 'manual',
+    g2bulk_product_id: null,
     requires_player_id: false,
     requires_credentials: false,
     player_id_label: 'Player ID',
@@ -336,6 +337,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       image_url: parent?.image_url || product.image_url || '',
       stock_available: parent?.stock_available ?? product.stock_available ?? true,
       delivery_type: parent?.delivery_type || product.delivery_type,
+      g2bulk_product_id: product.g2bulk_product_id || null,
       requires_player_id: parent?.requires_player_id ?? product.requires_player_id ?? false,
       player_id_label: parent?.player_id_label || product.player_id_label || 'Player ID',
       requires_credentials: parent?.requires_credentials ?? product.requires_credentials ?? false,
@@ -378,6 +380,7 @@ const AdminProducts = ({ user, logout, settings }) => {
       image_url: '',
       stock_available: true,
       delivery_type: 'manual',
+      g2bulk_product_id: null,
       requires_player_id: false,
       requires_credentials: false,
       player_id_label: 'Player ID',
@@ -868,6 +871,22 @@ const AdminProducts = ({ user, logout, settings }) => {
                     <Label htmlFor="stock" className="text-white">In Stock</Label>
                   </div>
                 </div>
+
+                {formData.category === 'topup' && (
+                  <div>
+                    <Label htmlFor="g2bulk_product_id" className="text-white">G2Bulk Product ID <span className="text-white/40 font-normal">(auto topup)</span></Label>
+                    <Input
+                      id="g2bulk_product_id"
+                      type="number"
+                      value={formData.g2bulk_product_id || ''}
+                      onChange={(e) => handleChange('g2bulk_product_id', e.target.value ? parseInt(e.target.value) : null)}
+                      className="bg-white/10 border-white/20 text-white"
+                      placeholder="e.g. 123"
+                      disabled={isVariantForm}
+                    />
+                    <p className="text-white/40 text-xs mt-1">Set this to auto-fulfill topup orders via G2Bulk API. Leave empty for manual delivery.</p>
+                  </div>
+                )}
 
                 <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
                   <div className="flex items-center space-x-2">
