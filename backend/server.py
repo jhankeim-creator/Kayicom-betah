@@ -2206,15 +2206,30 @@ async def update_product(product_id: str, updates: ProductUpdate):
         else:
             update_data["orders_count"] = max(update_data["orders_count"], default_count)
 
+    for _seo_key in ("seo_title", "seo_description"):
+        if _seo_key in update_data and not str(update_data[_seo_key] or "").strip():
+            del update_data[_seo_key]
+
+    name_changed = "name" in update_data and _compact_text(update_data["name"]) != _compact_text(existing.get("name"))
+    if name_changed:
+        new_name = _compact_text(update_data["name"]) or existing.get("name", "product")
+        update_data["slug"] = await _generate_unique_product_slug(
+            new_name, exclude_product_id=product_id
+        )
+
     merged_product = {**existing, **update_data}
+    if name_changed or "seo_title" not in update_data:
+        merged_product.pop("seo_title", None)
+    if name_changed or "seo_description" not in update_data:
+        merged_product.pop("seo_description", None)
     normalized_merged = _normalize_product_doc(merged_product)
-    current_seo_title = (_compact_text(existing.get("seo_title")) if existing.get("seo_title") is not None else "") or None
-    current_seo_description = (_compact_text(existing.get("seo_description")) if existing.get("seo_description") is not None else "") or None
-    if normalized_merged.get("seo_title") != current_seo_title:
-        update_data["seo_title"] = normalized_merged.get("seo_title")
-    if normalized_merged.get("seo_description") != current_seo_description:
-        update_data["seo_description"] = normalized_merged.get("seo_description")
-    
+    update_data["seo_title"] = normalized_merged.get("seo_title")
+    update_data["seo_description"] = normalized_merged.get("seo_description")
+    if not existing.get("slug") and not update_data.get("slug"):
+        update_data["slug"] = await _generate_unique_product_slug(
+            merged_product.get("name") or "product", exclude_product_id=product_id
+        )
+
     if update_data:
         await db.products.update_one({"id": product_id}, {"$set": update_data})
     
@@ -3956,6 +3971,9 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         giftcard_subcategory=product.giftcard_subcategory,
         is_subscription=product.is_subscription,
     )
+    normalized = _normalize_product_doc(new_product.model_dump())
+    new_product.seo_title = normalized.get("seo_title")
+    new_product.seo_description = normalized.get("seo_description")
     doc = new_product.model_dump()
     doc["created_at"] = doc["created_at"].isoformat()
     await db.products.insert_one(doc)
@@ -3977,6 +3995,26 @@ async def seller_update_product(product_id: str, updates: ProductUpdate, user_id
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
     update_data.pop("seller_id", None)
     update_data.pop("orders_count", None)
+    for _seo_key in ("seo_title", "seo_description"):
+        if _seo_key in update_data and not str(update_data[_seo_key] or "").strip():
+            del update_data[_seo_key]
+    name_changed = "name" in update_data and _compact_text(update_data["name"]) != _compact_text(product.get("name"))
+    if name_changed:
+        update_data["slug"] = await _generate_unique_product_slug(
+            _compact_text(update_data["name"]) or "product", exclude_product_id=product_id
+        )
+    merged = {**product, **update_data}
+    if name_changed or "seo_title" not in update_data:
+        merged.pop("seo_title", None)
+    if name_changed or "seo_description" not in update_data:
+        merged.pop("seo_description", None)
+    normalized = _normalize_product_doc(merged)
+    update_data["seo_title"] = normalized.get("seo_title")
+    update_data["seo_description"] = normalized.get("seo_description")
+    if not product.get("slug") and not update_data.get("slug"):
+        update_data["slug"] = await _generate_unique_product_slug(
+            merged.get("name") or "product", exclude_product_id=product_id
+        )
     if update_data:
         await db.products.update_one({"id": product_id, "seller_id": user_id}, {"$set": update_data})
     updated = await db.products.find_one({"id": product_id}, {"_id": 0})

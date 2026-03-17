@@ -613,24 +613,24 @@ const AdminProducts = ({ user, logout, settings }) => {
 
                 <div>
                   <Label htmlFor="seo_title" className="text-white">
-                    SEO Title
+                    SEO Title <span className="text-white/40 font-normal">(auto-generated if empty)</span>
                   </Label>
                   <Input
                     id="seo_title"
                     value={formData.seo_title}
                     onChange={(e) => handleChange('seo_title', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
-                    placeholder="e.g., Buy Amazon Gift Card Online | KayiCom"
+                    placeholder={formData.name ? `${formData.name} | KayiCom` : 'Auto-generated from product name'}
                     disabled={isVariantForm}
                   />
-                  <p className="text-white/60 text-xs mt-1">
-                    Recommended: around 50-60 characters.
+                  <p className="text-white/40 text-xs mt-1">
+                    Leave empty to auto-generate from product name. ~50-60 chars recommended.
                   </p>
                 </div>
 
                 <div>
                   <Label htmlFor="seo_description" className="text-white">
-                    SEO Description
+                    SEO Description <span className="text-white/40 font-normal">(auto-generated if empty)</span>
                   </Label>
                   <Textarea
                     id="seo_description"
@@ -638,11 +638,11 @@ const AdminProducts = ({ user, logout, settings }) => {
                     onChange={(e) => handleChange('seo_description', e.target.value)}
                     className="bg-white/10 border-white/20 text-white"
                     rows={3}
-                    placeholder="Short product summary for Google results..."
+                    placeholder={formData.name ? `Buy ${formData.name} at KayiCom. Secure checkout.` : 'Auto-generated from product name & description'}
                     disabled={isVariantForm}
                   />
-                  <p className="text-white/60 text-xs mt-1">
-                    Recommended: around 140-160 characters.
+                  <p className="text-white/40 text-xs mt-1">
+                    Leave empty to auto-generate from product details. ~140-160 chars recommended.
                   </p>
                 </div>
 
