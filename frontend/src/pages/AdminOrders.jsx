@@ -507,6 +507,18 @@ const AdminOrders = ({ user, logout, settings }) => {
                           <div className="mt-3 p-3 bg-orange-900/20 border border-orange-500/30 rounded">
                             <p className="text-orange-400 text-sm mb-1"><strong>⚠ Auto-delivery failed</strong></p>
                             <p className="text-white/70 text-xs">{order.auto_delivery_failed_reason}</p>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const res = await axiosInstance.post(`/orders/${order.id}/retry-delivery`);
+                                  alert(res.data?.message || 'Retry attempted');
+                                  loadOrders();
+                                } catch (err) { alert(err.response?.data?.detail || 'Retry failed'); }
+                              }}
+                              className="mt-2 px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white text-xs rounded font-semibold"
+                            >
+                              ↻ Retry Auto-Delivery
+                            </button>
                           </div>
                         )}
 

@@ -246,7 +246,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                   <h3 className="text-lg font-bold text-orange-400">Automatic delivery pending</h3>
                 </div>
                 <p className="text-white/70 text-sm">
-                  {order.auto_delivery_failed_reason}. Our team will process your order manually.
+                  {(order.auto_delivery_failed_reason || '').replace(/G2Bulk[:\s]*/gi, '').replace(/g2bulk[:\s]*/gi, '').trim() || 'Automatic delivery could not be completed'}. Our team will process your order manually.
                 </p>
               </CardContent>
             </Card>
