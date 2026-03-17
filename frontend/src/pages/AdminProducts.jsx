@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Package, Plus, Edit2, Trash2, Key } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Key, Download, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductCodesManager from '../components/ProductCodesManager';
 
