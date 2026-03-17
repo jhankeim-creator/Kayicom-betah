@@ -4712,13 +4712,33 @@ async def get_seller_store(seller_id: str):
         offer["product_image"] = (product or {}).get("image_url")
         offer["product_category"] = (product or {}).get("category")
         offer["product_slug"] = (product or {}).get("slug")
+    seller_products = await db.products.find(
+        {"seller_id": seller_id, "product_status": {"$in": ["approved", None]}}, {"_id": 0}
+    ).sort("created_at", -1).to_list(200)
+    store_name = user.get("seller_store_name", "")
+    for p in seller_products:
+        offers.append({
+            "id": p.get("id"),
+            "product_id": p.get("id"),
+            "product_name": p.get("name", "Unknown"),
+            "product_image": p.get("image_url"),
+            "product_category": p.get("category"),
+            "product_slug": p.get("slug"),
+            "price": p.get("price"),
+            "delivery_type": p.get("delivery_type"),
+            "stock_available": p.get("stock_available"),
+            "seller_id": p.get("seller_id"),
+            "seller_name": store_name,
+            "region": p.get("region"),
+            "is_own_product": True,
+        })
     total_orders = int(user.get("seller_total_orders", 0))
     reviews_data = await db.reviews.find(
         {"seller_id": seller_id}, {"_id": 0}
     ).sort("created_at", -1).to_list(50)
     return {
         "seller_id": seller_id,
-        "store_name": user.get("seller_store_name", ""),
+        "store_name": store_name,
         "bio": user.get("seller_bio"),
         "rating": float(user.get("seller_rating", 0)),
         "review_count": int(user.get("seller_review_count", 0)),
