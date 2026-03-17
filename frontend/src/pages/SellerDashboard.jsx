@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Store, ShoppingCart, DollarSign, ShoppingBag, Send, Tag, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench, Package, BarChart3, Star, Truck, MessageCircle, ShieldAlert } from 'lucide-react';
+import { Store, ShoppingCart, DollarSign, Send, Plus, Trash2, Key, Wallet, Edit2, Gift, Gamepad2, Tv, Wrench, Package, BarChart3, Star, Truck, MessageCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const CATEGORY_META = {
@@ -25,14 +25,10 @@ const CATEGORY_META = {
 const getCatMeta = (cat) => CATEGORY_META[cat] || { label: cat, icon: Tag, color: 'from-gray-500/20 to-gray-500/20 border-gray-500/30', badge: 'bg-gray-500/20 text-gray-300' };
 
 const SellerDashboard = ({ user, logout, settings }) => {
-  const [tab, setTab] = useState('marketplace');
-  const [catalogProducts, setCatalogProducts] = useState([]);
-  const [catalogFilter, setCatalogFilter] = useState('all');
-  const [myOffers, setMyOffers] = useState([]);
+  const [tab, setTab] = useState('products');
   const [orders, setOrders] = useState([]);
   const [earnings, setEarnings] = useState({ balance: 0, pending_balance: 0, total_earned: 0, total_orders: 0, commission_rate: 10 });
   const [withdrawalInfo, setWithdrawalInfo] = useState({ methods: [], fee_percent: 0, fee_fixed: 0, min_amount: 5 });
-  const [productRequests, setProductRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [myProducts, setMyProducts] = useState([]);
   const [codesProduct, setCodesProduct] = useState(null);
@@ -46,34 +42,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
     name: '', description: '', category: '', price: '', image_url: '',
     stock_available: true, delivery_type: 'automatic', delivery_time: 'instant',
   });
-
-  // Offer create dialog
-  const [offerDialog, setOfferDialog] = useState(false);
-  const [offerProduct, setOfferProduct] = useState(null);
-  const [offerPrice, setOfferPrice] = useState('');
-  const [offerDelivery, setOfferDelivery] = useState('automatic');
-  const [offerStock, setOfferStock] = useState(true);
-  const [offerTitle, setOfferTitle] = useState('');
-  const [offerDesc, setOfferDesc] = useState('');
-  const [offerRegion, setOfferRegion] = useState('');
-  const [offerQty, setOfferQty] = useState('');
-  const [offerNotes, setOfferNotes] = useState('');
-
-  // Offer edit dialog
-  const [editDialog, setEditDialog] = useState(false);
-  const [editOffer, setEditOffer] = useState(null);
-  const [editPrice, setEditPrice] = useState('');
-  const [editDelivery, setEditDelivery] = useState('automatic');
-  const [editStock, setEditStock] = useState(true);
-  const [editTitle, setEditTitle] = useState('');
-  const [editDesc, setEditDesc] = useState('');
-  const [editRegion, setEditRegion] = useState('');
-  const [editQty, setEditQty] = useState('');
-  const [editNotes, setEditNotes] = useState('');
-
-  // Product request dialog
-  const [reqDialog, setReqDialog] = useState(false);
-  const [reqForm, setReqForm] = useState({ product_name: '', description: '', category: '', giftcard_category: '', giftcard_subcategory: '', suggested_price: '', notes: '' });
 
   // Analytics
   const [analytics, setAnalytics] = useState(null);
@@ -94,29 +62,18 @@ const SellerDashboard = ({ user, logout, settings }) => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [earnRes, offersRes, orderRes, wInfoRes, reqRes, prodRes] = await Promise.all([
+      const [earnRes, orderRes, wInfoRes, prodRes] = await Promise.all([
         axiosInstance.get(`/seller/earnings?user_id=${user.id}`),
-        axiosInstance.get(`/seller/offers?user_id=${user.id}`),
         axiosInstance.get(`/seller/orders?user_id=${user.id}`),
         axiosInstance.get('/seller/withdrawal-info'),
-        axiosInstance.get(`/seller/product-requests?user_id=${user.id}`),
         axiosInstance.get(`/seller/products?user_id=${user.id}`),
       ]);
       setEarnings(earnRes.data);
-      setMyOffers(offersRes.data);
       setOrders(orderRes.data);
       setWithdrawalInfo(wInfoRes.data);
-      setProductRequests(reqRes.data);
       setMyProducts(prodRes.data || []);
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
-  }, [user?.id]);
-
-  const loadCatalog = useCallback(async () => {
-    try {
-      const res = await axiosInstance.get(`/seller/catalog?user_id=${user.id}`);
-      setCatalogProducts(res.data);
-    } catch (err) { console.error(err); }
   }, [user?.id]);
 
   const loadAnalytics = useCallback(async () => {
@@ -127,7 +84,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
   }, [user?.id]);
 
   useEffect(() => { loadData(); }, [loadData]);
-  useEffect(() => { if (tab === 'marketplace') loadCatalog(); }, [tab, loadCatalog]);
   useEffect(() => { if (tab === 'analytics') loadAnalytics(); }, [tab, loadAnalytics]);
 
   const handleCatRequest = async () => {
@@ -138,77 +94,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
       });
       toast.success('Category request submitted'); setCatRequest('');
     } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
-  };
-
-  const openOfferDialog = (product) => {
-    setOfferProduct(product);
-    setOfferPrice(String(product.price));
-    setOfferDelivery('automatic');
-    setOfferStock(true);
-    setOfferTitle('');
-    setOfferDesc('');
-    setOfferRegion(product.region || '');
-    setOfferQty('');
-    setOfferNotes('');
-    setOfferDialog(true);
-  };
-
-  const handleCreateOffer = async () => {
-    if (!offerProduct || !offerPrice) { toast.error('Enter a price'); return; }
-    try {
-      await axiosInstance.post(`/seller/offers?user_id=${user.id}`, {
-        product_id: offerProduct.id,
-        price: parseFloat(offerPrice),
-        delivery_type: offerDelivery,
-        stock_available: offerStock,
-        custom_title: offerTitle || null,
-        description: offerDesc || null,
-        region: offerRegion || null,
-        stock_quantity: offerQty ? parseInt(offerQty) : null,
-        notes: offerNotes || null,
-      });
-      toast.success('Offer created!');
-      setOfferDialog(false); loadCatalog(); loadData();
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error creating offer'); }
-  };
-
-  const openEditDialog = (offer) => {
-    setEditOffer(offer);
-    setEditPrice(String(offer.price));
-    setEditDelivery(offer.delivery_type || 'automatic');
-    setEditStock(offer.stock_available ?? true);
-    setEditTitle(offer.custom_title || '');
-    setEditDesc(offer.description || '');
-    setEditRegion(offer.region || '');
-    setEditQty(offer.stock_quantity != null ? String(offer.stock_quantity) : '');
-    setEditNotes(offer.notes || '');
-    setEditDialog(true);
-  };
-
-  const handleUpdateOffer = async () => {
-    if (!editOffer) return;
-    try {
-      await axiosInstance.put(`/seller/offers/${editOffer.id}?user_id=${user.id}`, {
-        price: parseFloat(editPrice),
-        delivery_type: editDelivery,
-        stock_available: editStock,
-        custom_title: editTitle || null,
-        description: editDesc || null,
-        region: editRegion || null,
-        stock_quantity: editQty ? parseInt(editQty) : null,
-        notes: editNotes || null,
-      });
-      toast.success('Offer updated!');
-      setEditDialog(false); loadData();
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error updating offer'); }
-  };
-
-  const handleDeleteOffer = async (offerId) => {
-    if (!window.confirm('Remove this offer?')) return;
-    try {
-      await axiosInstance.delete(`/seller/offers/${offerId}?user_id=${user.id}`);
-      toast.success('Offer removed'); loadData();
-    } catch (err) { toast.error('Error removing offer'); }
   };
 
   const resetProductForm = () => {
@@ -267,21 +152,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
     } catch { toast.error('Upload failed'); return null; }
   };
 
-  const handleProductRequest = async () => {
-    if (!reqForm.product_name || !reqForm.description || !reqForm.category) {
-      toast.error('Fill in product name, description and category'); return;
-    }
-    try {
-      await axiosInstance.post(`/seller/product-requests?user_id=${user.id}`, {
-        ...reqForm, suggested_price: reqForm.suggested_price ? parseFloat(reqForm.suggested_price) : null,
-      });
-      toast.success('Product request submitted!');
-      setReqDialog(false);
-      setReqForm({ product_name: '', description: '', category: '', giftcard_category: '', giftcard_subcategory: '', suggested_price: '', notes: '' });
-      loadData();
-    } catch (err) { toast.error(err.response?.data?.detail || 'Error'); }
-  };
-
   const calcFee = (amt) => {
     const a = parseFloat(amt) || 0;
     const selectedMethod = withdrawalInfo.methods.find(m => m.id === withdrawMethod);
@@ -318,19 +188,12 @@ const SellerDashboard = ({ user, logout, settings }) => {
     } catch (err) { toast.error(err.response?.data?.detail || 'Error submitting delivery'); }
   };
 
-  const filteredCatalog = catalogFilter === 'all' ? catalogProducts : catalogProducts.filter(p => (p.category || '').toLowerCase() === catalogFilter.toLowerCase());
-
   const tabs = [
-    { id: 'marketplace', label: 'Marketplace', icon: <ShoppingBag size={16} /> },
-    { id: 'offers', label: 'My Offers', icon: <Tag size={16} /> },
     { id: 'products', label: 'My Products', icon: <Package size={16} /> },
     { id: 'orders', label: 'Orders', icon: <ShoppingCart size={16} /> },
-    { id: 'disputes', label: 'Disputes', icon: <ShieldAlert size={16} /> },
     { id: 'earnings', label: 'Earnings', icon: <DollarSign size={16} /> },
     { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={16} /> },
   ];
-
-  const giftcardTaxonomy = settings?.giftcard_taxonomy || [];
 
   return (
     <div className="min-h-screen bg-[#0a0a0a]">
@@ -349,15 +212,15 @@ const SellerDashboard = ({ user, logout, settings }) => {
         </div>
 
         {/* Welcome guide for new sellers */}
-        {myOffers.length === 0 && myProducts.length === 0 && !loading && (
+        {myProducts.length === 0 && !loading && (
           <Card className="bg-[#141414] border border-green-500/20 mb-6">
             <CardContent className="p-6">
               <h3 className="text-white font-bold text-lg mb-2">🎉 Welcome to your Seller Dashboard!</h3>
               <p className="text-white/60 text-sm mb-4">Start earning by following these simple steps:</p>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                  { step: '1', title: 'Request Categories', text: 'Use the form above to request access to categories like Gift Cards, Game Top-Up, Subscriptions, or Services.', color: 'text-green-300', bg: 'bg-cyan-500/10' },
-                  { step: '2', title: 'Browse & Sell', text: 'Go to the Marketplace tab, find products, and click "Sell This Product" to create your offer with your own price.', color: 'text-green-300', bg: 'bg-green-500/10' },
+                  { step: '1', title: 'Request Categories', text: 'Use the form below to request access to categories like Gift Cards, Game Top-Up, Subscriptions, or Services.', color: 'text-green-300', bg: 'bg-cyan-500/10' },
+                  { step: '2', title: 'Add Products', text: 'Click "Add Product" to create your products. Choose a category, set your price, and upload an image.', color: 'text-green-300', bg: 'bg-green-500/10' },
                   { step: '3', title: 'Add Delivery Codes', text: 'Upload your product codes (gift card keys, activation codes) so buyers get instant delivery.', color: 'text-purple-300', bg: 'bg-green-500/10' },
                   { step: '4', title: 'Earn & Withdraw', text: 'Track your earnings in real-time and withdraw via Binance Pay or USDT whenever you want.', color: 'text-green-300', bg: 'bg-green-500/10' },
                 ].map(s => (
@@ -377,7 +240,7 @@ const SellerDashboard = ({ user, logout, settings }) => {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4 mb-6">
           {[
-            { label: 'My Offers', value: myOffers.length, color: 'text-white' },
+            { label: 'Products', value: myProducts.length, color: 'text-white' },
             { label: 'Orders', value: earnings.total_orders, color: 'text-white' },
             { label: 'Available', value: `$${earnings.balance.toFixed(2)}`, color: 'text-green-400' },
             { label: 'Pending', value: `$${(earnings.pending_balance || 0).toFixed(2)}`, color: 'text-yellow-400' },
@@ -424,143 +287,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
           ))}
         </div>
 
-        {/* ===== MARKETPLACE TAB ===== */}
-        {tab === 'marketplace' && (
-          <div>
-            <div className="flex flex-wrap justify-between items-center gap-3 mb-4">
-              <div className="flex gap-2 overflow-x-auto">
-                <Button size="sm" onClick={() => setCatalogFilter('all')}
-                  className={`${catalogFilter === 'all' ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs`}>
-                  All ({catalogProducts.length})
-                </Button>
-                {approvedCategories.map(c => {
-                  const meta = getCatMeta(c);
-                  const Icon = meta.icon;
-                  const count = catalogProducts.filter(p => (p.category || '').toLowerCase() === c.toLowerCase()).length;
-                  return (
-                    <Button key={c} size="sm" onClick={() => setCatalogFilter(c)}
-                      className={`${catalogFilter === c ? 'bg-white text-green-600' : 'bg-white/10 text-white'} text-xs flex items-center gap-1`}>
-                      <Icon size={12} /> {meta.label} ({count})
-                    </Button>
-                  );
-                })}
-              </div>
-              <Button size="sm" onClick={() => setReqDialog(true)} className="bg-green-600 text-white text-xs">
-                <Plus size={14} className="mr-1" /> Request New Product
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredCatalog.map(p => {
-                const meta = getCatMeta(p.category);
-                return (
-                  <Card key={p.id} className="bg-[#141414] border border-white/5 hover:border-white/40 transition">
-                    <CardContent className="p-4">
-                      {p.image_url && <img src={p.image_url} alt="" className="w-full h-28 rounded-lg object-cover mb-3" />}
-                      <h3 className="text-white font-bold text-sm truncate">{p.name}</h3>
-                      <div className="flex items-center gap-2 mt-1 mb-2">
-                        <Badge className={`${meta.badge} text-xs`}>{meta.label}</Badge>
-                        {p.region && <span className="text-white/40 text-xs">{p.region}</span>}
-                        <span className="text-white/30 text-xs ml-auto">by KayiCom</span>
-                      </div>
-                      <p className="text-green-300 font-bold mb-3">${Number(p.price).toFixed(2)}</p>
-                      {p.already_offering ? (
-                        <div className="flex items-center justify-center gap-2 py-2 bg-green-500/10 border border-green-500/20 rounded-lg">
-                          <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                          <span className="text-green-300 text-xs font-medium">You're selling this</span>
-                        </div>
-                      ) : (
-                        <Button size="sm" onClick={() => openOfferDialog(p)}
-                          className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white text-xs">
-                          <Tag size={14} className="mr-1" /> Sell This Product
-                        </Button>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-              {filteredCatalog.length === 0 && (
-                <p className="text-white/40 col-span-full text-center py-8">
-                  {approvedCategories.length === 0 ? 'Request category access first' : 'No products in this category'}
-                </p>
-              )}
-            </div>
-
-            {/* Product Requests */}
-            {productRequests.length > 0 && (
-              <div className="mt-8">
-                <h3 className="text-white font-bold mb-3">My Product Requests</h3>
-                <div className="space-y-2">
-                  {productRequests.map(r => (
-                    <div key={r.id} className="p-3 bg-white/5 border border-white/10 rounded-lg flex justify-between items-center">
-                      <div>
-                        <p className="text-white text-sm font-semibold">{r.product_name}</p>
-                        <p className="text-white/50 text-xs">
-                          {getCatMeta(r.category).label}
-                          {r.giftcard_category ? ` / ${r.giftcard_category}` : ''}
-                          {r.giftcard_subcategory ? ` / ${r.giftcard_subcategory}` : ''}
-                          {r.suggested_price ? ` • $${r.suggested_price}` : ''}
-                        </p>
-                      </div>
-                      <Badge className={r.status === 'approved' ? 'bg-green-500/20 text-green-300' : r.status === 'rejected' ? 'bg-red-500/20 text-red-300' : 'bg-yellow-500/20 text-yellow-300'}>
-                        {r.status}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ===== MY OFFERS TAB ===== */}
-        {tab === 'offers' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {myOffers.map(o => {
-              const meta = getCatMeta(o.product_category || '');
-              return (
-                <Card key={o.id} className="bg-[#141414] border border-white/5">
-                  <CardContent className="p-4">
-                    <div className="flex gap-3 mb-3">
-                      {o.product_image && <img src={o.product_image} alt="" className="w-14 h-14 rounded object-cover flex-shrink-0" />}
-                      <div className="min-w-0 flex-1">
-                        <h3 className="text-white font-bold text-sm truncate">{o.custom_title || o.product_name}</h3>
-                        {o.custom_title && <p className="text-white/40 text-xs truncate">{o.product_name}</p>}
-                        <p className="text-green-300 font-bold">${Number(o.price).toFixed(2)}</p>
-                        <div className="flex gap-1 mt-1 flex-wrap">
-                          <Badge className={o.stock_available ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}>
-                            {o.stock_available ? 'In Stock' : 'Out of Stock'}
-                          </Badge>
-                          <Badge className="bg-white/10 text-white/60">{o.delivery_type}</Badge>
-                          {o.region && <Badge className="bg-blue-500/20 text-blue-300">{o.region}</Badge>}
-                          {o.stock_quantity != null && <Badge className="bg-white/10 text-white/50">Qty: {o.stock_quantity}</Badge>}
-                        </div>
-                      </div>
-                    </div>
-                    {o.description && <p className="text-white/50 text-xs mb-3 line-clamp-2">{o.description}</p>}
-                    {o.notes && <p className="text-white/30 text-xs mb-3 italic">{o.notes}</p>}
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openEditDialog(o)}
-                        className="flex-1 border-white/20 text-white hover:bg-white/10 text-xs">
-                        <Edit2 size={12} className="mr-1" /> Edit
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setCodesProduct({ id: o.product_id, name: o.product_name }); setCodesOpen(true); }}
-                        className="border-cyan-400 text-green-300 hover:bg-cyan-400/10 px-2">
-                        <Key size={12} />
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => handleDeleteOffer(o.id)}
-                        className="border-red-400 text-red-400 hover:bg-red-400/10 px-2">
-                        <Trash2 size={12} />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-            {myOffers.length === 0 && <p className="text-white/40 col-span-full text-center py-8">No offers yet. Go to Marketplace to start selling!</p>}
-          </div>
-        )}
-
         {/* ===== MY PRODUCTS TAB ===== */}
         {tab === 'products' && (
           <div>
@@ -568,7 +294,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
               onClick={() => { resetProductForm(); setProductDialog(true); }}>
               <Plus size={18} className="mr-2" /> Add Product
             </Button>
-            <p className="text-white/40 text-xs mb-4">Your own products (need admin approval before they appear in the store)</p>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {myProducts.map(p => {
                 const meta = getCatMeta(p.category);
@@ -729,20 +454,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
           </div>
         )}
 
-        {/* ===== DISPUTES TAB ===== */}
-        {tab === 'disputes' && (
-          <div className="rounded-xl bg-[#141414] border border-white/5 p-6 text-center">
-            <ShieldAlert size={40} className="text-red-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-lg mb-2">Dispute Center</h3>
-            <p className="text-white/40 text-sm mb-4">View and manage all your disputes with buyers.</p>
-            <Link to="/disputes">
-              <Button className="bg-red-500 hover:bg-red-600 text-white font-semibold rounded-lg px-6">
-                Open Dispute Center
-              </Button>
-            </Link>
-          </div>
-        )}
-
         {/* ===== ANALYTICS TAB ===== */}
         {tab === 'analytics' && (
           <div className="space-y-4">
@@ -864,108 +575,6 @@ const SellerDashboard = ({ user, logout, settings }) => {
                 className="bg-white/10 border-white/20 text-white mt-1" placeholder="Optional delivery instructions" />
             </div>
             <Button onClick={handleDeliver} className="w-full bg-blue-600 text-white">Submit Delivery</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Create Offer Dialog */}
-      <Dialog open={offerDialog} onOpenChange={setOfferDialog}>
-        <DialogContent className="max-w-lg bg-gray-900 border-white/20 max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-white">Sell: {offerProduct?.name}</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div className="flex gap-3 items-center">
-              {offerProduct?.image_url && <img src={offerProduct.image_url} alt="" className="w-16 h-16 rounded object-cover" />}
-              <div><p className="text-white/60 text-xs">Catalog price: ${Number(offerProduct?.price || 0).toFixed(2)}</p></div>
-            </div>
-            <div><Label className="text-white text-sm">Custom Title</Label><Input value={offerTitle} onChange={(e) => setOfferTitle(e.target.value)} placeholder="e.g. US Region - Fast Delivery" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            <div><Label className="text-white text-sm">Description</Label><textarea value={offerDesc} onChange={(e) => setOfferDesc(e.target.value)} placeholder="Describe your offer, delivery details, etc." className="w-full bg-white/10 border border-white/20 text-white mt-1 text-sm rounded-md px-3 py-2 min-h-[60px]" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-white text-sm">Your Price (USD) *</Label><Input type="number" step="0.01" value={offerPrice} onChange={(e) => setOfferPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-              <div><Label className="text-white text-sm">Region</Label><Input value={offerRegion} onChange={(e) => setOfferRegion(e.target.value)} placeholder="e.g. US, EU, Global" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-white text-sm">Delivery Type</Label>
-                <Select value={offerDelivery} onValueChange={setOfferDelivery}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="automatic">Automatic (Instant)</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div><Label className="text-white text-sm">Stock Quantity</Label><Input type="number" value={offerQty} onChange={(e) => setOfferQty(e.target.value)} placeholder="e.g. 50" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox checked={offerStock} onCheckedChange={setOfferStock} />
-              <Label className="text-white text-sm">In Stock</Label>
-            </div>
-            <div><Label className="text-white text-sm">Notes for buyer</Label><Input value={offerNotes} onChange={(e) => setOfferNotes(e.target.value)} placeholder="e.g. Delivery within 5 minutes" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            <Button onClick={handleCreateOffer} className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white">Create Offer</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Offer Dialog */}
-      <Dialog open={editDialog} onOpenChange={setEditDialog}>
-        <DialogContent className="max-w-lg bg-gray-900 border-white/20 max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle className="text-white">Edit Offer: {editOffer?.product_name}</DialogTitle></DialogHeader>
-          <div className="space-y-3 py-2">
-            <div><Label className="text-white text-sm">Custom Title</Label><Input value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="e.g. US Region - Fast Delivery" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            <div><Label className="text-white text-sm">Description</Label><textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} placeholder="Describe your offer..." className="w-full bg-white/10 border border-white/20 text-white mt-1 text-sm rounded-md px-3 py-2 min-h-[60px]" /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-white text-sm">Price (USD) *</Label><Input type="number" step="0.01" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-              <div><Label className="text-white text-sm">Region</Label><Input value={editRegion} onChange={(e) => setEditRegion(e.target.value)} placeholder="e.g. US, EU, Global" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-white text-sm">Delivery Type</Label>
-                <Select value={editDelivery} onValueChange={setEditDelivery}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white mt-1 text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent><SelectItem value="automatic">Automatic (Instant)</SelectItem><SelectItem value="manual">Manual</SelectItem></SelectContent>
-                </Select>
-              </div>
-              <div><Label className="text-white text-sm">Stock Quantity</Label><Input type="number" value={editQty} onChange={(e) => setEditQty(e.target.value)} placeholder="e.g. 50" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Checkbox checked={editStock} onCheckedChange={setEditStock} />
-              <Label className="text-white text-sm">In Stock</Label>
-            </div>
-            <div><Label className="text-white text-sm">Notes for buyer</Label><Input value={editNotes} onChange={(e) => setEditNotes(e.target.value)} placeholder="e.g. Delivery within 5 minutes" className="bg-white/10 border-white/20 text-white mt-1 text-sm" /></div>
-            <Button onClick={handleUpdateOffer} className="w-full bg-cyan-600 text-white">Save Changes</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Product Request Dialog */}
-      <Dialog open={reqDialog} onOpenChange={setReqDialog}>
-        <DialogContent className="max-w-md bg-gray-900 border-white/20">
-          <DialogHeader><DialogTitle className="text-white">Request New Product</DialogTitle></DialogHeader>
-          <p className="text-white/60 text-xs">Product not in catalog? Request it here. Admin will review and add it.</p>
-          <div className="space-y-3 py-2">
-            <div><Label className="text-white">Product Name *</Label><Input value={reqForm.product_name} onChange={(e) => setReqForm(p => ({ ...p, product_name: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="e.g. PlayStation Gift Card $50" /></div>
-            <div><Label className="text-white">Description *</Label><Textarea value={reqForm.description} onChange={(e) => setReqForm(p => ({ ...p, description: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label className="text-white">Category *</Label>
-                <Select value={reqForm.category} onValueChange={(v) => setReqForm(p => ({ ...p, category: v }))}>
-                  <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{approvedCategories.map(c => <SelectItem key={c} value={c}>{getCatMeta(c).label}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div><Label className="text-white">Suggested Price</Label><Input type="number" step="0.01" value={reqForm.suggested_price} onChange={(e) => setReqForm(p => ({ ...p, suggested_price: e.target.value }))} className="bg-white/10 border-white/20 text-white" /></div>
-            </div>
-            {reqForm.category === 'giftcard' && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-white">Gift Card Category</Label>
-                  <Select value={reqForm.giftcard_category} onValueChange={(v) => setReqForm(p => ({ ...p, giftcard_category: v }))}>
-                    <SelectTrigger className="bg-white/10 border-white/20 text-white"><SelectValue placeholder="e.g. Gaming" /></SelectTrigger>
-                    <SelectContent>{giftcardTaxonomy.map(t => <SelectItem key={t.name} value={t.name}>{t.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-                <div><Label className="text-white">Subcategory</Label><Input value={reqForm.giftcard_subcategory} onChange={(e) => setReqForm(p => ({ ...p, giftcard_subcategory: e.target.value }))} className="bg-white/10 border-white/20 text-white" placeholder="e.g. Steam, iTunes" /></div>
-              </div>
-            )}
-            <div><Label className="text-white">Notes</Label><Textarea value={reqForm.notes} onChange={(e) => setReqForm(p => ({ ...p, notes: e.target.value }))} className="bg-white/10 border-white/20 text-white" rows={2} placeholder="Additional info..." /></div>
-            <Button onClick={handleProductRequest} className="w-full bg-green-600 text-white">Submit Request</Button>
           </div>
         </DialogContent>
       </Dialog>
