@@ -3141,6 +3141,30 @@ async def admin_g2bulk_game_fields(game: str):
     return await _g2bulk_request("POST", "/games/fields", {"game": game})
 
 
+class G2BulkVerifyPlayerRequest(BaseModel):
+    game_code: str
+    player_id: str
+    server_id: Optional[str] = None
+
+
+@api_router.post("/verify-player-id")
+async def verify_player_id(payload: G2BulkVerifyPlayerRequest):
+    """Verify a player ID for a game top-up. Public endpoint for customers."""
+    api_key = await _get_g2bulk_api_key()
+    if not api_key:
+        return {"valid": False, "message": "Verification not available"}
+    try:
+        body = {"game": payload.game_code, "user_id": payload.player_id}
+        if payload.server_id:
+            body["server_id"] = payload.server_id
+        result = await _g2bulk_request("POST", "/games/checkPlayerId", body)
+        if result.get("valid") == "valid":
+            return {"valid": True, "name": result.get("name", ""), "message": f"Player found: {result.get('name', '')}"}
+        return {"valid": False, "message": "Invalid Player ID. Please check and try again."}
+    except Exception:
+        return {"valid": False, "message": "Could not verify Player ID. Please check and try again."}
+
+
 class G2BulkGameImportRequest(BaseModel):
     game_code: str
     game_name: str
@@ -3234,9 +3258,9 @@ async def g2bulk_topup_callback(request: Request):
             await _credit_seller_earnings(kayicom_order_id)
             logging.info("G2Bulk topup completed for order %s", kayicom_order_id)
     elif status == "FAILED":
-        fail_msg = body.get("message", "G2Bulk top-up failed")
+        fail_msg = body.get("message", "Delivery failed")
         await db.orders.update_one({"id": kayicom_order_id}, {"$set": {
-            "auto_delivery_failed_reason": f"G2Bulk: {fail_msg}",
+            "auto_delivery_failed_reason": f"Automatic delivery failed: {fail_msg}",
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }})
         logging.warning("G2Bulk topup failed for order %s: %s", kayicom_order_id, fail_msg)
@@ -3314,7 +3338,8 @@ async def _try_auto_deliver(order_id: str) -> bool:
                 continue
             except Exception as e:
                 logging.error("G2Bulk topup order failed for order %s: %s", order_id, str(e))
-                fail_reason = f"G2Bulk topup failed for '{product.get('name', '')}': {str(e)}"
+                clean_err = str(e).replace("G2Bulk error: ", "").replace("G2Bulk ", "")
+                fail_reason = f"Automatic delivery failed for '{product.get('name', '')}': {clean_err}"
                 skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
                 continue
 
@@ -3336,7 +3361,8 @@ async def _try_auto_deliver(order_id: str) -> bool:
                 continue
             except Exception as e:
                 logging.error("G2Bulk purchase failed for order %s: %s", order_id, str(e))
-                fail_reason = f"G2Bulk purchase failed for '{product.get('name', '')}': {str(e)}"
+                clean_err = str(e).replace("G2Bulk error: ", "").replace("G2Bulk ", "")
+                fail_reason = f"Automatic delivery failed for '{product.get('name', '')}': {clean_err}"
                 skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
                 continue
 
@@ -3492,6 +3518,28 @@ class DeliveryItem(BaseModel):
 class DeliveryInfo(BaseModel):
     delivery_details: Optional[str] = None  # Credentials, codes, or instructions
     items: Optional[List[DeliveryItem]] = None
+
+@api_router.post("/orders/{order_id}/retry-delivery")
+async def retry_auto_delivery(order_id: str):
+    """Admin retries auto-delivery for an order that previously failed (e.g. after recharging API balance)."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_status") != "paid":
+        raise HTTPException(status_code=400, detail="Order is not paid")
+    if order.get("order_status") == "completed":
+        raise HTTPException(status_code=400, detail="Order is already completed")
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "auto_delivery_failed_reason": None,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }})
+    success = await _try_auto_deliver(order_id)
+    if success:
+        return {"message": "Auto-delivery completed successfully", "status": "completed"}
+    updated = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    reason = updated.get("auto_delivery_failed_reason") or "Delivery still pending"
+    return {"message": f"Delivery retry attempted but failed: {reason}", "status": "failed"}
+
 
 @api_router.put("/orders/{order_id}/delivery")
 async def update_order_delivery(order_id: str, delivery_info: DeliveryInfo):

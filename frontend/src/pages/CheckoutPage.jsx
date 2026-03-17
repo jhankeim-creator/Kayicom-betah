@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { CreditCard, Wallet, Gamepad2 } from 'lucide-react';
+import { CreditCard, Wallet, Gamepad2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 
@@ -24,6 +24,25 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [walletBalance, setWalletBalance] = useState(null);
+  const [verifyStatus, setVerifyStatus] = useState({});
+  const [verifying, setVerifying] = useState({});
+
+  const verifyPlayerId = async (product) => {
+    const pid = playerIds[product.id];
+    if (!pid || !pid.trim()) { toast.error('Enter a Player ID first'); return; }
+    const gameCode = product.g2bulk_game_code;
+    if (!gameCode) { toast.info('Verification not available for this product'); return; }
+    setVerifying(prev => ({ ...prev, [product.id]: true }));
+    try {
+      const res = await axiosInstance.post('/verify-player-id', {
+        game_code: gameCode, player_id: pid.trim(),
+      });
+      setVerifyStatus(prev => ({ ...prev, [product.id]: res.data }));
+      if (res.data.valid) toast.success(res.data.message || 'Player ID verified!');
+      else toast.error(res.data.message || 'Invalid Player ID');
+    } catch { toast.error('Verification failed. Please try again.'); }
+    finally { setVerifying(prev => ({ ...prev, [product.id]: false })); }
+  };
 
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
@@ -450,15 +469,31 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                         <Label htmlFor={`player-id-${item.product.id}`} className="text-white">
                           {(item.product.player_id_label || 'Player ID')} for {item.product.name}
                         </Label>
-                        <Input
-                          id={`player-id-${item.product.id}`}
-                          value={playerIds[item.product.id] || ''}
-                          onChange={(e) => handlePlayerIdChange(item.product.id, e.target.value)}
-                          className="bg-white/10 border-white/20 text-white placeholder:text-white/50 mt-2"
-                          placeholder={`Enter your ${item.product.player_id_label || 'Player ID'}`}
-                          required
-                          data-testid={`player-id-${item.product.id}`}
-                        />
+                        <div className="flex gap-2 mt-2">
+                          <Input
+                            id={`player-id-${item.product.id}`}
+                            value={playerIds[item.product.id] || ''}
+                            onChange={(e) => { handlePlayerIdChange(item.product.id, e.target.value); setVerifyStatus(prev => ({ ...prev, [item.product.id]: null })); }}
+                            className="bg-white/10 border-white/20 text-white placeholder:text-white/50 flex-1"
+                            placeholder={`Enter your ${item.product.player_id_label || 'Player ID'}`}
+                            required
+                            data-testid={`player-id-${item.product.id}`}
+                          />
+                          {item.product.g2bulk_game_code && (
+                            <Button type="button" size="sm" variant="outline"
+                              onClick={() => verifyPlayerId(item.product)}
+                              disabled={verifying[item.product.id] || !playerIds[item.product.id]}
+                              className="border-white/20 text-white hover:bg-white/10 whitespace-nowrap">
+                              {verifying[item.product.id] ? <Loader2 size={14} className="animate-spin" /> : 'Verify'}
+                            </Button>
+                          )}
+                        </div>
+                        {verifyStatus[item.product.id] && (
+                          <div className={`flex items-center gap-2 mt-1 text-xs ${verifyStatus[item.product.id].valid ? 'text-green-400' : 'text-red-400'}`}>
+                            {verifyStatus[item.product.id].valid ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                            {verifyStatus[item.product.id].message}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
