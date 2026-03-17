@@ -43,7 +43,7 @@ const G2BulkProductPicker = ({ value, onChange, disabled }) => {
 
   return (
     <div className="space-y-2">
-      <Label className="text-white">G2Bulk Product <span className="text-white/40 font-normal">(auto topup)</span></Label>
+      <Label className="text-white">G2Bulk Product <span className="text-white/40 font-normal">(auto delivery)</span></Label>
       {value && (
         <div className="flex items-center gap-2 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
           <span className="text-green-300 text-sm flex-1">
@@ -81,8 +81,136 @@ const G2BulkProductPicker = ({ value, onChange, disabled }) => {
           <button type="button" onClick={loadG2Products} className="text-white/30 text-xs hover:text-white/50">↻ Refresh list</button>
         </>
       )}
-      <p className="text-white/40 text-xs">Select a G2Bulk product to auto-fulfill topup orders. Leave empty for manual delivery.</p>
+      <p className="text-white/40 text-xs">Select a G2Bulk product to auto-fulfill orders. Leave empty for manual delivery.</p>
     </div>
+  );
+};
+
+const G2BulkGamesImporter = ({ onImported }) => {
+  const [open, setOpen] = useState(false);
+  const [games, setGames] = useState([]);
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [catalogues, setCatalogues] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState(null);
+  const [selectedCats, setSelectedCats] = useState(new Set());
+
+  const loadGames = async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await axiosInstance.get('/admin/g2bulk/games');
+      setGames(res.data?.games || []);
+    } catch (err) { setError(err.response?.data?.detail || 'Failed to load games. Check G2Bulk API key.'); }
+    finally { setLoading(false); }
+  };
+
+  const loadCatalogue = async (game) => {
+    setSelectedGame(game); setCatalogues([]); setSelectedCats(new Set()); setError(null);
+    try {
+      const res = await axiosInstance.get(`/admin/g2bulk/games/${game.code}/catalogue`);
+      setCatalogues(res.data?.catalogues || []);
+    } catch (err) { setError(err.response?.data?.detail || 'Failed to load catalogue'); }
+  };
+
+  const toggleCat = (name) => {
+    setSelectedCats(prev => { const n = new Set(prev); n.has(name) ? n.delete(name) : n.add(name); return n; });
+  };
+  const selectAllCats = () => {
+    if (selectedCats.size === catalogues.length) setSelectedCats(new Set());
+    else setSelectedCats(new Set(catalogues.map(c => c.name || c.id)));
+  };
+
+  const handleImport = async () => {
+    if (!selectedGame || selectedCats.size === 0) return;
+    setImporting(true);
+    try {
+      const catsToImport = catalogues.filter(c => selectedCats.has(c.name || c.id));
+      const res = await axiosInstance.post('/admin/g2bulk/games/import', {
+        game_code: selectedGame.code, game_name: selectedGame.name,
+        game_image: selectedGame.image_url || '', catalogues: catsToImport,
+      });
+      const d = res.data;
+      toast.success(`Imported ${d.total_imported} topup products${d.total_skipped > 0 ? `, ${d.total_skipped} skipped` : ''}`);
+      setSelectedCats(new Set()); setOpen(false);
+      if (onImported) onImported();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
+  const handleOpen = () => { setOpen(true); if (games.length === 0) loadGames(); };
+
+  return (
+    <>
+      <Button onClick={handleOpen} className="bg-purple-600 hover:bg-purple-700 text-white">
+        <Download size={16} className="mr-2" /> Import Game Top-Ups
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Download size={20} className="text-purple-400" /> Import Game Top-Ups from G2Bulk
+            </DialogTitle>
+          </DialogHeader>
+
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          {!selectedGame ? (
+            <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
+              <p className="text-white/50 text-xs mb-2">Select a game to import top-up packages:</p>
+              {loading && <p className="text-white/40 text-center py-8">Loading games...</p>}
+              {games.map(g => (
+                <button key={g.code || g.id} type="button" onClick={() => loadCatalogue(g)}
+                  className="w-full text-left px-3 py-3 rounded-lg bg-white/5 hover:bg-white/10 flex items-center gap-3 transition">
+                  {g.image_url && <img src={g.image_url.startsWith('/') ? `https://api.g2bulk.com${g.image_url}` : g.image_url} alt="" className="w-10 h-10 rounded object-cover" />}
+                  <div><p className="text-white font-medium text-sm">{g.name}</p><p className="text-white/40 text-xs">{g.code}</p></div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-2 mb-1">
+                <button onClick={() => { setSelectedGame(null); setCatalogues([]); }} className="text-white/50 hover:text-white text-xs">← Back to games</button>
+                <span className="text-white font-medium text-sm">{selectedGame.name}</span>
+                {catalogues.length > 0 && (
+                  <Button size="sm" variant="outline" onClick={selectAllCats} className="ml-auto border-white/20 text-white text-xs hover:bg-white/10">
+                    {selectedCats.size === catalogues.length ? 'Deselect All' : `Select All (${catalogues.length})`}
+                  </Button>
+                )}
+              </div>
+              <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
+                {catalogues.length === 0 && !error && <p className="text-white/40 text-center py-6">Loading catalogue...</p>}
+                {catalogues.map(c => {
+                  const key = c.name || c.id;
+                  return (
+                    <button key={key} type="button" onClick={() => toggleCat(key)}
+                      className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 transition ${
+                        selectedCats.has(key) ? 'bg-purple-500/15 border border-purple-500/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
+                      }`}>
+                      <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                        selectedCats.has(key) ? 'bg-purple-500 border-purple-500 text-white' : 'border-white/30'
+                      }`}>{selectedCats.has(key) && <span className="text-xs font-bold">✓</span>}</div>
+                      <div className="flex-1">
+                        <span className="text-white text-sm">{c.name}</span>
+                        <span className="text-white/40 text-xs ml-2">${Number(c.amount || c.price || 0).toFixed(2)}</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedCats.size > 0 && (
+                <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                  <p className="text-white/60 text-sm">{selectedCats.size} package{selectedCats.size > 1 ? 's' : ''} selected</p>
+                  <Button onClick={handleImport} disabled={importing} className="bg-purple-500 hover:bg-purple-600 text-white font-semibold">
+                    {importing ? 'Importing...' : `Import ${selectedCats.size} Package${selectedCats.size > 1 ? 's' : ''}`}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -561,6 +689,11 @@ const AdminProducts = ({ user, logout, settings }) => {
             </Button>
           </div>
           
+          {/* Import Buttons */}
+          <div className="flex flex-col sm:flex-row gap-2 mb-3">
+            <G2BulkGamesImporter onImported={() => loadProducts()} />
+          </div>
+
           {/* Action Buttons - Stack on Mobile */}
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <div className="flex flex-col sm:flex-row gap-2">
@@ -944,7 +1077,7 @@ const AdminProducts = ({ user, logout, settings }) => {
                   </div>
                 </div>
 
-                {formData.category === 'topup' && (
+                {(formData.category === 'topup' || formData.category === 'giftcard') && (
                   <G2BulkProductPicker
                     value={formData.g2bulk_product_id}
                     onChange={(id) => handleChange('g2bulk_product_id', id)}

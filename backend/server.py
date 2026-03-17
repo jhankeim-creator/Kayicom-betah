@@ -522,7 +522,9 @@ class Product(BaseModel):
     region: Optional[str] = None  # For gift cards: US, EU, ASIA, etc.
     giftcard_category: Optional[str] = None  # For gift cards: Shopping, Gaming, Entertainment, etc.
     giftcard_subcategory: Optional[str] = None  # For gift cards: Amazon, Steam, etc.
-    g2bulk_product_id: Optional[int] = None  # G2Bulk product ID for automatic topup fulfillment
+    g2bulk_product_id: Optional[int] = None  # G2Bulk product ID for gift card/voucher auto-delivery
+    g2bulk_game_code: Optional[str] = None  # G2Bulk game code for topup (e.g. "pubgm", "mlbb", "free_fire")
+    g2bulk_catalogue_id: Optional[str] = None  # G2Bulk catalogue name/id for topup denomination (e.g. "60 UC")
     is_subscription: bool = False  # Track if this triggers referral payout
     orders_count: int = 0  # Total purchased quantity for this product
     seo_title: Optional[str] = None
@@ -553,6 +555,8 @@ class ProductCreate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     g2bulk_product_id: Optional[int] = None
+    g2bulk_game_code: Optional[str] = None
+    g2bulk_catalogue_id: Optional[str] = None
     is_subscription: bool = False
     orders_count: int = 0
     seo_title: Optional[str] = None
@@ -580,6 +584,8 @@ class ProductUpdate(BaseModel):
     giftcard_category: Optional[str] = None
     giftcard_subcategory: Optional[str] = None
     g2bulk_product_id: Optional[int] = None
+    g2bulk_game_code: Optional[str] = None
+    g2bulk_catalogue_id: Optional[str] = None
     is_subscription: Optional[bool] = None
     orders_count: Optional[int] = None
     seo_title: Optional[str] = None
@@ -3066,6 +3072,177 @@ async def admin_g2bulk_product_detail(product_id: int):
     return await _g2bulk_request("GET", f"/products/{product_id}")
 
 
+class G2BulkImportRequest(BaseModel):
+    product_ids: List[int]
+
+
+@api_router.post("/admin/g2bulk/import")
+async def admin_g2bulk_import(payload: G2BulkImportRequest):
+    """Import selected G2Bulk products as KayiCom giftcard products."""
+    imported = []
+    skipped = []
+    for g2_id in payload.product_ids:
+        existing = await db.products.find_one({"g2bulk_product_id": g2_id}, {"_id": 0, "id": 1, "name": 1})
+        if existing:
+            skipped.append({"g2bulk_id": g2_id, "name": existing.get("name"), "reason": "already imported"})
+            continue
+        try:
+            g2_product = await _g2bulk_request("GET", f"/products/{g2_id}")
+            name = g2_product.get("title") or g2_product.get("name") or f"G2Bulk #{g2_id}"
+            price = float(g2_product.get("unit_price") or g2_product.get("price") or 0)
+            image = g2_product.get("image_url") or g2_product.get("image") or ""
+            description = g2_product.get("description") or f"{name} — instant digital delivery via KayiCom."
+            if len(description.strip()) < 50:
+                description = f"{description} Purchase and receive your code instantly. Secure checkout on KayiCom."
+            slug = await _generate_unique_product_slug(name)
+            new_product = Product(
+                name=name,
+                slug=slug,
+                description=description,
+                category="giftcard",
+                price=price,
+                currency="USD",
+                image_url=image,
+                stock_available=True,
+                delivery_type="automatic",
+                delivery_time="instant",
+                g2bulk_product_id=g2_id,
+            )
+            normalized = _normalize_product_doc(new_product.model_dump())
+            new_product.seo_title = normalized.get("seo_title")
+            new_product.seo_description = normalized.get("seo_description")
+            doc = new_product.model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            await db.products.insert_one(doc)
+            doc.pop("_id", None)
+            imported.append({"g2bulk_id": g2_id, "name": name, "id": doc["id"]})
+        except Exception as e:
+            skipped.append({"g2bulk_id": g2_id, "reason": str(e)})
+    return {"imported": imported, "skipped": skipped, "total_imported": len(imported), "total_skipped": len(skipped)}
+
+
+# ---------- G2Bulk Games / Top-up endpoints ----------
+
+@api_router.get("/admin/g2bulk/games")
+async def admin_g2bulk_games():
+    """List all supported games for top-up."""
+    return await _g2bulk_request("GET", "/games")
+
+
+@api_router.get("/admin/g2bulk/games/{game_code}/catalogue")
+async def admin_g2bulk_game_catalogue(game_code: str):
+    """Get denominations/packages for a game."""
+    return await _g2bulk_request("GET", f"/games/{game_code}/catalogue")
+
+
+@api_router.post("/admin/g2bulk/games/fields")
+async def admin_g2bulk_game_fields(game: str):
+    """Get required fields for a game (e.g. userid, serverid)."""
+    return await _g2bulk_request("POST", "/games/fields", {"game": game})
+
+
+class G2BulkGameImportRequest(BaseModel):
+    game_code: str
+    game_name: str
+    game_image: Optional[str] = None
+    catalogues: List[Dict[str, Any]]
+
+
+@api_router.post("/admin/g2bulk/games/import")
+async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
+    """Import game top-up denominations as KayiCom topup products."""
+    imported = []
+    skipped = []
+    for cat in payload.catalogues:
+        cat_name = cat.get("name") or cat.get("id") or ""
+        existing = await db.products.find_one({
+            "g2bulk_game_code": payload.game_code,
+            "g2bulk_catalogue_id": str(cat_name),
+        }, {"_id": 0, "id": 1, "name": 1})
+        if existing:
+            skipped.append({"catalogue": cat_name, "name": existing.get("name"), "reason": "already imported"})
+            continue
+        try:
+            name = f"{payload.game_name} {cat_name}"
+            price = float(cat.get("amount") or cat.get("price") or 0)
+            description = f"{name} — instant game top-up. Your account will be credited automatically after purchase."
+            if len(description.strip()) < 50:
+                description += " Fast and secure delivery on KayiCom."
+            slug = await _generate_unique_product_slug(name)
+            new_product = Product(
+                name=name,
+                slug=slug,
+                description=description,
+                category="topup",
+                price=price,
+                currency="USD",
+                image_url=payload.game_image or "",
+                stock_available=True,
+                delivery_type="automatic",
+                delivery_time="instant",
+                g2bulk_game_code=payload.game_code,
+                g2bulk_catalogue_id=str(cat_name),
+                requires_player_id=True,
+                player_id_label="Player ID",
+            )
+            normalized = _normalize_product_doc(new_product.model_dump())
+            new_product.seo_title = normalized.get("seo_title")
+            new_product.seo_description = normalized.get("seo_description")
+            doc = new_product.model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            await db.products.insert_one(doc)
+            doc.pop("_id", None)
+            imported.append({"catalogue": cat_name, "name": name, "id": doc["id"], "price": price})
+        except Exception as e:
+            skipped.append({"catalogue": cat_name, "reason": str(e)})
+    return {"imported": imported, "skipped": skipped, "total_imported": len(imported), "total_skipped": len(skipped)}
+
+
+@api_router.post("/g2bulk/callback")
+async def g2bulk_topup_callback(request: Request):
+    """Callback from G2Bulk when a game top-up order status changes."""
+    try:
+        body = await request.json()
+    except Exception:
+        return {"ok": True}
+    order_id_g2 = body.get("order_id")
+    status = str(body.get("status") or "").upper()
+    kayicom_order_id = body.get("remark") or ""
+    logging.info("G2Bulk callback: g2_order=%s status=%s kayicom_order=%s", order_id_g2, status, kayicom_order_id)
+    if not kayicom_order_id:
+        return {"ok": True}
+    order = await db.orders.find_one({"id": kayicom_order_id}, {"_id": 0})
+    if not order:
+        return {"ok": True}
+    if status == "COMPLETED":
+        if order.get("order_status") != "completed":
+            now_iso = datetime.now(timezone.utc).isoformat()
+            delivery_info = {
+                "id": str(uuid.uuid4()),
+                "details": f"G2Bulk top-up completed. Order #{order_id_g2}. {body.get('game_name', '')} {body.get('denom_id', '')} for player {body.get('player_id', '')}.",
+                "items": [{"product_name": body.get("game_name", ""), "codes": [f"Top-up delivered to {body.get('player_name') or body.get('player_id', '')}"]}],
+                "delivered_at": now_iso,
+                "auto_delivered": True,
+                "source": "g2bulk_topup",
+            }
+            await db.orders.update_one({"id": kayicom_order_id}, {"$set": {
+                "order_status": "completed",
+                "delivery_info": delivery_info,
+                "updated_at": now_iso,
+            }})
+            await _record_product_orders_if_needed(kayicom_order_id)
+            await _credit_seller_earnings(kayicom_order_id)
+            logging.info("G2Bulk topup completed for order %s", kayicom_order_id)
+    elif status == "FAILED":
+        fail_msg = body.get("message", "G2Bulk top-up failed")
+        await db.orders.update_one({"id": kayicom_order_id}, {"$set": {
+            "auto_delivery_failed_reason": f"G2Bulk: {fail_msg}",
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }})
+        logging.warning("G2Bulk topup failed for order %s: %s", kayicom_order_id, fail_msg)
+    return {"ok": True}
+
+
 # ==================== AUTO-DELIVERY LOGIC ====================
 
 async def _try_auto_deliver(order_id: str) -> bool:
@@ -3103,8 +3280,46 @@ async def _try_auto_deliver(order_id: str) -> bool:
 
         qty = max(int(item.get("quantity", 1)), 1)
 
+        g2bulk_game_code = product.get("g2bulk_game_code")
+        g2bulk_catalogue_id = product.get("g2bulk_catalogue_id")
+        if g2bulk_game_code and g2bulk_catalogue_id:
+            player_id = item.get("player_id") or ""
+            if not player_id:
+                fail_reason = f"Player ID required for '{product.get('name', '')}'"
+                skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
+                continue
+            try:
+                settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+                backend_url = os.environ.get("BACKEND_URL") or settings.get("backend_url") or ""
+                callback_url = f"{backend_url}/api/g2bulk/callback" if backend_url else None
+                for _ in range(qty):
+                    order_body = {
+                        "catalogue_name": g2bulk_catalogue_id,
+                        "player_id": str(player_id),
+                        "remark": order_id,
+                    }
+                    if item.get("server_id"):
+                        order_body["server_id"] = str(item["server_id"])
+                    if callback_url:
+                        order_body["callback_url"] = callback_url
+                    g2_result = await _g2bulk_request("POST", f"/games/{g2bulk_game_code}/order", order_body)
+                    g2_order = g2_result.get("order", {})
+                    logging.info("G2Bulk topup order placed for %s: order_id=%s status=%s", order_id, g2_order.get("order_id"), g2_order.get("status"))
+                reserved_codes.append({
+                    "product_id": product["id"],
+                    "product_name": item.get("product_name", product.get("name", "")),
+                    "quantity": qty,
+                    "codes": [{"code": f"Top-up processing for player {player_id}", "id": f"g2t-{uuid.uuid4().hex[:8]}", "source": "g2bulk_topup"}],
+                })
+                continue
+            except Exception as e:
+                logging.error("G2Bulk topup order failed for order %s: %s", order_id, str(e))
+                fail_reason = f"G2Bulk topup failed for '{product.get('name', '')}': {str(e)}"
+                skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
+                continue
+
         g2bulk_pid = product.get("g2bulk_product_id")
-        if g2bulk_pid and product.get("category") == "topup":
+        if g2bulk_pid:
             try:
                 g2_result = await _g2bulk_purchase(int(g2bulk_pid), qty)
                 g2_codes = g2_result.get("delivery_items") or []
@@ -3117,11 +3332,11 @@ async def _try_auto_deliver(order_id: str) -> bool:
                     "quantity": qty,
                     "codes": code_docs,
                 })
-                logging.info("G2Bulk delivery for order %s product %s: %d codes", order_id, product.get("name"), len(g2_codes))
+                logging.info("G2Bulk voucher delivery for order %s product %s: %d codes", order_id, product.get("name"), len(g2_codes))
                 continue
             except Exception as e:
                 logging.error("G2Bulk purchase failed for order %s: %s", order_id, str(e))
-                fail_reason = f"G2Bulk topup failed for '{product.get('name', '')}': {str(e)}"
+                fail_reason = f"G2Bulk purchase failed for '{product.get('name', '')}': {str(e)}"
                 skipped_manual.append(product.get("name", item.get("product_name", "Unknown")))
                 continue
 
