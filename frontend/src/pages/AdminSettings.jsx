@@ -98,6 +98,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
       airtm: { enabled: true, email: '', instructions: '' },
       skrill: { enabled: true, email: '', instructions: '' },
       moncash: { enabled: true, email: '', instructions: '' },
+      natcash: { enabled: false, phone: '', account_name: '', instructions: '' },
       binance_pay: { enabled: true, email: '', instructions: '' },
       zelle: { enabled: true, email: '', instructions: '' },
       cashapp: { enabled: true, email: '', instructions: '' }
@@ -141,6 +142,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     airtm: { enabled: true, email: '', instructions: '' },
     skrill: { enabled: true, email: '', instructions: '' },
     moncash: { enabled: true, email: '', instructions: '' },
+    natcash: { enabled: false, phone: '', account_name: '', instructions: '' },
     binance_pay: { enabled: true, email: '', instructions: '' },
     binance_pay_manual: { enabled: true, email: '', instructions: '' },
     zelle: { enabled: true, email: '', instructions: '' },
@@ -1427,6 +1429,54 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               placeholder="Send via MonCash to number above"
                               value={formData.payment_gateways?.moncash?.instructions || ""}
                               onChange={(e) => handlePaymentGatewayChange('moncash', 'instructions', e.target.value)}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                              rows={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* NatCash */}
+                      <div className="bg-white/5 p-4 rounded-lg mb-4">
+                        <div className="flex justify-between items-center mb-3">
+                          <h4 className="text-white font-semibold flex items-center gap-2">
+                            <span>📱</span> NatCash (HTG - Auto Verify via SMS)
+                          </h4>
+                          <label className="flex items-center gap-2">
+                            <input 
+                              type="checkbox" 
+                              checked={formData.payment_gateways?.natcash?.enabled || false}
+                              onChange={(e) => handlePaymentGatewayChange('natcash', 'enabled', e.target.checked)}
+                              className="w-4 h-4" 
+                            />
+                            <span className="text-white text-sm">Enabled</span>
+                          </label>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-white/70 text-sm">NatCash Phone Number</Label>
+                            <Input
+                              placeholder="509XXXXXXXX"
+                              value={formData.payment_gateways?.natcash?.phone || ""}
+                              onChange={(e) => handlePaymentGatewayChange('natcash', 'phone', e.target.value)}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Account Name</Label>
+                            <Input
+                              placeholder="Non ki ap parèt pou kliyan an"
+                              value={formData.payment_gateways?.natcash?.account_name || ""}
+                              onChange={(e) => handlePaymentGatewayChange('natcash', 'account_name', e.target.value)}
+                              className="bg-white/10 border-white/20 text-white mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-white/70 text-sm">Instructions</Label>
+                            <Textarea
+                              placeholder="Voye montan an via NatCash nan nimewo ki endike a"
+                              value={formData.payment_gateways?.natcash?.instructions || ""}
+                              onChange={(e) => handlePaymentGatewayChange('natcash', 'instructions', e.target.value)}
                               className="bg-white/10 border-white/20 text-white mt-1"
                               rows={2}
                             />
