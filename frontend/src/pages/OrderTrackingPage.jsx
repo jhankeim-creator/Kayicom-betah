@@ -269,8 +269,24 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                   </div>
                   <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
                     <p className="text-yellow-300 text-sm font-semibold mb-1">⏳ En attente de paiement</p>
-                    <p className="text-white/60 text-xs">Voye montan egzak la via NatCash nan nimewo ki endike a. Mete kòd referans la nan "contenu du transfert". Peman an ap verifye otomatikman.</p>
+                    <p className="text-white/60 text-xs">Voye montan egzak la via NatCash nan nimewo ki endike a. Mete kòd referans la nan "contenu du transfert".</p>
                   </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await axiosInstance.post(`/natcash/verify/${order.id}`);
+                        if (res.data.verified) {
+                          toast.success(res.data.message);
+                          loadOrder();
+                        } else {
+                          toast.error(res.data.message);
+                        }
+                      } catch (err) { toast.error(err.response?.data?.detail || 'Verification failed'); }
+                    }}
+                    className="w-full mt-3 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg text-sm transition"
+                  >
+                    🔍 VERIFY PAYMENT
+                  </button>
                 </div>
               </CardContent>
             </Card>
