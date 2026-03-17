@@ -237,16 +237,16 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </CardContent>
           </Card>
 
-          {/* Auto-delivery failure notice */}
+          {/* Auto-delivery pending notice */}
           {autoDeliveryFailed && (
-            <Card className="glass-effect border-orange-500/30 border-2">
+            <Card className="glass-effect border-yellow-500/30 border-2">
               <CardContent className="p-6">
                 <div className="flex items-center gap-3 mb-2">
-                  <AlertTriangle className="text-orange-400" size={24} />
-                  <h3 className="text-lg font-bold text-orange-400">Automatic delivery pending</h3>
+                  <AlertTriangle className="text-yellow-400" size={24} />
+                  <h3 className="text-lg font-bold text-yellow-400">Your top-up is pending</h3>
                 </div>
                 <p className="text-white/70 text-sm">
-                  {(order.auto_delivery_failed_reason || '').replace(/G2Bulk[:\s]*/gi, '').replace(/g2bulk[:\s]*/gi, '').trim() || 'Automatic delivery could not be completed'}. Our team will process your order manually.
+                  Your order has been received and is being processed. Please be patient while we complete your delivery. You will be notified once it's done.
                 </p>
               </CardContent>
             </Card>
