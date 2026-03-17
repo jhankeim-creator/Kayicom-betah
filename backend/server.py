@@ -2120,6 +2120,7 @@ async def get_similar_products(product_id: str, limit: int = 8):
         "category": category,
         "parent_product_id": {"$nin": [parent_id, None]},
         "product_status": {"$in": ["approved", None]},
+        "seller_id": {"$in": [None, ""]},
     }
     candidates = await db.products.find(query, {"_id": 0}).to_list(200)
     seen_parents: set = set()
@@ -2144,6 +2145,7 @@ async def get_similar_products(product_id: str, limit: int = 8):
     if len(grouped) < limit:
         fallback_query: Dict[str, Any] = {
             "product_status": {"$in": ["approved", None]},
+            "seller_id": {"$in": [None, ""]},
             "parent_product_id": {"$nin": list(seen_parents) + [parent_id, None]},
             "category": {"$ne": category},
         }
@@ -8192,7 +8194,7 @@ async def sitemap_xml():
     urls.append(f"  <url><loc>{frontend_url}/blog</loc><priority>0.7</priority></url>")
     try:
         products = await db.products.find(
-            {"product_status": {"$in": ["approved", None]}},
+            {"product_status": {"$in": ["approved", None]}, "seller_id": {"$in": [None, ""]}},
             {"_id": 0, "id": 1, "slug": 1}
         ).to_list(5000)
         for p in products:
