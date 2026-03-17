@@ -6775,22 +6775,49 @@ async def update_crypto_transaction_status(
     return {"message": "Transaction status updated"}
 
 
+# ---------- uploads directory ----------
+UPLOADS_DIR = ROOT_DIR / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
+
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
+MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5 MB
+
+
+def _public_base_url(request: Request) -> str:
+    """Return the public base URL, respecting reverse-proxy headers."""
+    proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{proto}://{host}"
+
+
 # File Upload Endpoint
 @api_router.post("/upload/image")
-async def upload_image(file: UploadFile = File(...)):
-    """Upload image and return base64 data URL"""
+async def upload_image(request: Request, file: UploadFile = File(...)):
+    """Upload image, save to disk, and return a public URL."""
     try:
-        # Read file content
         contents = await file.read()
-        
-        # Get mime type
-        mime_type = file.content_type or mimetypes.guess_type(file.filename)[0] or 'image/jpeg'
-        
-        # Convert to base64
-        base64_data = base64.b64encode(contents).decode('utf-8')
-        data_url = f"data:{mime_type};base64,{base64_data}"
-        
-        return {"url": data_url, "filename": file.filename}
+        if len(contents) > MAX_IMAGE_SIZE:
+            raise HTTPException(status_code=400, detail="Image exceeds 5 MB limit")
+
+        mime_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "image/jpeg"
+        if mime_type not in ALLOWED_IMAGE_TYPES:
+            raise HTTPException(status_code=400, detail=f"Unsupported image type: {mime_type}")
+
+        ext = Path(file.filename).suffix.lower() if file.filename else ".jpg"
+        if ext not in {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}:
+            ext = ".jpg"
+        filename = f"{uuid.uuid4().hex}{ext}"
+
+        (UPLOADS_DIR / filename).write_bytes(contents)
+
+        public_url = f"{_public_base_url(request)}/api/uploads/{filename}"
+        return {"url": public_url, "filename": file.filename}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
@@ -8123,6 +8150,10 @@ async def sitemap_xml():
 
 # Include the router (must be after all endpoints are defined)
 app.include_router(api_router)
+
+# Serve uploaded images as static files
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 
 # Custom exception handler to ensure CORS headers on HTTPException errors
 @app.exception_handler(HTTPException)

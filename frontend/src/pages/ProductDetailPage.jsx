@@ -73,8 +73,47 @@ const ProductDetailPage = ({ user, logout, addToCart, cart, settings }) => {
     if (!dm) { dm = document.createElement('meta'); dm.setAttribute('name', 'description'); document.head.appendChild(dm); }
     const pd = dm.getAttribute('content') || '';
     dm.setAttribute('content', deriveProductSeoDescription(selectedProduct));
+
+    const imageUrl = selectedProduct.image_url;
+    const hasValidImage = imageUrl && /^https?:\/\//i.test(imageUrl);
+
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: selectedProduct.name,
+      description: deriveProductSeoDescription(selectedProduct),
+      ...(hasValidImage ? { image: [imageUrl] } : {}),
+      brand: { '@type': 'Brand', name: 'KayiCom' },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'USD',
+        price: Number(selectedProduct.price || 0).toFixed(2),
+        availability: selectedProduct.stock_available
+          ? 'https://schema.org/InStock'
+          : 'https://schema.org/OutOfStock',
+        url: window.location.href,
+        seller: { '@type': 'Organization', name: 'KayiCom' },
+        shippingDetails: {
+          '@type': 'OfferShippingDetails',
+          shippingRate: { '@type': 'MonetaryAmount', value: '0', currency: 'USD' },
+          shippingDestination: { '@type': 'DefinedRegion', addressCountry: 'US' },
+          deliveryTime: {
+            '@type': 'ShippingDeliveryTime',
+            handlingTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
+            transitTime: { '@type': 'QuantitativeValue', minValue: 0, maxValue: 0, unitCode: 'DAY' },
+          },
+        },
+        hasMerchantReturnPolicy: {
+          '@type': 'MerchantReturnPolicy',
+          applicableCountry: 'US',
+          returnPolicyCategory: 'https://schema.org/MerchantReturnNotPermitted',
+          merchantReturnDays: 0,
+        },
+      },
+    };
+
     const js = document.createElement('script'); js.type = 'application/ld+json'; js.id = 'product-seo-jsonld';
-    js.text = JSON.stringify({ '@context': 'https://schema.org', '@type': 'Product', name: selectedProduct.name, description: deriveProductSeoDescription(selectedProduct), image: selectedProduct.image_url ? [selectedProduct.image_url] : undefined, offers: { '@type': 'Offer', priceCurrency: 'USD', price: Number(selectedProduct.price || 0).toFixed(2), availability: selectedProduct.stock_available ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock' } });
+    js.text = JSON.stringify(jsonLd);
     document.head.appendChild(js);
     return () => { document.title = prev; if (cd && dm) dm.remove(); else if (dm) dm.setAttribute('content', pd); js.remove(); };
   }, [selectedProduct]);
