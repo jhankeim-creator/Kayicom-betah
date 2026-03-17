@@ -237,6 +237,45 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </CardContent>
           </Card>
 
+          {/* NatCash Payment Instructions */}
+          {order.payment_method === 'natcash' && order.payment_status === 'pending' && order.natcash_reference && (
+            <Card className="glass-effect border-yellow-500/30 border-2">
+              <CardContent className="p-6">
+                <h3 className="text-lg font-bold text-yellow-400 mb-4">NatCash Payment</h3>
+                <div className="space-y-4">
+                  {settings?.payment_gateways?.natcash?.account_name && (
+                    <div>
+                      <p className="text-white/50 text-xs">Non kont</p>
+                      <p className="text-white font-bold text-lg">{settings.payment_gateways.natcash.account_name}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-white/50 text-xs">Nimewo NatCash</p>
+                    <p className="text-white font-bold text-xl">{settings?.payment_gateways?.natcash?.phone || 'N/A'}</p>
+                    <button onClick={() => { navigator.clipboard.writeText(settings?.payment_gateways?.natcash?.phone || ''); toast.success('Copied!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                  </div>
+                  <div>
+                    <p className="text-white/50 text-xs">Montan a voye</p>
+                    <p className="text-yellow-400 font-bold text-xl">G {(order.total_amount * (settings?.natcash_usd_htg_rate || 135)).toFixed(2)}</p>
+                    <button onClick={() => { navigator.clipboard.writeText((order.total_amount * (settings?.natcash_usd_htg_rate || 135)).toFixed(2)); toast.success('Copied!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                  </div>
+                  <div>
+                    <p className="text-white/50 text-xs">Contenu à ajouter dans le transfert</p>
+                    <p className="text-white font-bold text-xl font-mono">{order.natcash_reference}</p>
+                    <button onClick={() => { navigator.clipboard.writeText(order.natcash_reference); toast.success('Copied!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                  </div>
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <p className="text-yellow-300 text-sm font-semibold mb-1">⏳ En attente de paiement</p>
+                    <p className="text-white/60 text-xs">Voye montan egzak la via NatCash nan nimewo ki endike a. Mete kòd referans la nan "contenu du transfert". Peman an ap verifye otomatikman.</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Auto-delivery pending notice */}
           {autoDeliveryFailed && (
             <Card className="glass-effect border-yellow-500/30 border-2">

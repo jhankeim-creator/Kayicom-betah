@@ -350,6 +350,22 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     </label>
                   )}
 
+                  {settings?.payment_gateways?.natcash?.enabled && (
+                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
+                      paymentMethod === 'natcash' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
+                    }`}>
+                      <RadioGroupItem value="natcash" className="mt-1" />
+                      <div className="ml-4">
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="text-yellow-400" size={20} />
+                          <span className="text-white font-semibold">NatCash</span>
+                          <span className="text-yellow-400/70 text-xs">(HTG)</span>
+                        </div>
+                        <p className="text-white/70 text-sm mt-1">Peman otomatik — NatCash/Natcom</p>
+                      </div>
+                    </label>
+                  )}
+
                   {/* PayerURL Crypto Payment */}
                   <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
                     paymentMethod === 'payerurl' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'

@@ -69,6 +69,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
     gosplit_api_key: '',
     z2u_api_key: '',
     g2bulk_api_key: '',
+    natcash_usd_htg_rate: '',
+    natcash_callback_secret: '',
     resend_api_key: '',
     resend_from_email: '',
     telegram_notifications_enabled: false,
@@ -185,6 +187,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
           gosplit_api_key: currentSettings.gosplit_api_key || '',
           z2u_api_key: currentSettings.z2u_api_key || '',
           g2bulk_api_key: currentSettings.g2bulk_api_key || '',
+          natcash_usd_htg_rate: currentSettings.natcash_usd_htg_rate || '',
+          natcash_callback_secret: currentSettings.natcash_callback_secret || '',
           resend_api_key: currentSettings.resend_api_key || '',
           resend_from_email: currentSettings.resend_from_email || '',
           telegram_notifications_enabled: currentSettings.telegram_notifications_enabled ?? false,
@@ -841,6 +845,28 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                         placeholder="••••••••"
                       />
                       <p className="text-white/40 text-xs mt-1">Get from <a href="https://t.me/G2BULKBOT" target="_blank" rel="noopener noreferrer" className="text-green-400 underline">@G2BULKBOT on Telegram</a>. Used for automatic game topup delivery.</p>
+                    </div>
+
+                    <div className="border-t border-white/10 pt-4 mt-4">
+                      <h4 className="text-white font-bold text-sm mb-3">NatCash Settings</h4>
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-white">USD/HTG Rate</Label>
+                          <Input type="number" step="0.01"
+                            value={formData.natcash_usd_htg_rate || ''}
+                            onChange={(e) => handleChange('natcash_usd_htg_rate', e.target.value ? parseFloat(e.target.value) : null)}
+                            className="bg-white/10 border-white/20 text-white" placeholder="e.g. 135" />
+                          <p className="text-white/40 text-xs mt-1">1 USD = ? HTG (used to calculate NatCash amount in Goud)</p>
+                        </div>
+                        <div>
+                          <Label className="text-white">NatCash Callback Secret</Label>
+                          <Input type="password"
+                            value={formData.natcash_callback_secret || ''}
+                            onChange={(e) => handleChange('natcash_callback_secret', e.target.value)}
+                            className="bg-white/10 border-white/20 text-white" placeholder="••••••••" />
+                          <p className="text-white/40 text-xs mt-1">Secret key for Automate SMS callback authentication</p>
+                        </div>
+                      </div>
                     </div>
 
                     <div>
