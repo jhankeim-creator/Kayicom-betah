@@ -137,10 +137,11 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
             <span className="text-green-400/70 text-[9px]">Buyer Protection</span>
           </div>
           <div className="mt-auto pt-2 flex gap-1.5">
-            <Button size="sm" className="flex-1 bg-green-500 hover:bg-green-600 text-black font-semibold text-xs py-2 rounded-lg"
-              disabled={item.stock_available === false} onClick={() => handleAddToCart(item)}>
-              <ShoppingCart size={13} className="mr-1" /> Add to Cart
-            </Button>
+            <Link to={`/product/${item.slug || item.product_id || item.id}`} className="flex-1">
+              <Button size="sm" className="w-full bg-green-500 hover:bg-green-600 text-black font-semibold text-xs py-2 rounded-lg">
+                <ShoppingCart size={13} className="mr-1" /> View Product
+              </Button>
+            </Link>
             <Button size="sm" variant="outline" className="border-white/10 text-white/50 hover:text-white hover:bg-white/5 px-2 rounded-lg"
               onClick={() => sendInquiry(item)} title="Ask seller a question">
               <MessageCircle size={14} />
