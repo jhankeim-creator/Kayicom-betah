@@ -3280,6 +3280,36 @@ async def g2bulk_topup_callback(request: Request):
 # ==================== NATCASH SMS CALLBACK ====================
 
 
+@api_router.post("/natcash/verify/{order_id}")
+async def natcash_verify_payment(order_id: str):
+    """Customer checks if their NatCash payment has been detected."""
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.get("payment_method") != "natcash":
+        raise HTTPException(status_code=400, detail="Not a NatCash order")
+    if order.get("payment_status") == "paid":
+        return {"verified": True, "message": "Payment confirmed! Your order is being processed."}
+    ref = order.get("natcash_reference")
+    if ref:
+        sms_match = await db.natcash_sms_log.find_one({"parsed_ref": ref, "matched_order": order_id})
+        if sms_match:
+            now_iso = datetime.now(timezone.utc).isoformat()
+            await db.orders.update_one({"id": order_id}, {"$set": {
+                "payment_status": "paid",
+                "natcash_confirmed_at": now_iso,
+                "updated_at": now_iso,
+            }})
+            await _record_coupon_usage_if_needed(order_id)
+            try:
+                await _try_auto_deliver(order_id)
+            except Exception as e:
+                logging.error("Auto-delivery error on NatCash verify: %s", e)
+            await _record_product_orders_if_needed(order_id)
+            return {"verified": True, "message": "Payment confirmed! Your order is being processed."}
+    return {"verified": False, "message": "Payment not yet detected. Please make sure you sent the exact amount with the reference code, then try again in a moment."}
+
+
 @api_router.post("/natcash/sms-callback")
 async def natcash_sms_callback(request: Request):
     """Receive SMS data from Automate app when a NatCash payment SMS arrives.
