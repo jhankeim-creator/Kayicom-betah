@@ -616,7 +616,7 @@ class Order(BaseModel):
     credits_awarded: Optional[int] = None
     credits_recorded: Optional[bool] = None
     currency: str = "USD"
-    payment_method: str  # wallet, crypto_plisio, payerurl, paypal, skrill, moncash, binance_pay, binance_pay_manual, zelle, cashapp
+    payment_method: str  # wallet, crypto_plisio, payerurl, paypal, skrill, moncash, natcash, binance_pay, binance_pay_manual, zelle, cashapp
     payment_status: str = "pending"  # pending, paid, failed, cancelled
     order_status: str = "pending"  # pending, processing, completed, cancelled
     payerurl_payment_url: Optional[str] = None
@@ -638,6 +638,7 @@ class Order(BaseModel):
     dispute_id: Optional[str] = None
     # Seller offer reference
     seller_offer_id: Optional[str] = None
+    natcash_reference: Optional[str] = None
     auto_delivery_failed_reason: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -733,6 +734,8 @@ class SiteSettings(BaseModel):
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
     g2bulk_api_key: Optional[str] = None
+    natcash_usd_htg_rate: Optional[float] = None  # e.g. 135.0 (1 USD = 135 HTG)
+    natcash_callback_secret: Optional[str] = None  # secret key for Automate SMS callback auth
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None  # e.g. "KayiCom <no-reply@yourdomain.com>"
     telegram_notifications_enabled: Optional[bool] = None
@@ -771,6 +774,7 @@ class SiteSettings(BaseModel):
         "airtm": {"enabled": True, "email": "", "instructions": ""},
         "skrill": {"enabled": True, "email": "", "instructions": ""},
         "moncash": {"enabled": True, "email": "", "instructions": ""},
+        "natcash": {"enabled": False, "phone": "", "account_name": "", "instructions": ""},
         "binance_pay": {"enabled": True, "email": "", "instructions": ""},
         "binance_pay_manual": {"enabled": True, "email": "", "instructions": ""},
         "zelle": {"enabled": True, "email": "", "instructions": ""},
@@ -866,6 +870,8 @@ class SettingsUpdate(BaseModel):
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
     g2bulk_api_key: Optional[str] = None
+    natcash_usd_htg_rate: Optional[float] = None
+    natcash_callback_secret: Optional[str] = None
     resend_api_key: Optional[str] = None
     resend_from_email: Optional[str] = None
     telegram_notifications_enabled: Optional[bool] = None
@@ -2869,6 +2875,10 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
             except Exception as e:
                 logging.error(f"PayerURL error: {e}")
 
+    if order_data.payment_method == "natcash":
+        ref_code = secrets.token_hex(3).upper()
+        order.natcash_reference = ref_code
+
     has_seller_items = any(item.seller_id for item in validated_items)
     if has_seller_items:
         order.escrow_status = "held"
@@ -3265,6 +3275,117 @@ async def g2bulk_topup_callback(request: Request):
         }})
         logging.warning("G2Bulk topup failed for order %s: %s", kayicom_order_id, fail_msg)
     return {"ok": True}
+
+
+# ==================== NATCASH SMS CALLBACK ====================
+
+
+@api_router.post("/natcash/sms-callback")
+async def natcash_sms_callback(request: Request):
+    """Receive SMS data from Automate app when a NatCash payment SMS arrives.
+
+    Expected JSON body from Automate:
+    {
+        "secret": "your_callback_secret",
+        "sms_body": "full SMS text from NatCash",
+        "sms_from": "sender number",
+        "sms_time": "timestamp"
+    }
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    expected_secret = settings.get("natcash_callback_secret") or os.environ.get("NATCASH_CALLBACK_SECRET", "")
+    if expected_secret and body.get("secret") != expected_secret:
+        raise HTTPException(status_code=403, detail="Invalid secret")
+
+    sms_body = str(body.get("sms_body") or "")
+    if not sms_body:
+        raise HTTPException(status_code=400, detail="No SMS body")
+
+    logging.info("NatCash SMS received: %s", sms_body[:200])
+
+    amount_htg = None
+    reference_code = None
+
+    import re as _re
+    amount_match = _re.search(r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _re.IGNORECASE)
+    if not amount_match:
+        amount_match = _re.search(r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _re.IGNORECASE)
+    if amount_match:
+        amount_htg = float(amount_match.group(1).replace(",", ""))
+
+    ref_match = _re.search(r"(?:ref|code|memo|contenu)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
+    if not ref_match:
+        ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
+    if ref_match:
+        reference_code = ref_match.group(1).strip()
+
+    if not amount_htg and not reference_code:
+        logging.warning("NatCash SMS: could not parse amount or reference from: %s", sms_body[:200])
+        await db.natcash_sms_log.insert_one({
+            "sms_body": sms_body, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
+            "parsed_amount": None, "parsed_ref": None, "matched_order": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return {"ok": True, "matched": False, "reason": "Could not parse SMS"}
+
+    query_conditions = []
+    if reference_code:
+        query_conditions.append({"natcash_reference": reference_code})
+    order = None
+    if query_conditions:
+        order = await db.orders.find_one({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+            "$or": query_conditions,
+        }, {"_id": 0})
+
+    if not order and amount_htg:
+        rate = float(settings.get("natcash_usd_htg_rate") or 135)
+        tolerance = 2.0
+        candidates = await db.orders.find({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+        }, {"_id": 0}).sort("created_at", -1).to_list(50)
+        for c in candidates:
+            expected_htg = float(c.get("total_amount", 0)) * rate
+            if abs(expected_htg - amount_htg) <= tolerance:
+                order = c
+                break
+
+    await db.natcash_sms_log.insert_one({
+        "sms_body": sms_body, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
+        "parsed_amount": amount_htg, "parsed_ref": reference_code,
+        "matched_order": order.get("id") if order else None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if not order:
+        logging.info("NatCash SMS: no matching order for ref=%s amount=%s", reference_code, amount_htg)
+        return {"ok": True, "matched": False, "reason": "No matching order found"}
+
+    order_id = order["id"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "payment_status": "paid",
+        "natcash_sms_body": sms_body,
+        "natcash_confirmed_at": now_iso,
+        "updated_at": now_iso,
+    }})
+    logging.info("NatCash payment confirmed for order %s (ref=%s, amount_htg=%s)", order_id, reference_code, amount_htg)
+
+    await _record_coupon_usage_if_needed(order_id)
+    try:
+        await _try_auto_deliver(order_id)
+    except Exception as e:
+        logging.error("Auto-delivery error on NatCash payment: %s", e)
+    await _record_product_orders_if_needed(order_id)
+
+    return {"ok": True, "matched": True, "order_id": order_id}
 
 
 # ==================== AUTO-DELIVERY LOGIC ====================
