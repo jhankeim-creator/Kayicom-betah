@@ -61,5 +61,8 @@ htmlcov/
 # Logs
 *.log
 
+# Uploaded files
+backend/uploads/
+
 # Railway
 .railway/
