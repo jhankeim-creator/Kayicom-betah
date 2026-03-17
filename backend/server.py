@@ -2017,7 +2017,7 @@ async def get_products(
     try:
         query: Dict[str, Any] = {
             "product_status": {"$in": ["approved", None]},
-            "$or": [{"seller_id": None}, {"seller_id": {"$exists": False}}, {"seller_id": ""}],
+            "seller_id": {"$in": [None, ""]},
         }
         if category:
             query["category"] = category
@@ -3958,7 +3958,7 @@ async def seller_create_product(product: ProductCreate, user_id: str):
         delivery_type=product.delivery_type,
         delivery_time=product.delivery_time,
         seller_id=user_id,
-        product_status="approved",
+        product_status="pending_review",
         subscription_duration_months=product.subscription_duration_months,
         variant_name=product.variant_name,
         parent_product_id=product.parent_product_id,
@@ -4841,21 +4841,31 @@ async def escrow_action(order_id: str, payload: EscrowConfirmRequest, user_id: s
 
 
 async def _release_due_escrows():
-    """Background: release escrow payments that have passed the 3-day hold."""
+    """Background: release escrow payments that have passed the 3-day hold.
+
+    Two cases:
+    1. Buyer confirmed → release after escrow_release_at (3 days post-confirm)
+    2. Buyer never responded → auto-release 3 days after escrow was held
+    """
     now = datetime.now(timezone.utc)
+    auto_release_cutoff = (now - timedelta(days=3)).isoformat()
+
     cursor = db.orders.find({
-        "escrow_status": "buyer_confirmed",
-        "escrow_release_at": {"$lte": now.isoformat()},
+        "$or": [
+            {"escrow_status": "buyer_confirmed", "escrow_release_at": {"$lte": now.isoformat()}},
+            {"escrow_status": "held", "escrow_held_at": {"$lte": auto_release_cutoff}},
+        ]
     }, {"_id": 0})
     async for order in cursor:
         order_id = order.get("id")
-        await _credit_seller_earnings(order_id)
+        prev_status = order.get("escrow_status")
         await db.orders.update_one({"id": order_id}, {"$set": {
             "escrow_status": "released",
             "escrow_released_at": now.isoformat(),
             "updated_at": now.isoformat(),
         }})
-        logging.info("Escrow released for order %s", order_id)
+        await _credit_seller_earnings(order_id)
+        logging.info("Escrow released for order %s (was %s)", order_id, prev_status)
 
 
 async def _auto_close_expired_disputes():
@@ -8761,19 +8771,14 @@ async def startup_background_jobs():
         logging.error(f"Failed to backfill product slugs: {e}")
 
     try:
-        r1 = await db.products.update_many(
-            {"seller_id": {"$ne": None}, "product_status": {"$nin": ["approved", None]}},
-            {"$set": {"product_status": "approved"}},
-        )
         r2 = await db.products.update_many(
             {"seller_id": {"$ne": None}, "product_status": {"$exists": False}},
-            {"$set": {"product_status": "approved"}},
+            {"$set": {"product_status": "pending_review"}},
         )
-        total = r1.modified_count + r2.modified_count
-        if total:
-            logging.info(f"Auto-approved {total} seller product(s)")
+        if r2.modified_count:
+            logging.info(f"Set pending_review on {r2.modified_count} seller product(s) missing status")
     except Exception as e:
-        logging.error(f"Failed to auto-approve seller products: {e}")
+        logging.error(f"Failed to set default status on seller products: {e}")
 
     if _order_auto_cancel_task is not None:
         try:
