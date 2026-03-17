@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { Package, Plus, Edit2, Trash2, Key } from 'lucide-react';
+import { Package, Plus, Edit2, Trash2, Key, Download, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import ProductCodesManager from '../components/ProductCodesManager';
 
@@ -83,6 +83,119 @@ const G2BulkProductPicker = ({ value, onChange, disabled }) => {
       )}
       <p className="text-white/40 text-xs">Select a G2Bulk product to auto-fulfill topup orders. Leave empty for manual delivery.</p>
     </div>
+  );
+};
+
+const G2BulkImporter = ({ onImported }) => {
+  const [open, setOpen] = useState(false);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set());
+
+  const loadProducts = async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await axiosInstance.get('/admin/g2bulk/products');
+      const data = Array.isArray(res.data) ? res.data : res.data?.data || res.data?.products || [];
+      setProducts(data);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to load. Check G2Bulk API key in Settings.');
+    } finally { setLoading(false); }
+  };
+
+  const handleOpen = () => { setOpen(true); if (products.length === 0) loadProducts(); };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+  const selectAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map(p => p.id)));
+  };
+
+  const handleImport = async () => {
+    if (selected.size === 0) { toast.error('Select products to import'); return; }
+    setImporting(true);
+    try {
+      const res = await axiosInstance.post('/admin/g2bulk/import', { product_ids: [...selected] });
+      const d = res.data;
+      toast.success(`Imported ${d.total_imported} products${d.total_skipped > 0 ? `, ${d.total_skipped} skipped` : ''}`);
+      setSelected(new Set());
+      setOpen(false);
+      if (onImported) onImported();
+    } catch (err) { toast.error(err.response?.data?.detail || 'Import failed'); }
+    finally { setImporting(false); }
+  };
+
+  const filtered = search.trim()
+    ? products.filter(p => (p.title || p.name || '').toLowerCase().includes(search.toLowerCase()))
+    : products;
+
+  return (
+    <>
+      <Button onClick={handleOpen} className="bg-blue-600 hover:bg-blue-700 text-white">
+        <Download size={16} className="mr-2" /> Import G2Bulk Products
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col bg-gray-900 border-white/20">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Download size={20} className="text-blue-400" /> Import G2Bulk Products
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-white/50 text-xs">Select products to add to your KayiCom catalog as topup products. Already imported products will be skipped.</p>
+
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          {!loading && products.length > 0 && (
+            <div className="flex gap-2 items-center">
+              <div className="flex-1 relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+                <Input value={search} onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search products..." className="bg-white/10 border-white/20 text-white text-xs pl-8" />
+              </div>
+              <Button size="sm" variant="outline" onClick={selectAll} className="border-white/20 text-white text-xs hover:bg-white/10 whitespace-nowrap">
+                {selected.size === filtered.length ? 'Deselect All' : `Select All (${filtered.length})`}
+              </Button>
+            </div>
+          )}
+
+          <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
+            {loading && <p className="text-white/40 text-center py-8">Loading G2Bulk products...</p>}
+            {!loading && products.length === 0 && !error && <p className="text-white/40 text-center py-8">No products found. Make sure G2Bulk API key is configured.</p>}
+            {filtered.map(p => (
+              <button key={p.id} type="button" onClick={() => toggleSelect(p.id)}
+                className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-3 transition ${
+                  selected.has(p.id) ? 'bg-green-500/15 border border-green-500/30' : 'bg-white/5 border border-transparent hover:bg-white/10'
+                }`}>
+                <div className={`w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 ${
+                  selected.has(p.id) ? 'bg-green-500 border-green-500 text-black' : 'border-white/30'
+                }`}>
+                  {selected.has(p.id) && <span className="text-xs font-bold">✓</span>}
+                </div>
+                {p.image_url && <img src={p.image_url} alt="" className="w-10 h-10 rounded object-cover flex-shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white text-sm font-medium truncate">{p.title || p.name}</p>
+                  <p className="text-white/40 text-xs">${p.unit_price || p.price || '?'} • {p.stock != null ? `${p.stock} in stock` : 'N/A'}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          {selected.size > 0 && (
+            <div className="flex items-center justify-between pt-2 border-t border-white/10">
+              <p className="text-white/60 text-sm">{selected.size} product{selected.size > 1 ? 's' : ''} selected</p>
+              <Button onClick={handleImport} disabled={importing} className="bg-green-500 hover:bg-green-600 text-black font-semibold">
+                {importing ? 'Importing...' : `Import ${selected.size} Product${selected.size > 1 ? 's' : ''}`}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
@@ -564,6 +677,7 @@ const AdminProducts = ({ user, logout, settings }) => {
           {/* Action Buttons - Stack on Mobile */}
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm(); }}>
             <div className="flex flex-col sm:flex-row gap-2">
+              <G2BulkImporter onImported={() => loadProducts()} />
               <DialogTrigger asChild>
                 <Button
                   className="bg-green-500 text-white w-full sm:w-auto text-sm sm:text-base"

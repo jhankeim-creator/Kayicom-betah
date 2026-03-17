@@ -3066,6 +3066,55 @@ async def admin_g2bulk_product_detail(product_id: int):
     return await _g2bulk_request("GET", f"/products/{product_id}")
 
 
+class G2BulkImportRequest(BaseModel):
+    product_ids: List[int]
+
+
+@api_router.post("/admin/g2bulk/import")
+async def admin_g2bulk_import(payload: G2BulkImportRequest):
+    """Import selected G2Bulk products as KayiCom topup products."""
+    imported = []
+    skipped = []
+    for g2_id in payload.product_ids:
+        existing = await db.products.find_one({"g2bulk_product_id": g2_id}, {"_id": 0, "id": 1, "name": 1})
+        if existing:
+            skipped.append({"g2bulk_id": g2_id, "name": existing.get("name"), "reason": "already imported"})
+            continue
+        try:
+            g2_product = await _g2bulk_request("GET", f"/products/{g2_id}")
+            name = g2_product.get("title") or g2_product.get("name") or f"G2Bulk #{g2_id}"
+            price = float(g2_product.get("unit_price") or g2_product.get("price") or 0)
+            image = g2_product.get("image_url") or g2_product.get("image") or ""
+            description = g2_product.get("description") or f"{name} — instant digital delivery via G2Bulk."
+            if len(description.strip()) < 50:
+                description = f"{description} Purchase and receive your code instantly. Secure checkout on KayiCom."
+            slug = await _generate_unique_product_slug(name)
+            new_product = Product(
+                name=name,
+                slug=slug,
+                description=description,
+                category="topup",
+                price=price,
+                currency="USD",
+                image_url=image,
+                stock_available=True,
+                delivery_type="automatic",
+                delivery_time="instant",
+                g2bulk_product_id=g2_id,
+            )
+            normalized = _normalize_product_doc(new_product.model_dump())
+            new_product.seo_title = normalized.get("seo_title")
+            new_product.seo_description = normalized.get("seo_description")
+            doc = new_product.model_dump()
+            doc["created_at"] = doc["created_at"].isoformat()
+            await db.products.insert_one(doc)
+            doc.pop("_id", None)
+            imported.append({"g2bulk_id": g2_id, "name": name, "id": doc["id"]})
+        except Exception as e:
+            skipped.append({"g2bulk_id": g2_id, "reason": str(e)})
+    return {"imported": imported, "skipped": skipped, "total_imported": len(imported), "total_skipped": len(skipped)}
+
+
 # ==================== AUTO-DELIVERY LOGIC ====================
 
 async def _try_auto_deliver(order_id: str) -> bool:
