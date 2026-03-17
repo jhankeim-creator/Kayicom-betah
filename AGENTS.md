@@ -40,7 +40,7 @@ Note: `seed_demo_products.py` requires `DB_NAME` env var (unlike `create_admin.p
 
 ### Gotchas
 
-- `server.py` is a 5600+ line monolith — all backend logic lives in one file.
+- `server.py` is an 8800+ line monolith — all backend logic lives in one file.
 - The `email` field in `payment_gateways.binance_pay` stores the Binance Pay UID (not an email address).
 - The backend requires `MONGO_URL` at import time; the module-level `AsyncIOMotorClient` will raise if the env var is missing. Tests use monkeypatch to provide it.
 - Frontend uses `yarn` (lockfile: `yarn.lock`); the `packageManager` field in `package.json` pins yarn 1.22.22.
