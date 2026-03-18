@@ -3355,7 +3355,7 @@ async def natcash_sms_callback(
     if amount_match:
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
-    ref_match = _re.search(r"(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
+    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
     if ref_match:
@@ -3472,7 +3472,7 @@ async def natcash_test_sms(request: Request):
     if amount_match:
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
-    ref_match = _re.search(r"(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body_input, _re.IGNORECASE)
+    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body_input, _re.IGNORECASE)
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body_input)
     if ref_match:
@@ -3613,7 +3613,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
     ref_match = _re.search(
-        r"(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
+        r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
     )
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
