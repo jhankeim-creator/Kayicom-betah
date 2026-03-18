@@ -3279,6 +3279,90 @@ async def g2bulk_topup_callback(request: Request):
 
 # ==================== NATCASH SMS CALLBACK ====================
 
+import re as _natcash_re
+
+
+def _parse_natcash_sms(sms_body: str) -> dict:
+    """Parse a NatCash SMS to extract amount (HTG) and reference code.
+
+    Returns {"amount_htg": float|None, "reference_code": str|None}.
+    """
+    amount_htg = None
+    reference_code = None
+
+    amount_match = _natcash_re.search(
+        r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _natcash_re.IGNORECASE
+    )
+    if not amount_match:
+        amount_match = _natcash_re.search(
+            r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _natcash_re.IGNORECASE
+        )
+    if amount_match:
+        amount_htg = float(amount_match.group(1).replace(",", ""))
+
+    ref_match = _natcash_re.search(
+        r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _natcash_re.IGNORECASE
+    )
+    if not ref_match:
+        ref_match = _natcash_re.search(r"\b([A-Z0-9]{6})\b", sms_body)
+    if ref_match:
+        reference_code = ref_match.group(1).strip()
+
+    return {"amount_htg": amount_htg, "reference_code": reference_code}
+
+
+async def _match_natcash_order(reference_code, amount_htg, settings=None):
+    """Find a pending NatCash order matching the parsed reference or amount.
+
+    Returns (order_dict|None, match_method_str|None).
+    """
+    order = None
+    match_method = None
+
+    if reference_code:
+        order = await db.orders.find_one({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+            "natcash_reference": reference_code,
+        }, {"_id": 0})
+        if order:
+            match_method = "reference_code"
+
+    if not order and amount_htg:
+        if not settings:
+            settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+        rate = float(settings.get("natcash_usd_htg_rate") or 135)
+        tolerance = 2.0
+        candidates = await db.orders.find({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+        }, {"_id": 0}).sort("created_at", -1).to_list(50)
+        for c in candidates:
+            expected_htg = float(c.get("total_amount", 0)) * rate
+            if abs(expected_htg - amount_htg) <= tolerance:
+                order = c
+                match_method = "amount"
+                break
+
+    return order, match_method
+
+
+async def _confirm_natcash_payment(order_id: str, sms_body: str):
+    """Mark an order as paid and trigger post-payment actions."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "payment_status": "paid",
+        "natcash_sms_body": sms_body,
+        "natcash_confirmed_at": now_iso,
+        "updated_at": now_iso,
+    }})
+    await _record_coupon_usage_if_needed(order_id)
+    try:
+        await _try_auto_deliver(order_id)
+    except Exception as e:
+        logging.error("Auto-delivery error on NatCash payment for order %s: %s", order_id, e)
+    await _record_product_orders_if_needed(order_id)
+
 
 @api_router.post("/natcash/verify/{order_id}")
 async def natcash_verify_payment(order_id: str):
@@ -3339,65 +3423,34 @@ async def natcash_sms_callback(
     if expected_secret and body.get("secret") != expected_secret:
         raise HTTPException(status_code=403, detail="Invalid secret")
 
-    sms_body = str(body.get("sms_body") or "")
-    if not sms_body:
+    sms_text = str(body.get("sms_body") or "")
+    if not sms_text:
         raise HTTPException(status_code=400, detail="No SMS body")
 
-    logging.info("NatCash SMS received: %s", sms_body[:200])
+    logging.info("NatCash SMS received: %s", sms_text[:200])
 
-    amount_htg = None
-    reference_code = None
-
-    import re as _re
-    amount_match = _re.search(r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _re.IGNORECASE)
-    if not amount_match:
-        amount_match = _re.search(r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _re.IGNORECASE)
-    if amount_match:
-        amount_htg = float(amount_match.group(1).replace(",", ""))
-
-    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
-    if not ref_match:
-        ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
-    if ref_match:
-        reference_code = ref_match.group(1).strip()
+    parsed = _parse_natcash_sms(sms_text)
+    amount_htg = parsed["amount_htg"]
+    reference_code = parsed["reference_code"]
 
     if not amount_htg and not reference_code:
-        logging.warning("NatCash SMS: could not parse amount or reference from: %s", sms_body[:200])
+        logging.warning("NatCash SMS: could not parse amount or reference from: %s", sms_text[:200])
         await db.natcash_sms_log.insert_one({
-            "sms_body": sms_body, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
+            "sms_body": sms_text, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
             "parsed_amount": None, "parsed_ref": None, "matched_order": None,
+            "source": "automate",
             "created_at": datetime.now(timezone.utc).isoformat(),
         })
         return {"ok": True, "matched": False, "reason": "Could not parse SMS"}
 
-    query_conditions = []
-    if reference_code:
-        query_conditions.append({"natcash_reference": reference_code})
-    order = None
-    if query_conditions:
-        order = await db.orders.find_one({
-            "payment_method": "natcash",
-            "payment_status": "pending",
-            "$or": query_conditions,
-        }, {"_id": 0})
-
-    if not order and amount_htg:
-        rate = float(settings.get("natcash_usd_htg_rate") or 135)
-        tolerance = 2.0
-        candidates = await db.orders.find({
-            "payment_method": "natcash",
-            "payment_status": "pending",
-        }, {"_id": 0}).sort("created_at", -1).to_list(50)
-        for c in candidates:
-            expected_htg = float(c.get("total_amount", 0)) * rate
-            if abs(expected_htg - amount_htg) <= tolerance:
-                order = c
-                break
+    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
-        "sms_body": sms_body, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
+        "sms_body": sms_text, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
+        "match_method": match_method,
+        "source": "automate",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -3406,21 +3459,8 @@ async def natcash_sms_callback(
         return {"ok": True, "matched": False, "reason": "No matching order found"}
 
     order_id = order["id"]
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": {
-        "payment_status": "paid",
-        "natcash_sms_body": sms_body,
-        "natcash_confirmed_at": now_iso,
-        "updated_at": now_iso,
-    }})
+    await _confirm_natcash_payment(order_id, sms_text)
     logging.info("NatCash payment confirmed for order %s (ref=%s, amount_htg=%s)", order_id, reference_code, amount_htg)
-
-    await _record_coupon_usage_if_needed(order_id)
-    try:
-        await _try_auto_deliver(order_id)
-    except Exception as e:
-        logging.error("Auto-delivery error on NatCash payment: %s", e)
-    await _record_product_orders_if_needed(order_id)
 
     return {"ok": True, "matched": True, "order_id": order_id}
 
@@ -3429,11 +3469,8 @@ async def natcash_sms_callback(
 async def natcash_test_sms(request: Request):
     """Admin tool: simulate an SMS Forwarder webhook to test the NatCash pipeline.
 
-    Accepts JSON with optional fields:
-      - sms_body: SMS text to test (if omitted, auto-generates a realistic NatCash Creole SMS from a pending order)
-      - dry_run: if true, parse and match but do NOT mark the order as paid (default true)
-    Reuses the same parsing logic as the real /api/webhook/natcash endpoint.
-    Returns parsing details and match result so admins can verify the pipeline.
+    Uses the exact same parsing (_parse_natcash_sms) and matching (_match_natcash_order)
+    helpers as the real /api/webhook/natcash endpoint so the test truly validates the pipeline.
     """
     try:
         body = await request.json()
@@ -3469,40 +3506,11 @@ async def natcash_test_sms(request: Request):
             f"Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
         )
 
-    import re as _re
-    amount_htg = None
-    reference_code = None
-    amount_match = _re.search(r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body_input, _re.IGNORECASE)
-    if not amount_match:
-        amount_match = _re.search(r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body_input, _re.IGNORECASE)
-    if amount_match:
-        amount_htg = float(amount_match.group(1).replace(",", ""))
+    parsed = _parse_natcash_sms(sms_body_input)
+    amount_htg = parsed["amount_htg"]
+    reference_code = parsed["reference_code"]
 
-    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body_input, _re.IGNORECASE)
-    if not ref_match:
-        ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body_input)
-    if ref_match:
-        reference_code = ref_match.group(1).strip()
-
-    matched_order = None
-    match_method = None
-
-    if reference_code:
-        matched_order = await db.orders.find_one({
-            "payment_method": "natcash",
-            "payment_status": "pending",
-            "natcash_reference": reference_code,
-        }, {"_id": 0})
-        if matched_order:
-            match_method = "reference_code"
-
-    if not matched_order and amount_htg:
-        for c in pending_orders:
-            expected_htg = float(c.get("total_amount", 0)) * rate
-            if abs(expected_htg - amount_htg) <= 2.0:
-                matched_order = c
-                match_method = "amount"
-                break
+    matched_order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
 
     result = {
         "ok": True,
@@ -3546,24 +3554,14 @@ async def natcash_test_sms(request: Request):
             "parsed_amount": amount_htg,
             "parsed_ref": reference_code,
             "matched_order": matched_order["id"],
+            "match_method": match_method,
             "source": "sms_forwarder_test",
             "is_test": True,
             "created_at": now_iso,
         })
-        await db.orders.update_one({"id": matched_order["id"]}, {"$set": {
-            "payment_status": "paid",
-            "natcash_sms_body": sms_body_input,
-            "natcash_confirmed_at": now_iso,
-            "updated_at": now_iso,
-        }})
+        await _confirm_natcash_payment(matched_order["id"], sms_body_input)
         result["order_marked_paid"] = True
         logging.info("NatCash SMS Forwarder TEST: order %s marked paid (dry_run=False)", matched_order["id"])
-        await _record_coupon_usage_if_needed(matched_order["id"])
-        try:
-            await _try_auto_deliver(matched_order["id"])
-        except Exception as e:
-            logging.error("Auto-delivery error on NatCash SMS Forwarder test: %s", e)
-        await _record_product_orders_if_needed(matched_order["id"])
     elif not dry_run and not matched_order:
         result["order_marked_paid"] = False
 
@@ -3576,7 +3574,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
 
     Expects JSON body: {"sender": "...", "message": "...", "timestamp": "...", "sim": "..."}
     Authenticates via Authorization: Bearer <secret> header.
-    Reuses the same parsing & matching logic as the Automate callback.
+    Uses shared _parse_natcash_sms / _match_natcash_order / _confirm_natcash_payment helpers.
     """
     auth_header = request.headers.get("Authorization", "")
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
@@ -3606,27 +3604,9 @@ async def natcash_webhook_sms_forwarder(request: Request):
 
     logging.info("NatCash SMS Forwarder received: %s", sms_body[:200])
 
-    import re as _re
-    amount_htg = None
-    reference_code = None
-
-    amount_match = _re.search(
-        r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _re.IGNORECASE
-    )
-    if not amount_match:
-        amount_match = _re.search(
-            r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _re.IGNORECASE
-        )
-    if amount_match:
-        amount_htg = float(amount_match.group(1).replace(",", ""))
-
-    ref_match = _re.search(
-        r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
-    )
-    if not ref_match:
-        ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
-    if ref_match:
-        reference_code = ref_match.group(1).strip()
+    parsed = _parse_natcash_sms(sms_body)
+    amount_htg = parsed["amount_htg"]
+    reference_code = parsed["reference_code"]
 
     if not amount_htg and not reference_code:
         logging.warning(
@@ -3641,35 +3621,14 @@ async def natcash_webhook_sms_forwarder(request: Request):
         })
         return {"status": "ignored", "reason": "Could not parse SMS"}
 
-    query_conditions = []
-    if reference_code:
-        query_conditions.append({"natcash_reference": reference_code})
-    order = None
-    if query_conditions:
-        order = await db.orders.find_one({
-            "payment_method": "natcash",
-            "payment_status": "pending",
-            "$or": query_conditions,
-        }, {"_id": 0})
-
-    if not order and amount_htg:
-        rate = float(settings.get("natcash_usd_htg_rate") or 135)
-        tolerance = 2.0
-        candidates = await db.orders.find({
-            "payment_method": "natcash",
-            "payment_status": "pending",
-        }, {"_id": 0}).sort("created_at", -1).to_list(50)
-        for c in candidates:
-            expected_htg = float(c.get("total_amount", 0)) * rate
-            if abs(expected_htg - amount_htg) <= tolerance:
-                order = c
-                break
+    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
         "sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time,
         "sim": sim_slot, "source": "sms_forwarder",
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
+        "match_method": match_method,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -3681,24 +3640,11 @@ async def natcash_webhook_sms_forwarder(request: Request):
         return {"status": "no_order_found", "matched": False, "reference": reference_code}
 
     order_id = order["id"]
-    now_iso = datetime.now(timezone.utc).isoformat()
-    await db.orders.update_one({"id": order_id}, {"$set": {
-        "payment_status": "paid",
-        "natcash_sms_body": sms_body,
-        "natcash_confirmed_at": now_iso,
-        "updated_at": now_iso,
-    }})
+    await _confirm_natcash_payment(order_id, sms_body)
     logging.info(
         "NatCash SMS Forwarder payment confirmed for order %s (ref=%s, amount_htg=%s)",
         order_id, reference_code, amount_htg,
     )
-
-    await _record_coupon_usage_if_needed(order_id)
-    try:
-        await _try_auto_deliver(order_id)
-    except Exception as e:
-        logging.error("Auto-delivery error on NatCash SMS Forwarder payment: %s", e)
-    await _record_product_orders_if_needed(order_id)
 
     return {
         "status": "success",
