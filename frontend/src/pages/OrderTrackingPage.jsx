@@ -278,7 +278,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                       className="text-xs bg-white/10 border border-white/20 rounded-full px-4 py-1 text-white/70 mt-2 hover:bg-white/20 transition">📋 KOPYE</button>
                   </div>
                   <div className="bg-white/5 rounded-lg p-3">
-                    <p className="text-white/50 text-xs">Kòd Referans (mete nan contenu)</p>
+                    <p className="text-white/50 text-xs">Kòd Referans (mete nan kontni)</p>
                     <p className="text-white font-bold text-xl font-mono tracking-wider">{order.natcash_reference}</p>
                     <button onClick={() => { navigator.clipboard.writeText(order.natcash_reference); toast.success('Kopye!'); }}
                       className="text-xs bg-white/10 border border-white/20 rounded-full px-4 py-1 text-white/70 mt-2 hover:bg-white/20 transition">📋 KOPYE</button>
@@ -289,7 +289,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                     <ol className="text-white/60 text-xs space-y-1 list-decimal list-inside">
                       <li>Ouvri app NatCash ou</li>
                       <li>Voye montan egzak la nan nimewo ki endike a</li>
-                      <li>Nan chan <strong className="text-white/80">"contenu"</strong>, mete kòd referans la</li>
+                      <li>Nan chan <strong className="text-white/80">"kontni"</strong>, mete kòd referans la</li>
                       <li>Sistèm nan ap verifye otomatikman</li>
                     </ol>
                     <p className="text-yellow-400/80 text-xs mt-2">⚠️ Nimewo ou voye a dwe menm ak nimewo ou te bay lè ou pase kòmand la</p>
