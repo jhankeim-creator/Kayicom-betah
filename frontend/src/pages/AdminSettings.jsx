@@ -51,6 +51,10 @@ const isCoreCategory = (value) => CORE_CATEGORIES.includes(normalizeCategoryKey(
 const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }) => {
   const [loading, setLoading] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
+  const [testingNatcash, setTestingNatcash] = useState(false);
+  const [natcashTestSms, setNatcashTestSms] = useState('');
+  const [natcashTestDryRun, setNatcashTestDryRun] = useState(true);
+  const [natcashTestResult, setNatcashTestResult] = useState(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [categoryImageUploads, setCategoryImageUploads] = useState({});
   const [formData, setFormData] = useState({
@@ -563,6 +567,32 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
       toast.error(detail);
     } finally {
       setTestingTelegram(false);
+    }
+  };
+
+  const handleNatcashTest = async () => {
+    setTestingNatcash(true);
+    setNatcashTestResult(null);
+    try {
+      const response = await axiosInstance.post('/natcash/test-sms', {
+        sms_body: natcashTestSms || undefined,
+        dry_run: natcashTestDryRun,
+      });
+      setNatcashTestResult(response.data);
+      if (response.data.matched) {
+        toast.success(
+          natcashTestDryRun
+            ? `SMS matche ak kòmand ${response.data.matched_order?.id?.slice(0, 8)} (dry run — pa make kòm peye)`
+            : `Kòmand ${response.data.matched_order?.id?.slice(0, 8)} make kòm peye!`
+        );
+      } else {
+        toast.error(response.data.error || 'SMS pa matche ak okenn kòmand an atant.');
+      }
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.error || 'Erè pandan tès NatCash';
+      toast.error(detail);
+    } finally {
+      setTestingNatcash(false);
     }
   };
 
@@ -1480,6 +1510,103 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                               className="bg-white/10 border-white/20 text-white mt-1"
                               rows={2}
                             />
+                          </div>
+
+                          {/* NatCash Automate Test */}
+                          <div className="border-t border-yellow-400/20 pt-4 mt-4">
+                            <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
+                              🧪 Teste Automate SMS
+                            </h5>
+                            <p className="text-white/50 text-xs mb-3">
+                              Simulate yon mesaj SMS NatCash pou teste si sistèm nan ka parse li e matche ak yon kòmand.
+                            </p>
+                            <div className="space-y-3">
+                              <div>
+                                <Label className="text-white/70 text-sm">Mesaj SMS (kite vid pou otomatik)</Label>
+                                <Textarea
+                                  placeholder="Ex: Ou resevwa 3375.00 HTG nan men KLIYAN. Ref: ABC123. Nouvo balans ou: 5000.00 HTG"
+                                  value={natcashTestSms}
+                                  onChange={(e) => setNatcashTestSms(e.target.value)}
+                                  className="bg-white/10 border-white/20 text-white mt-1"
+                                  rows={2}
+                                />
+                                <p className="text-white/40 text-xs mt-1">
+                                  Si ou kite vid, sistèm nan ap jenere yon mesaj SMS baze sou dènye kòmand NatCash ki an atant.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={natcashTestDryRun}
+                                    onChange={(e) => setNatcashTestDryRun(e.target.checked)}
+                                    className="w-4 h-4"
+                                  />
+                                  <span className="text-white/70 text-sm">Dry Run (tès sèlman, pa make kòmand kòm peye)</span>
+                                </label>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={handleNatcashTest}
+                                disabled={testingNatcash}
+                                className="border-yellow-400 text-yellow-300 hover:bg-yellow-400/10 w-full"
+                              >
+                                {testingNatcash ? '⏳ Ap teste...' : '🧪 Teste Automate SMS'}
+                              </Button>
+
+                              {natcashTestResult && (
+                                <div className={`p-4 rounded-lg border text-sm space-y-2 ${
+                                  natcashTestResult.matched
+                                    ? 'bg-green-500/10 border-green-500/30'
+                                    : 'bg-red-500/10 border-red-500/30'
+                                }`}>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-lg">{natcashTestResult.matched ? '✅' : '❌'}</span>
+                                    <span className={`font-bold ${natcashTestResult.matched ? 'text-green-400' : 'text-red-400'}`}>
+                                      {natcashTestResult.matched ? 'SMS matche!' : 'SMS pa matche'}
+                                    </span>
+                                    {natcashTestResult.dry_run && (
+                                      <span className="text-yellow-400/70 text-xs bg-yellow-400/10 px-2 py-0.5 rounded">DRY RUN</span>
+                                    )}
+                                    {natcashTestResult.order_marked_paid && (
+                                      <span className="text-green-400/70 text-xs bg-green-400/10 px-2 py-0.5 rounded">PEYE</span>
+                                    )}
+                                  </div>
+
+                                  <div className="text-white/60 text-xs space-y-1">
+                                    <p><span className="text-white/40">SMS:</span> {natcashTestResult.sms_body_used}</p>
+                                    <p><span className="text-white/40">Montan parse:</span> {natcashTestResult.parsed?.amount_htg != null ? `${natcashTestResult.parsed.amount_htg} HTG` : 'pa jwenn'}</p>
+                                    <p><span className="text-white/40">Ref parse:</span> {natcashTestResult.parsed?.reference_code || 'pa jwenn'}</p>
+                                    {natcashTestResult.match_method && (
+                                      <p><span className="text-white/40">Metòd match:</span> {natcashTestResult.match_method === 'reference_code' ? 'Kòd referans' : 'Montan'}</p>
+                                    )}
+                                  </div>
+
+                                  {natcashTestResult.matched_order && (
+                                    <div className="bg-white/5 rounded p-2 text-xs text-white/70 space-y-1">
+                                      <p className="text-white/90 font-semibold">Kòmand matche:</p>
+                                      <p>ID: {natcashTestResult.matched_order.id?.slice(0, 8)}...</p>
+                                      <p>Total: ${natcashTestResult.matched_order.total_amount_usd} USD = {natcashTestResult.matched_order.expected_htg} HTG</p>
+                                      <p>Ref: {natcashTestResult.matched_order.natcash_reference}</p>
+                                    </div>
+                                  )}
+
+                                  {natcashTestResult.pending_natcash_orders?.length > 0 && (
+                                    <div className="bg-white/5 rounded p-2 text-xs text-white/70">
+                                      <p className="text-white/90 font-semibold mb-1">Kòmand NatCash an atant ({natcashTestResult.pending_natcash_orders.length}):</p>
+                                      {natcashTestResult.pending_natcash_orders.map((o, i) => (
+                                        <p key={i} className="ml-2">• {o.id?.slice(0, 8)}... — ${o.total_usd} ({o.expected_htg} HTG) — Ref: {o.ref}</p>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <div className="text-white/40 text-xs">
+                                    <p>Rate: 1 USD = {natcashTestResult.config?.usd_htg_rate} HTG | Secret: {natcashTestResult.config?.callback_secret_set ? '✅ konfigire' : '⚠️ pa konfigire'}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
