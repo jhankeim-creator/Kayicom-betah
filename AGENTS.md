@@ -45,3 +45,5 @@ Note: `seed_demo_products.py` requires `DB_NAME` env var (unlike `create_admin.p
 - The backend requires `MONGO_URL` at import time; the module-level `AsyncIOMotorClient` will raise if the env var is missing. Tests use monkeypatch to provide it.
 - Frontend uses `yarn` (lockfile: `yarn.lock`); the `packageManager` field in `package.json` pins yarn 1.22.22.
 - `pip install` scripts go to `~/.local/bin` which may not be on PATH — prepend it or use `python3 -m <tool>`.
+- NatCash payment flow: the Automate SMS callback (`POST /api/natcash/sms-callback`) sets `payment_status` to `paid` but `order_status` stays `pending` for products with `delivery_type: "manual"`. This is by design — admin must manually complete these orders. Only products with `delivery_type: "automatic"` and available codes in `product_codes` get auto-completed.
+- To test NatCash pipeline locally, use `POST /api/natcash/test-sms` (admin tool) with `{"dry_run": false}` to simulate a full SMS → payment confirmation cycle.
