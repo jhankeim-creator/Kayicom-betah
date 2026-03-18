@@ -3281,6 +3281,46 @@ async def g2bulk_topup_callback(request: Request):
 
 import re as _natcash_re
 
+_SMS_BODY_KEYS = ("message", "text", "body", "content", "sms_body", "smsBody", "msg")
+_SMS_FROM_KEYS = ("sender", "from", "number", "phone", "sms_from", "smsFrom", "from_number")
+_SMS_TIME_KEYS = ("timestamp", "receivedAt", "received_at", "sentStamp", "sms_time", "time", "date")
+_SMS_SIM_KEYS = ("sim", "simNumber", "sim_number", "sim_slot", "simSlot")
+
+
+def _extract_sms_fields(data: dict) -> dict:
+    """Extract SMS body/sender/time/sim from various SMS Forwarder payload formats.
+
+    Handles flat payloads, nested payloads (e.g. data["sms"]["message"]),
+    and various field naming conventions across different Android SMS Forwarder apps.
+    """
+    def _find(d, keys):
+        for k in keys:
+            v = d.get(k)
+            if v is not None and str(v).strip():
+                return str(v).strip()
+        return ""
+
+    sms_body = _find(data, _SMS_BODY_KEYS)
+    sms_from = _find(data, _SMS_FROM_KEYS)
+    sms_time = _find(data, _SMS_TIME_KEYS)
+    sim_slot = _find(data, _SMS_SIM_KEYS)
+
+    if not sms_body:
+        nested = data.get("sms") or data.get("SMS") or data.get("data") or {}
+        if isinstance(nested, dict):
+            sms_body = _find(nested, _SMS_BODY_KEYS)
+            if not sms_from:
+                sms_from = _find(nested, _SMS_FROM_KEYS)
+            if not sms_time:
+                sms_time = _find(nested, _SMS_TIME_KEYS)
+
+    if not sms_body:
+        device = data.get("device") or {}
+        if isinstance(device, dict) and not sim_slot:
+            sim_slot = _find(device, _SMS_SIM_KEYS + ("device_name",))
+
+    return {"sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time, "sim": sim_slot}
+
 
 def _parse_natcash_sms(sms_body: str) -> dict:
     """Parse a NatCash SMS to extract amount (HTG) and reference code.
@@ -3391,7 +3431,7 @@ async def natcash_verify_payment(order_id: str):
                 logging.error("Auto-delivery error on NatCash verify: %s", e)
             await _record_product_orders_if_needed(order_id)
             return {"verified": True, "message": "Payment confirmed! Your order is being processed."}
-    return {"verified": False, "message": "Payment not yet detected. Please make sure you sent the exact amount with the reference code, then try again in a moment."}
+    return {"verified": False, "message": "Peman an poko detekte. Asire w ou te voye montan egzak la ak kòd referans lan nan chan 'kontni', epi eseye ankò nan yon ti moman."}
 
 
 @api_router.get("/natcash/sms-callback")
@@ -3570,11 +3610,10 @@ async def natcash_test_sms(request: Request):
 
 @api_router.post("/webhook/natcash")
 async def natcash_webhook_sms_forwarder(request: Request):
-    """Receive NatCash SMS via SMS Forwarder (FKT Solutions) app.
+    """Receive NatCash SMS via SMS Forwarder apps (FKT Solutions, SMS Forwarder, etc.).
 
-    Expects JSON body: {"sender": "...", "message": "...", "timestamp": "...", "sim": "..."}
-    Authenticates via Authorization: Bearer <secret> header.
-    Uses shared _parse_natcash_sms / _match_natcash_order / _confirm_natcash_payment helpers.
+    Accepts JSON or form-encoded data with flexible field names to support
+    various Android SMS Forwarder apps. Authenticates via Bearer token if configured.
     """
     auth_header = request.headers.get("Authorization", "")
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
@@ -3583,24 +3622,52 @@ async def natcash_webhook_sms_forwarder(request: Request):
         or os.environ.get("NATCASH_CALLBACK_SECRET", "")
     )
     if expected_secret:
-        if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Missing Bearer token")
-        token = auth_header[7:]
+        token = ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        elif auth_header:
+            token = auth_header
         if token != expected_secret:
-            raise HTTPException(status_code=401, detail="Invalid Bearer token")
+            raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
 
+    data = {}
+    content_type = request.headers.get("content-type", "")
     try:
-        data = await request.json()
+        if "json" in content_type or not content_type:
+            data = await request.json()
+        elif "form" in content_type:
+            form = await request.form()
+            data = dict(form)
+        else:
+            try:
+                data = await request.json()
+            except Exception:
+                form = await request.form()
+                data = dict(form)
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON body")
+        raw_body = (await request.body()).decode("utf-8", errors="replace")
+        logging.error("NatCash webhook: could not parse body (content-type=%s): %s", content_type, raw_body[:500])
+        raise HTTPException(status_code=400, detail="Could not parse request body as JSON or form data")
 
-    sms_body = str(data.get("message") or data.get("text") or "")
-    sms_from = str(data.get("sender") or "")
-    sms_time = str(data.get("timestamp") or "")
-    sim_slot = str(data.get("sim") or "")
+    logging.info("NatCash webhook raw payload: %s", str(data)[:500])
+
+    fields = _extract_sms_fields(data)
+    sms_body = fields["sms_body"]
+    sms_from = fields["sms_from"]
+    sms_time = fields["sms_time"]
+    sim_slot = fields["sim"]
 
     if not sms_body:
-        raise HTTPException(status_code=400, detail="No SMS message body")
+        logging.warning("NatCash webhook: no SMS body found in payload keys=%s", list(data.keys()))
+        await db.natcash_sms_log.insert_one({
+            "raw_payload": str(data)[:2000],
+            "sms_body": "", "sms_from": sms_from, "sms_time": sms_time,
+            "sim": sim_slot, "source": "sms_forwarder",
+            "error": "no_sms_body_found",
+            "payload_keys": list(data.keys()),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return {"status": "error", "reason": "No SMS body found in payload", "received_keys": list(data.keys())}
 
     logging.info("NatCash SMS Forwarder received: %s", sms_body[:200])
 
