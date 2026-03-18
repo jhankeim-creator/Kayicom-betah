@@ -3310,22 +3310,29 @@ async def natcash_verify_payment(order_id: str):
     return {"verified": False, "message": "Payment not yet detected. Please make sure you sent the exact amount with the reference code, then try again in a moment."}
 
 
+@api_router.get("/natcash/sms-callback")
 @api_router.post("/natcash/sms-callback")
-async def natcash_sms_callback(request: Request):
-    """Receive SMS data from Automate app when a NatCash payment SMS arrives.
-
-    Expected JSON body from Automate:
-    {
-        "secret": "your_callback_secret",
-        "sms_body": "full SMS text from NatCash",
-        "sms_from": "sender number",
-        "sms_time": "timestamp"
+async def natcash_sms_callback(
+    request: Request,
+    secret: Optional[str] = None,
+    sms_body: Optional[str] = None,
+    sms_from: Optional[str] = None,
+    sms_time: Optional[str] = None,
+):
+    """Receive SMS data from Automate app. Accepts GET with query params or POST with JSON."""
+    if request.method == "POST":
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+    else:
+        body = {}
+    body = {
+        "secret": secret or body.get("secret"),
+        "sms_body": sms_body or body.get("sms_body"),
+        "sms_from": sms_from or body.get("sms_from"),
+        "sms_time": sms_time or body.get("sms_time"),
     }
-    """
-    try:
-        body = await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
 
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
     expected_secret = settings.get("natcash_callback_secret") or os.environ.get("NATCASH_CALLBACK_SECRET", "")
