@@ -896,7 +896,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             value={formData.natcash_callback_secret || ''}
                             onChange={(e) => handleChange('natcash_callback_secret', e.target.value)}
                             className="bg-white/10 border-white/20 text-white" placeholder="••••••••" />
-                          <p className="text-white/40 text-xs mt-1">Secret key for Automate SMS callback authentication</p>
+                          <p className="text-white/40 text-xs mt-1">Secret key for SMS Forwarder webhook (Bearer token) and legacy Automate callback</p>
                         </div>
                       </div>
                     </div>
@@ -1470,7 +1470,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                       <div className="bg-white/5 p-4 rounded-lg mb-4">
                         <div className="flex justify-between items-center mb-3">
                           <h4 className="text-white font-semibold flex items-center gap-2">
-                            <span>📱</span> NatCash (HTG - Auto Verify via SMS)
+                            <span>📱</span> NatCash (HTG - Auto Verify via SMS Forwarder)
                           </h4>
                           <label className="flex items-center gap-2">
                             <input 
@@ -1512,10 +1512,21 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             />
                           </div>
 
-                          {/* NatCash Automate Test */}
+                          {/* SMS Forwarder webhook URL */}
                           <div className="border-t border-yellow-400/20 pt-4 mt-4">
                             <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
-                              🧪 Teste Automate SMS
+                              🔗 Webhook URL pou SMS Forwarder
+                            </h5>
+                            <div className="bg-black/30 rounded p-3 font-mono text-xs text-green-400 break-all select-all">
+                              {window.location.origin.replace(':3000', ':8000')}/api/webhook/natcash
+                            </div>
+                            <p className="text-white/40 text-xs mt-1">Konfigure URL sa a nan app SMS Forwarder (FKT Solutions) sou telefòn Android ou. Mete metòd POST ak header: Authorization: Bearer [secret ou a]</p>
+                          </div>
+
+                          {/* NatCash SMS Test */}
+                          <div className="border-t border-yellow-400/20 pt-4 mt-4">
+                            <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
+                              🧪 Teste SMS Callback
                             </h5>
                             <p className="text-white/50 text-xs mb-3">
                               Simulate yon mesaj SMS NatCash pou teste si sistèm nan ka parse li e matche ak yon kòmand.

@@ -3562,6 +3562,145 @@ async def natcash_test_sms(request: Request):
     return result
 
 
+@api_router.post("/webhook/natcash")
+async def natcash_webhook_sms_forwarder(request: Request):
+    """Receive NatCash SMS via SMS Forwarder (FKT Solutions) app.
+
+    Expects JSON body: {"sender": "...", "message": "...", "timestamp": "...", "sim": "..."}
+    Authenticates via Authorization: Bearer <secret> header.
+    Reuses the same parsing & matching logic as the Automate callback.
+    """
+    auth_header = request.headers.get("Authorization", "")
+    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+    expected_secret = (
+        settings.get("natcash_callback_secret")
+        or os.environ.get("NATCASH_CALLBACK_SECRET", "")
+    )
+    if expected_secret:
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Missing Bearer token")
+        token = auth_header[7:]
+        if token != expected_secret:
+            raise HTTPException(status_code=401, detail="Invalid Bearer token")
+
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    sms_body = str(data.get("message") or data.get("text") or "")
+    sms_from = str(data.get("sender") or "")
+    sms_time = str(data.get("timestamp") or "")
+    sim_slot = str(data.get("sim") or "")
+
+    if not sms_body:
+        raise HTTPException(status_code=400, detail="No SMS message body")
+
+    logging.info("NatCash SMS Forwarder received: %s", sms_body[:200])
+
+    import re as _re
+    amount_htg = None
+    reference_code = None
+
+    amount_match = _re.search(
+        r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _re.IGNORECASE
+    )
+    if not amount_match:
+        amount_match = _re.search(
+            r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _re.IGNORECASE
+        )
+    if amount_match:
+        amount_htg = float(amount_match.group(1).replace(",", ""))
+
+    ref_match = _re.search(
+        r"(?:ref|code|memo|contenu)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
+    )
+    if not ref_match:
+        ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
+    if ref_match:
+        reference_code = ref_match.group(1).strip()
+
+    if not amount_htg and not reference_code:
+        logging.warning(
+            "NatCash SMS Forwarder: could not parse amount or reference from: %s",
+            sms_body[:200],
+        )
+        await db.natcash_sms_log.insert_one({
+            "sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time,
+            "sim": sim_slot, "source": "sms_forwarder",
+            "parsed_amount": None, "parsed_ref": None, "matched_order": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        return {"status": "ignored", "reason": "Could not parse SMS"}
+
+    query_conditions = []
+    if reference_code:
+        query_conditions.append({"natcash_reference": reference_code})
+    order = None
+    if query_conditions:
+        order = await db.orders.find_one({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+            "$or": query_conditions,
+        }, {"_id": 0})
+
+    if not order and amount_htg:
+        rate = float(settings.get("natcash_usd_htg_rate") or 135)
+        tolerance = 2.0
+        candidates = await db.orders.find({
+            "payment_method": "natcash",
+            "payment_status": "pending",
+        }, {"_id": 0}).sort("created_at", -1).to_list(50)
+        for c in candidates:
+            expected_htg = float(c.get("total_amount", 0)) * rate
+            if abs(expected_htg - amount_htg) <= tolerance:
+                order = c
+                break
+
+    await db.natcash_sms_log.insert_one({
+        "sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time,
+        "sim": sim_slot, "source": "sms_forwarder",
+        "parsed_amount": amount_htg, "parsed_ref": reference_code,
+        "matched_order": order.get("id") if order else None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    })
+
+    if not order:
+        logging.info(
+            "NatCash SMS Forwarder: no matching order for ref=%s amount=%s",
+            reference_code, amount_htg,
+        )
+        return {"status": "no_order_found", "matched": False, "reference": reference_code}
+
+    order_id = order["id"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "payment_status": "paid",
+        "natcash_sms_body": sms_body,
+        "natcash_confirmed_at": now_iso,
+        "updated_at": now_iso,
+    }})
+    logging.info(
+        "NatCash SMS Forwarder payment confirmed for order %s (ref=%s, amount_htg=%s)",
+        order_id, reference_code, amount_htg,
+    )
+
+    await _record_coupon_usage_if_needed(order_id)
+    try:
+        await _try_auto_deliver(order_id)
+    except Exception as e:
+        logging.error("Auto-delivery error on NatCash SMS Forwarder payment: %s", e)
+    await _record_product_orders_if_needed(order_id)
+
+    return {
+        "status": "success",
+        "matched": True,
+        "order_id": order_id,
+        "reference": reference_code,
+        "amount_htg": amount_htg,
+    }
+
+
 # ==================== AUTO-DELIVERY LOGIC ====================
 
 async def _try_auto_deliver(order_id: str) -> bool:
