@@ -57,6 +57,22 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!order) return;
+    if (order.payment_method !== 'natcash' || order.payment_status !== 'pending') return;
+    const poll = setInterval(async () => {
+      try {
+        const res = await axiosInstance.post(`/natcash/verify/${order.id}`);
+        if (res.data.verified) {
+          toast.success(res.data.message || 'Pèman konfime!');
+          loadOrder();
+          clearInterval(poll);
+        }
+      } catch (_) { /* silent */ }
+    }, 10000);
+    return () => clearInterval(poll);
+  }, [order?.id, order?.payment_method, order?.payment_status]);
+
   const loadOrder = async () => {
     try {
       const response = await axiosInstance.get(`/orders/${orderId}`);
@@ -241,35 +257,42 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
           {order.payment_method === 'natcash' && order.payment_status === 'pending' && order.natcash_reference && (
             <Card className="glass-effect border-yellow-500/30 border-2">
               <CardContent className="p-6">
-                <h3 className="text-lg font-bold text-yellow-400 mb-4">NatCash Payment</h3>
+                <h3 className="text-lg font-bold text-yellow-400 mb-4">📱 Pèman NatCash</h3>
                 <div className="space-y-4">
                   {settings?.payment_gateways?.natcash?.account_name && (
-                    <div>
-                      <p className="text-white/50 text-xs">Non kont</p>
+                    <div className="bg-white/5 rounded-lg p-3">
+                      <p className="text-white/50 text-xs">Non Kont</p>
                       <p className="text-white font-bold text-lg">{settings.payment_gateways.natcash.account_name}</p>
                     </div>
                   )}
-                  <div>
+                  <div className="bg-white/5 rounded-lg p-3">
                     <p className="text-white/50 text-xs">Nimewo NatCash</p>
                     <p className="text-white font-bold text-xl">{settings?.payment_gateways?.natcash?.phone || 'N/A'}</p>
-                    <button onClick={() => { navigator.clipboard.writeText(settings?.payment_gateways?.natcash?.phone || ''); toast.success('Copied!'); }}
-                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                    <button onClick={() => { navigator.clipboard.writeText(settings?.payment_gateways?.natcash?.phone || ''); toast.success('Kopye!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded-full px-4 py-1 text-white/70 mt-2 hover:bg-white/20 transition">📋 KOPYE</button>
                   </div>
-                  <div>
-                    <p className="text-white/50 text-xs">Montan a voye</p>
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-white/50 text-xs">Montan pou Voye</p>
                     <p className="text-yellow-400 font-bold text-xl">G {(order.total_amount * (settings?.natcash_usd_htg_rate || 135)).toFixed(2)}</p>
-                    <button onClick={() => { navigator.clipboard.writeText((order.total_amount * (settings?.natcash_usd_htg_rate || 135)).toFixed(2)); toast.success('Copied!'); }}
-                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                    <button onClick={() => { navigator.clipboard.writeText((order.total_amount * (settings?.natcash_usd_htg_rate || 135)).toFixed(2)); toast.success('Kopye!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded-full px-4 py-1 text-white/70 mt-2 hover:bg-white/20 transition">📋 KOPYE</button>
                   </div>
-                  <div>
-                    <p className="text-white/50 text-xs">Contenu à ajouter dans le transfert</p>
-                    <p className="text-white font-bold text-xl font-mono">{order.natcash_reference}</p>
-                    <button onClick={() => { navigator.clipboard.writeText(order.natcash_reference); toast.success('Copied!'); }}
-                      className="text-xs bg-white/10 border border-white/20 rounded px-3 py-1 text-white/70 mt-1 hover:bg-white/20">COPY</button>
+                  <div className="bg-white/5 rounded-lg p-3">
+                    <p className="text-white/50 text-xs">Kòd Referans (mete nan contenu)</p>
+                    <p className="text-white font-bold text-xl font-mono tracking-wider">{order.natcash_reference}</p>
+                    <button onClick={() => { navigator.clipboard.writeText(order.natcash_reference); toast.success('Kopye!'); }}
+                      className="text-xs bg-white/10 border border-white/20 rounded-full px-4 py-1 text-white/70 mt-2 hover:bg-white/20 transition">📋 KOPYE</button>
                   </div>
-                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-                    <p className="text-yellow-300 text-sm font-semibold mb-1">⏳ En attente de paiement</p>
-                    <p className="text-white/60 text-xs">Voye montan egzak la via NatCash nan nimewo ki endike a. Mete kòd referans la nan "contenu du transfert".</p>
+                  <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                    <p className="text-yellow-300 text-sm font-semibold mb-2">⏳ En attente de paiement</p>
+                    <p className="text-white/70 text-sm font-semibold mb-2">Kijan pou peye ak NatCash:</p>
+                    <ol className="text-white/60 text-xs space-y-1 list-decimal list-inside">
+                      <li>Ouvri app NatCash ou</li>
+                      <li>Voye montan egzak la nan nimewo ki endike a</li>
+                      <li>Nan chan <strong className="text-white/80">"contenu"</strong>, mete kòd referans la</li>
+                      <li>Sistèm nan ap verifye otomatikman</li>
+                    </ol>
+                    <p className="text-yellow-400/80 text-xs mt-2">⚠️ Nimewo ou voye a dwe menm ak nimewo ou te bay lè ou pase kòmand la</p>
                   </div>
                   <button
                     onClick={async () => {
@@ -285,8 +308,9 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                     }}
                     className="w-full mt-3 py-3 bg-yellow-500 hover:bg-yellow-600 text-black font-bold rounded-lg text-sm transition"
                   >
-                    🔍 VERIFY PAYMENT
+                    🔍 VERIFYE KOUNYE A
                   </button>
+                  <p className="text-white/40 text-xs text-center">Sistèm nan ap tcheke otomatikman chak 10 segonn</p>
                 </div>
               </CardContent>
             </Card>
