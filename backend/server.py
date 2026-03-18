@@ -3355,7 +3355,7 @@ async def natcash_sms_callback(
     if amount_match:
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
-    ref_match = _re.search(r"(?:ref|code|memo|contenu)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
+    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE)
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)
     if ref_match:
@@ -3427,11 +3427,12 @@ async def natcash_sms_callback(
 
 @api_router.post("/natcash/test-sms")
 async def natcash_test_sms(request: Request):
-    """Admin tool: simulate an Automate SMS to test the NatCash callback pipeline.
+    """Admin tool: simulate an SMS Forwarder webhook to test the NatCash pipeline.
 
     Accepts JSON with optional fields:
-      - sms_body: custom SMS text to test parsing (if omitted, auto-generates from a pending order)
+      - sms_body: SMS text to test (if omitted, auto-generates a realistic NatCash Creole SMS from a pending order)
       - dry_run: if true, parse and match but do NOT mark the order as paid (default true)
+    Reuses the same parsing logic as the real /api/webhook/natcash endpoint.
     Returns parsing details and match result so admins can verify the pipeline.
     """
     try:
@@ -3461,7 +3462,12 @@ async def natcash_test_sms(request: Request):
         target = pending_orders[0]
         amount_htg = round(float(target.get("total_amount", 0)) * rate, 2)
         ref = target.get("natcash_reference") or "TESTRF"
-        sms_body_input = f"Ou resevwa {amount_htg:.2f} HTG nan men KLIYAN. Ref: {ref}. Nouvo balans ou: 99999.00 HTG"
+        now_str = datetime.now(timezone.utc).strftime("%H:%M %d/%m/%Y")
+        sms_body_input = (
+            f"Ou resevwa {amount_htg:.2f} HTG nan TEST KLIYAN 50900000000 "
+            f"nan {now_str}, kontni: {ref}. "
+            f"Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
+        )
 
     import re as _re
     amount_htg = None
@@ -3472,7 +3478,7 @@ async def natcash_test_sms(request: Request):
     if amount_match:
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
-    ref_match = _re.search(r"(?:ref|code|memo|contenu)[:\s]*(\w{4,12})", sms_body_input, _re.IGNORECASE)
+    ref_match = _re.search(r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body_input, _re.IGNORECASE)
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body_input)
     if ref_match:
@@ -3535,11 +3541,12 @@ async def natcash_test_sms(request: Request):
         now_iso = datetime.now(timezone.utc).isoformat()
         await db.natcash_sms_log.insert_one({
             "sms_body": sms_body_input,
-            "sms_from": "TEST-ADMIN",
+            "sms_from": "TEST-SMS-FORWARDER",
             "sms_time": now_iso,
             "parsed_amount": amount_htg,
             "parsed_ref": reference_code,
             "matched_order": matched_order["id"],
+            "source": "sms_forwarder_test",
             "is_test": True,
             "created_at": now_iso,
         })
@@ -3550,11 +3557,12 @@ async def natcash_test_sms(request: Request):
             "updated_at": now_iso,
         }})
         result["order_marked_paid"] = True
-        logging.info("NatCash TEST: order %s marked paid (dry_run=False)", matched_order["id"])
+        logging.info("NatCash SMS Forwarder TEST: order %s marked paid (dry_run=False)", matched_order["id"])
+        await _record_coupon_usage_if_needed(matched_order["id"])
         try:
             await _try_auto_deliver(matched_order["id"])
         except Exception as e:
-            logging.error("Auto-delivery error on NatCash test: %s", e)
+            logging.error("Auto-delivery error on NatCash SMS Forwarder test: %s", e)
         await _record_product_orders_if_needed(matched_order["id"])
     elif not dry_run and not matched_order:
         result["order_marked_paid"] = False
@@ -3613,7 +3621,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         amount_htg = float(amount_match.group(1).replace(",", ""))
 
     ref_match = _re.search(
-        r"(?:ref|code|memo|contenu)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
+        r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _re.IGNORECASE
     )
     if not ref_match:
         ref_match = _re.search(r"\b([A-Z0-9]{6})\b", sms_body)

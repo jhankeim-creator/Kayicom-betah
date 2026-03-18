@@ -1523,26 +1523,26 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             <p className="text-white/40 text-xs mt-1">Konfigure URL sa a nan app SMS Forwarder (FKT Solutions) sou telefòn Android ou. Mete metòd POST ak header: Authorization: Bearer [secret ou a]</p>
                           </div>
 
-                          {/* NatCash SMS Test */}
+                          {/* NatCash SMS Forwarder Test */}
                           <div className="border-t border-yellow-400/20 pt-4 mt-4">
                             <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
-                              🧪 Teste SMS Callback
+                              🧪 Teste SMS Forwarder
                             </h5>
                             <p className="text-white/50 text-xs mb-3">
-                              Simulate yon mesaj SMS NatCash pou teste si sistèm nan ka parse li e matche ak yon kòmand.
+                              Simulate yon mesaj SMS ki soti nan app SMS Forwarder ou a pou teste si sistèm nan ka analize li, jwenn kontni an, epi matche ak yon kòmand NatCash.
                             </p>
                             <div className="space-y-3">
                               <div>
                                 <Label className="text-white/70 text-sm">Mesaj SMS (kite vid pou otomatik)</Label>
                                 <Textarea
-                                  placeholder="Ex: Ou resevwa 3375.00 HTG nan men KLIYAN. Ref: ABC123. Nouvo balans ou: 5000.00 HTG"
+                                  placeholder="Ex: Ou resevwa 3375.00 HTG nan JEAN PIERRE 50912345678 nan 14:30 18/03/2026, kontni: ABC123. Balans ou: 5000.00 HTG. Transcode: 26031800000000. Mesi"
                                   value={natcashTestSms}
                                   onChange={(e) => setNatcashTestSms(e.target.value)}
                                   className="bg-white/10 border-white/20 text-white mt-1"
                                   rows={2}
                                 />
                                 <p className="text-white/40 text-xs mt-1">
-                                  Si ou kite vid, sistèm nan ap jenere yon mesaj SMS baze sou dènye kòmand NatCash ki an atant.
+                                  Si ou kite vid, sistèm nan ap jenere yon mesaj SMS tankou sa app SMS Forwarder ou a ta voye, baze sou dènye kòmand NatCash ki an atant.
                                 </p>
                               </div>
                               <div className="flex items-center gap-3">
@@ -1563,7 +1563,7 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                                 disabled={testingNatcash}
                                 className="border-yellow-400 text-yellow-300 hover:bg-yellow-400/10 w-full"
                               >
-                                {testingNatcash ? '⏳ Ap teste...' : '🧪 Teste Automate SMS'}
+                                {testingNatcash ? '⏳ Ap teste...' : '📲 Teste SMS Forwarder'}
                               </Button>
 
                               {natcashTestResult && (
@@ -1586,11 +1586,11 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                                   </div>
 
                                   <div className="text-white/60 text-xs space-y-1">
-                                    <p><span className="text-white/40">SMS:</span> {natcashTestResult.sms_body_used}</p>
-                                    <p><span className="text-white/40">Montan parse:</span> {natcashTestResult.parsed?.amount_htg != null ? `${natcashTestResult.parsed.amount_htg} HTG` : 'pa jwenn'}</p>
-                                    <p><span className="text-white/40">Ref parse:</span> {natcashTestResult.parsed?.reference_code || 'pa jwenn'}</p>
+                                    <p><span className="text-white/40">📩 SMS Forwarder voye:</span> {natcashTestResult.sms_body_used}</p>
+                                    <p><span className="text-white/40">💰 Montan parse:</span> {natcashTestResult.parsed?.amount_htg != null ? `${natcashTestResult.parsed.amount_htg} HTG` : 'pa jwenn'}</p>
+                                    <p><span className="text-white/40">🔑 Kontni/Ref parse:</span> {natcashTestResult.parsed?.reference_code || 'pa jwenn'}</p>
                                     {natcashTestResult.match_method && (
-                                      <p><span className="text-white/40">Metòd match:</span> {natcashTestResult.match_method === 'reference_code' ? 'Kòd referans' : 'Montan'}</p>
+                                      <p><span className="text-white/40">🔍 Metòd match:</span> {natcashTestResult.match_method === 'reference_code' ? 'Kòd referans (kontni)' : 'Montan'}</p>
                                     )}
                                   </div>
 
