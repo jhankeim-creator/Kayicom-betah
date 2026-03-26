@@ -160,6 +160,9 @@ class _FakeDB:
         self.withdrawals = _FakeCollection()
         self.wallet_topups = _FakeCollection()
         self.minutes_transfers = _FakeCollection()
+        self.natcash_sms_log = _FakeCollection()
+        self.coupons = _FakeCollection()
+        self.product_codes = _FakeCollection()
 
 
 @pytest.fixture()
@@ -846,3 +849,436 @@ def test_subscription_expired_skips_admin_alert_when_active_renewal_exists(app_m
     asyncio.run(app_module._maybe_send_subscription_emails(expired_order))
     assert alerts == []
     assert not any(d.get("type") == "expired_admin_telegram" for d in app_module.db.subscription_notifications._docs)
+
+
+# ==================== NATCASH SMS PARSING TESTS ====================
+
+
+def test_parse_natcash_sms_standard_htg_format(app_module):
+    """Parse a standard NatCash SMS with HTG amount and kontni reference."""
+    sms = (
+        "Ou resevwa 675.00 HTG nan TEST KLIYAN 50900000000 "
+        "nan 14:30 25/03/2026, kontni: REF123. "
+        "Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
+    )
+    result = app_module._parse_natcash_sms(sms)
+    assert result["amount_htg"] == 675.00
+    assert result["reference_code"] == "REF123"
+
+
+def test_parse_natcash_sms_gdes_amount(app_module):
+    """Parse SMS with 'Gdes' currency format."""
+    sms = "Ou resevwa Gdes 1350.50 de 50936000000. Ref: ABCD12. Balans: 5000 HTG"
+    result = app_module._parse_natcash_sms(sms)
+    assert result["amount_htg"] == 1350.50
+    assert result["reference_code"] == "ABCD12"
+
+
+def test_parse_natcash_sms_amount_before_currency(app_module):
+    """Parse SMS where amount comes before the currency label."""
+    sms = "Transfer resevwa: 500.00 HTG de 50900000000. Code: XYZ789"
+    result = app_module._parse_natcash_sms(sms)
+    assert result["amount_htg"] == 500.00
+    assert result["reference_code"] == "XYZ789"
+
+
+def test_parse_natcash_sms_no_reference(app_module):
+    """Parse SMS that has amount but no recognizable reference."""
+    sms = "Ou resevwa 200.00 HTG nan 50900000000. Balans ou: 300 HTG"
+    result = app_module._parse_natcash_sms(sms)
+    assert result["amount_htg"] == 200.00
+
+
+def test_parse_natcash_sms_unparseable(app_module):
+    """Totally unrelated text returns None for both fields."""
+    result = app_module._parse_natcash_sms("Bonjou, ki jan ou ye?")
+    assert result["amount_htg"] is None
+    assert result["reference_code"] is None
+
+
+def test_parse_natcash_sms_comma_thousands(app_module):
+    """Parse SMS with comma-separated thousands in the amount."""
+    sms = "Ou resevwa 1,350.00 HTG. Kontni: TEST01"
+    result = app_module._parse_natcash_sms(sms)
+    assert result["amount_htg"] == 1350.00
+    assert result["reference_code"] == "TEST01"
+
+
+# ==================== SMS FIELD EXTRACTION TESTS ====================
+
+
+def test_extract_sms_fields_flat_message_key(app_module):
+    """Extract SMS body from flat payload using 'message' key."""
+    data = {"message": "Ou resevwa 500 HTG", "sender": "+50936000000", "timestamp": "2026-03-25T10:00:00Z"}
+    result = app_module._extract_sms_fields(data)
+    assert result["sms_body"] == "Ou resevwa 500 HTG"
+    assert result["sms_from"] == "+50936000000"
+    assert result["sms_time"] == "2026-03-25T10:00:00Z"
+
+
+def test_extract_sms_fields_body_key(app_module):
+    """Extract SMS body using 'body' key."""
+    data = {"body": "Payment received 675 HTG", "from": "+50900000000"}
+    result = app_module._extract_sms_fields(data)
+    assert result["sms_body"] == "Payment received 675 HTG"
+    assert result["sms_from"] == "+50900000000"
+
+
+def test_extract_sms_fields_nested_sms_object(app_module):
+    """Extract SMS body from nested sms.message payload."""
+    data = {"sms": {"message": "Ou resevwa 1000 HTG", "from": "+509123", "receivedAt": "12:00"}}
+    result = app_module._extract_sms_fields(data)
+    assert result["sms_body"] == "Ou resevwa 1000 HTG"
+    assert result["sms_from"] == "+509123"
+    assert result["sms_time"] == "12:00"
+
+
+def test_extract_sms_fields_empty_payload(app_module):
+    """Empty payload returns empty strings."""
+    result = app_module._extract_sms_fields({})
+    assert result["sms_body"] == ""
+    assert result["sms_from"] == ""
+
+
+def test_extract_sms_fields_smsBody_camelCase(app_module):
+    """Extract from camelCase key used by some Android forwarder apps."""
+    data = {"smsBody": "Ou resevwa 300 HTG kontni: AABB11", "smsFrom": "+50900000000"}
+    result = app_module._extract_sms_fields(data)
+    assert result["sms_body"] == "Ou resevwa 300 HTG kontni: AABB11"
+    assert result["sms_from"] == "+50900000000"
+
+
+# ==================== NATCASH WEBHOOK ENDPOINT TESTS ====================
+
+
+def test_webhook_natcash_matches_order_by_reference(app_module):
+    """Webhook with matching reference code confirms payment on the order."""
+    app_module.db.orders._docs.append({
+        "id": "ord-nc-1",
+        "user_id": "u-nc-1",
+        "user_email": "nc1@example.com",
+        "items": [{"product_id": "p-nc-1", "product_name": "Gift Card", "quantity": 1, "price": 5.0}],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "REF001",
+    })
+    app_module.db.products._docs.append({
+        "id": "p-nc-1", "name": "Gift Card", "description": "Test", "category": "giftcard",
+        "price": 5.0, "delivery_type": "manual",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Ou resevwa 675.00 HTG nan 50900000000, kontni: REF001. Balans ou: 9999 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["matched"] is True
+    assert data["order_id"] == "ord-nc-1"
+
+    order = next(o for o in app_module.db.orders._docs if o["id"] == "ord-nc-1")
+    assert order["payment_status"] == "paid"
+    assert "natcash_sms_body" in order
+
+    assert len(app_module.db.natcash_sms_log._docs) >= 1
+
+
+def test_webhook_natcash_no_matching_order(app_module):
+    """Webhook with unknown reference returns no_order_found."""
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Ou resevwa 500.00 HTG, kontni: XXXXXX. Balans: 1000 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["matched"] is False
+
+
+def test_webhook_natcash_unparseable_sms(app_module):
+    """Webhook with non-NatCash SMS returns ignored status."""
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Bonjou, koman ou ye jodi a?"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "ignored"
+
+
+def test_webhook_natcash_no_sms_body(app_module):
+    """Webhook with empty/missing SMS body returns error."""
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"sender": "+50900000000"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "error"
+    assert "No SMS body" in data.get("reason", "")
+
+
+def test_webhook_natcash_bearer_auth_rejects_wrong_token(app_module):
+    """Webhook rejects request when Bearer token doesn't match configured secret."""
+    app_module.db.settings._docs[0]["natcash_callback_secret"] = "mysecret123"
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Ou resevwa 500.00 HTG kontni: AAA111"},
+        headers={"Authorization": "Bearer wrongtoken"},
+    )
+    assert r.status_code == 401
+
+
+def test_webhook_natcash_bearer_auth_accepts_correct_token(app_module):
+    """Webhook accepts request when Bearer token matches configured secret."""
+    app_module.db.settings._docs[0]["natcash_callback_secret"] = "mysecret123"
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Ou resevwa 500.00 HTG kontni: BBB222"},
+        headers={"Authorization": "Bearer mysecret123"},
+    )
+    assert r.status_code == 200, r.text
+
+
+def test_webhook_natcash_matches_order_by_amount(app_module):
+    """Webhook matches order by HTG amount when reference doesn't match."""
+    app_module.db.settings._docs[0]["natcash_usd_htg_rate"] = 135.0
+    app_module.db.orders._docs.append({
+        "id": "ord-nc-amt-1",
+        "user_id": "u-nc-2",
+        "user_email": "nc2@example.com",
+        "items": [],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "NOMATCH",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/webhook/natcash",
+        json={"message": "Ou resevwa 675.00 HTG nan 50900000000. Balans: 9999 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["matched"] is True
+    assert data["order_id"] == "ord-nc-amt-1"
+
+
+# ==================== NATCASH TEST-SMS ENDPOINT TESTS ====================
+
+
+def test_natcash_test_sms_dry_run_with_pending_order(app_module):
+    """Admin test-sms in dry_run mode generates SMS and shows match without confirming."""
+    app_module.db.settings._docs[0]["natcash_usd_htg_rate"] = 135.0
+    app_module.db.orders._docs.append({
+        "id": "ord-test-1",
+        "user_id": "u-test-1",
+        "user_email": "test1@example.com",
+        "items": [],
+        "total_amount": 10.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "TREF01",
+        "created_at": "2026-03-25T10:00:00Z",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/test-sms", json={"dry_run": True})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["dry_run"] is True
+    assert data["matched"] is True
+    assert data["parsed"]["amount_htg"] is not None
+
+    order = next(o for o in app_module.db.orders._docs if o["id"] == "ord-test-1")
+    assert order["payment_status"] == "pending"
+
+
+def test_natcash_test_sms_custom_sms_body(app_module):
+    """Admin test-sms with custom sms_body parses it correctly."""
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/natcash/test-sms",
+        json={"sms_body": "Ou resevwa 1,000.00 HTG kontni: CUSTOM. Balans: 5000 HTG", "dry_run": True},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["parsed"]["amount_htg"] == 1000.00
+    assert data["parsed"]["reference_code"] == "CUSTOM"
+
+
+def test_natcash_test_sms_no_pending_orders(app_module):
+    """Admin test-sms with no pending orders and no custom body returns error."""
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/test-sms", json={"dry_run": True})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is False
+    assert "error" in data
+
+
+def test_natcash_test_sms_dry_run_false_confirms_payment(app_module):
+    """Admin test-sms with dry_run=false actually marks order as paid."""
+    app_module.db.settings._docs[0]["natcash_usd_htg_rate"] = 135.0
+    app_module.db.orders._docs.append({
+        "id": "ord-test-pay-1",
+        "user_id": "u-test-pay-1",
+        "user_email": "pay1@example.com",
+        "items": [{"product_id": "p-t1", "product_name": "Test", "quantity": 1, "price": 10.0}],
+        "total_amount": 10.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "PAYREF",
+        "created_at": "2026-03-25T10:00:00Z",
+    })
+    app_module.db.products._docs.append({
+        "id": "p-t1", "name": "Test Product", "description": "Test", "category": "giftcard",
+        "price": 10.0, "delivery_type": "manual",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/test-sms", json={"dry_run": False})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["order_marked_paid"] is True
+
+    order = next(o for o in app_module.db.orders._docs if o["id"] == "ord-test-pay-1")
+    assert order["payment_status"] == "paid"
+
+
+# ==================== NATCASH SMS CALLBACK (AUTOMATE APP) TESTS ====================
+
+
+def test_natcash_sms_callback_post_matches_order(app_module):
+    """The /natcash/sms-callback POST endpoint parses SMS and matches order."""
+    app_module.db.orders._docs.append({
+        "id": "ord-cb-1",
+        "user_id": "u-cb-1",
+        "user_email": "cb1@example.com",
+        "items": [{"product_id": "p-cb-1", "product_name": "Card", "quantity": 1, "price": 5.0}],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "CBREF1",
+    })
+    app_module.db.products._docs.append({
+        "id": "p-cb-1", "name": "Card", "description": "Test", "category": "giftcard",
+        "price": 5.0, "delivery_type": "manual",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/natcash/sms-callback",
+        json={"sms_body": "Ou resevwa 675.00 HTG kontni: CBREF1. Balans: 9999 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["matched"] is True
+
+    order = next(o for o in app_module.db.orders._docs if o["id"] == "ord-cb-1")
+    assert order["payment_status"] == "paid"
+
+
+def test_natcash_sms_callback_get_with_query_params(app_module):
+    """The /natcash/sms-callback GET endpoint works with query parameters."""
+    app_module.db.orders._docs.append({
+        "id": "ord-cb-get-1",
+        "user_id": "u-cb-get-1",
+        "user_email": "cbget@example.com",
+        "items": [],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "GETREF",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.get(
+        "/api/natcash/sms-callback",
+        params={"sms_body": "Ou resevwa 675.00 HTG kontni: GETREF. Balans: 9999 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["ok"] is True
+    assert data["matched"] is True
+
+
+def test_natcash_sms_callback_rejects_wrong_secret(app_module):
+    """The sms-callback rejects requests with wrong secret."""
+    app_module.db.settings._docs[0]["natcash_callback_secret"] = "correctsecret"
+    client = TestClient(app_module.app)
+    r = client.post(
+        "/api/natcash/sms-callback",
+        json={"sms_body": "Ou resevwa 500 HTG", "secret": "wrongsecret"},
+    )
+    assert r.status_code == 403
+
+
+def test_natcash_sms_callback_no_body_returns_400(app_module):
+    """The sms-callback returns 400 when no SMS body provided."""
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/sms-callback", json={"sms_from": "+509000"})
+    assert r.status_code == 400
+
+
+# ==================== NATCASH VERIFY ENDPOINT TESTS ====================
+
+
+def test_natcash_verify_payment_pending(app_module):
+    """Verify returns not-yet-detected when order is still pending."""
+    app_module.db.orders._docs.append({
+        "id": "ord-verify-1",
+        "user_id": "u-v-1",
+        "user_email": "v1@example.com",
+        "items": [],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "VREF01",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/verify/ord-verify-1")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["verified"] is False
+
+
+def test_natcash_verify_payment_already_paid(app_module):
+    """Verify returns confirmed when order is already paid."""
+    app_module.db.orders._docs.append({
+        "id": "ord-verify-2",
+        "user_id": "u-v-2",
+        "user_email": "v2@example.com",
+        "items": [],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "paid",
+        "order_status": "completed",
+    })
+
+    client = TestClient(app_module.app)
+    r = client.post("/api/natcash/verify/ord-verify-2")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["verified"] is True

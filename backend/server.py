@@ -3331,14 +3331,16 @@ def _parse_natcash_sms(sms_body: str) -> dict:
     reference_code = None
 
     amount_match = _natcash_re.search(
-        r"(?:G|HTG|Gdes?)\s*([\d,]+(?:\.\d{1,2})?)", sms_body, _natcash_re.IGNORECASE
+        r"\b(?:HTG|Gdes?|G)\s*(\d[\d,]*(?:\.\d{1,2})?)", sms_body, _natcash_re.IGNORECASE
     )
     if not amount_match:
         amount_match = _natcash_re.search(
-            r"([\d,]+(?:\.\d{1,2})?)\s*(?:G|HTG|Gdes?)", sms_body, _natcash_re.IGNORECASE
+            r"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:HTG|Gdes?|G)\b", sms_body, _natcash_re.IGNORECASE
         )
     if amount_match:
-        amount_htg = float(amount_match.group(1).replace(",", ""))
+        raw = amount_match.group(1).replace(",", "")
+        if raw:
+            amount_htg = float(raw)
 
     ref_match = _natcash_re.search(
         r"\b(?:ref|code|memo|contenu|kontni)[:\s]*(\w{4,12})", sms_body, _natcash_re.IGNORECASE
