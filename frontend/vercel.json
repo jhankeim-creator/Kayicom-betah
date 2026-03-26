@@ -12,6 +12,10 @@
   "regions": ["sin1"],
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "https://api.kayicom.com/api/:path*"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
