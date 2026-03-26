@@ -4473,12 +4473,33 @@ async def test_binance_pay_connection():
     proxy_url = (settings or {}).get("binance_pay_proxy_url", "") or ""
 
     if not api_key or not api_secret:
-        return {"ok": False, "error": "Binance API Key ak Secret Key pa konfigire"}
+        return {"ok": False, "error": "Binance API Key ak Secret Key pa konfigire. Ale nan Binance → Account → API Management → kreye yon API Key ak pèmisyon 'Enable Reading'."}
 
     import time as _time
     now_ms = int(_time.time() * 1000)
     one_day_ms = 24 * 3600 * 1000
 
+    debug_info = {
+        "api_key_prefix": api_key[:8] + "..." if len(api_key) > 8 else "(twò kout)",
+        "proxy_url": proxy_url[:50] + "..." if len(proxy_url) > 50 else (proxy_url or "(pa konfigire)"),
+    }
+
+    # Step 1: Test proxy URL if configured
+    if proxy_url:
+        try:
+            test_resp = requests.get(proxy_url.rstrip("/"), timeout=10)
+            debug_info["proxy_status"] = test_resp.status_code
+            debug_info["proxy_reachable"] = True
+        except Exception as e:
+            debug_info["proxy_reachable"] = False
+            debug_info["proxy_error"] = str(e)[:200]
+            return {
+                "ok": False,
+                "error": f"Proxy URL pa fonksyone: {str(e)[:100]}. Verifye Cloudflare Worker deploy.",
+                "debug": debug_info,
+            }
+
+    # Step 2: Try Pay transactions API
     try:
         result = await _binance_get_pay_transactions(
             api_key, api_secret,
@@ -4487,6 +4508,8 @@ async def test_binance_pay_connection():
             limit=5,
             proxy_url=proxy_url
         )
+        debug_info["raw_code"] = result.get("code")
+        debug_info["raw_msg"] = str(result.get("message") or result.get("msg") or "")[:200]
 
         code = result.get("code")
         if str(code) == "000000":
@@ -4504,24 +4527,29 @@ async def test_binance_pay_connection():
                     }
                     for tx in (result.get("data") or [])[:5]
                 ],
-                "proxy_used": bool(proxy_url),
+                "debug": debug_info,
             }
         else:
             msg = result.get("message") or result.get("msg") or "Unknown"
             hint = ""
             if str(code) == "-1" and "restricted" in str(msg).lower():
-                hint = " — Ou bezwen yon Cloudflare Proxy URL ki fonksyone."
-            elif str(code) == "-1":
-                hint = " — Verifye API Key, Secret Key, ak Proxy URL."
+                hint = " Cloudflare Proxy pa fonksyone oswa li bloke tou."
+            elif str(code) == "-2014" or "API-key" in str(msg):
+                hint = " API Key pa valid. Kreye yon nouvo nan Binance → API Management."
+            elif str(code) == "-2015" or "Invalid API" in str(msg):
+                hint = " API Key oswa Secret Key pa bon."
+            elif str(code) == "-1022" or "signature" in str(msg).lower():
+                hint = " Secret Key pa bon. Verifye li nan Binance → API Management."
+            elif not code or str(code) == "None":
+                hint = " Proxy oswa API pa retounen repons valid. Verifye Proxy URL."
             return {
                 "ok": False,
-                "error": f"Binance API erè: {msg} (code: {code}){hint}",
-                "raw_response": {k: v for k, v in result.items() if k in ("code", "msg", "message")},
-                "proxy_used": bool(proxy_url),
-                "proxy_url_set": proxy_url[:30] + "..." if len(proxy_url) > 30 else proxy_url,
+                "error": f"Binance API erè: {msg} (code: {code}).{hint}",
+                "debug": debug_info,
             }
     except Exception as e:
-        return {"ok": False, "error": f"Koneksyon echwe: {str(e)}"}
+        debug_info["exception"] = str(e)[:300]
+        return {"ok": False, "error": f"Koneksyon echwe: {str(e)[:200]}", "debug": debug_info}
 
 
 class BinancePayVerifyRequest(BaseModel):
