@@ -1772,6 +1772,25 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                                 {binanceTestResult.error && (
                                   <p className="text-red-400 text-xs">{binanceTestResult.error}</p>
                                 )}
+                                {binanceTestResult.debug && (
+                                  <div className="bg-white/5 rounded p-2 mt-2 text-xs text-white/40 space-y-1">
+                                    <p className="text-white/60 font-semibold">Debug:</p>
+                                    <p>API Key: {binanceTestResult.debug.api_key_prefix}</p>
+                                    <p>Proxy URL: {binanceTestResult.debug.proxy_url}</p>
+                                    {binanceTestResult.debug.proxy_reachable !== undefined && (
+                                      <p>Proxy aksesib: {binanceTestResult.debug.proxy_reachable ? '✅ Wi' : '❌ Non'}</p>
+                                    )}
+                                    {binanceTestResult.debug.proxy_error && (
+                                      <p className="text-red-400">Proxy erè: {binanceTestResult.debug.proxy_error}</p>
+                                    )}
+                                    {binanceTestResult.debug.raw_code !== undefined && (
+                                      <p>Binance code: {String(binanceTestResult.debug.raw_code)}</p>
+                                    )}
+                                    {binanceTestResult.debug.raw_msg && (
+                                      <p>Binance mesaj: {binanceTestResult.debug.raw_msg}</p>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
