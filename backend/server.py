@@ -3652,12 +3652,13 @@ async def natcash_test_sms(request: Request):
     return result
 
 
+@api_router.get("/webhook/natcash")
 @api_router.post("/webhook/natcash")
 async def natcash_webhook_sms_forwarder(request: Request):
     """Receive NatCash SMS via SMS Forwarder apps (FKT Solutions, SMS Forwarder, etc.).
 
-    Accepts JSON or form-encoded data with flexible field names to support
-    various Android SMS Forwarder apps. Authenticates via Bearer token if configured.
+    Accepts GET (query params) or POST (JSON/form) to support various Android
+    SMS Forwarder apps. Authenticates via Bearer token if configured.
     """
     auth_header = request.headers.get("Authorization", "")
     settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
@@ -3675,23 +3676,26 @@ async def natcash_webhook_sms_forwarder(request: Request):
             raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
 
     data = {}
-    content_type = request.headers.get("content-type", "")
-    try:
-        if "json" in content_type or not content_type:
-            data = await request.json()
-        elif "form" in content_type:
-            form = await request.form()
-            data = dict(form)
-        else:
-            try:
+    if request.method == "GET":
+        data = dict(request.query_params)
+    else:
+        content_type = request.headers.get("content-type", "")
+        try:
+            if "json" in content_type or not content_type:
                 data = await request.json()
-            except Exception:
+            elif "form" in content_type:
                 form = await request.form()
                 data = dict(form)
-    except Exception:
-        raw_body = (await request.body()).decode("utf-8", errors="replace")
-        logging.error("NatCash webhook: could not parse body (content-type=%s): %s", content_type, raw_body[:500])
-        raise HTTPException(status_code=400, detail="Could not parse request body as JSON or form data")
+            else:
+                try:
+                    data = await request.json()
+                except Exception:
+                    form = await request.form()
+                    data = dict(form)
+        except Exception:
+            raw_body = (await request.body()).decode("utf-8", errors="replace")
+            logging.error("NatCash webhook: could not parse body (content-type=%s): %s", content_type, raw_body[:500])
+            raise HTTPException(status_code=400, detail="Could not parse request body as JSON or form data")
 
     logging.info("NatCash webhook raw payload: %s", str(data)[:500])
 
