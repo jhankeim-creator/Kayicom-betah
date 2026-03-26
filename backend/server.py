@@ -223,7 +223,7 @@ DEFAULT_CATEGORY_ORDERS_BASE = {
 }
 DEFAULT_CATEGORY_ORDERS_SPAN = 750
 NETFLIX_DEFAULT_ORDERS_COUNT = 1568
-ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "15")))
+ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "1440")))
 CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 _order_auto_cancel_task: Optional[asyncio.Task] = None
 _subscription_notification_task: Optional[asyncio.Task] = None

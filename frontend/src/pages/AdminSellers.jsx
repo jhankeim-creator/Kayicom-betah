@@ -200,21 +200,15 @@ const AdminSellers = ({ user, logout, settings }) => {
                   <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">Personal Information</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div><p className="text-white/50 text-xs">Email</p><p className="text-white text-sm">{selectedSeller.email}</p></div>
-                    <div><p className="text-white/50 text-xs">Name</p><p className="text-white text-sm">{selectedSeller.full_name}</p></div>
-                    {selectedSeller.seller_phone && (
-                      <div><p className="text-white/50 text-xs">Phone</p><p className="text-white text-sm">{selectedSeller.seller_phone}</p></div>
-                    )}
-                    {selectedSeller.seller_date_of_birth && (
-                      <div><p className="text-white/50 text-xs">Date of Birth</p><p className="text-white text-sm">{selectedSeller.seller_date_of_birth}</p></div>
-                    )}
-                    {selectedSeller.seller_country && (
-                      <div><p className="text-white/50 text-xs">Country</p><p className="text-white text-sm">{selectedSeller.seller_country}</p></div>
-                    )}
-                    {selectedSeller.seller_city && (
-                      <div><p className="text-white/50 text-xs">City</p><p className="text-white text-sm">{selectedSeller.seller_city}</p></div>
-                    )}
-                    {selectedSeller.seller_address && (
-                      <div className="col-span-2"><p className="text-white/50 text-xs">Address</p><p className="text-white text-sm">{selectedSeller.seller_address}</p></div>
+                    <div><p className="text-white/50 text-xs">Name</p><p className="text-white text-sm">{selectedSeller.full_name || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">Phone</p><p className="text-white text-sm">{selectedSeller.seller_phone || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">Date of Birth</p><p className="text-white text-sm">{selectedSeller.seller_date_of_birth || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">Country</p><p className="text-white text-sm">{selectedSeller.seller_country || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">City</p><p className="text-white text-sm">{selectedSeller.seller_city || 'Non fourni'}</p></div>
+                    <div className="col-span-2"><p className="text-white/50 text-xs">Address</p><p className="text-white text-sm">{selectedSeller.seller_address || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">Customer ID</p><p className="text-white text-sm font-mono">{selectedSeller.customer_id || selectedSeller.id || 'N/A'}</p></div>
+                    {selectedSeller.created_at && (
+                      <div><p className="text-white/50 text-xs">Registration Date</p><p className="text-white text-sm">{new Date(selectedSeller.created_at).toLocaleDateString()}</p></div>
                     )}
                     <div><p className="text-white/50 text-xs">Status</p>
                       <Badge className={statusColors[selectedSeller.seller_status] || ''}>
@@ -231,42 +225,55 @@ const AdminSellers = ({ user, logout, settings }) => {
                 )}
 
                 {/* Selling Experience */}
-                {(selectedSeller.seller_selling_platforms || selectedSeller.seller_years_experience != null || selectedSeller.seller_selling_proof_url) && (
-                  <div>
-                    <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">Selling Experience</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedSeller.seller_selling_platforms && (
-                        <div className="col-span-2"><p className="text-white/50 text-xs">Platforms</p><p className="text-white text-sm">{selectedSeller.seller_selling_platforms}</p></div>
-                      )}
-                      {selectedSeller.seller_years_experience != null && (
-                        <div><p className="text-white/50 text-xs">Years Experience</p><p className="text-white text-sm">{selectedSeller.seller_years_experience} year(s)</p></div>
-                      )}
-                      {selectedSeller.seller_selling_proof_url && (
-                        <div className="col-span-2">
-                          <p className="text-white/50 text-xs mb-1">Proof of Sales</p>
-                          <img src={selectedSeller.seller_selling_proof_url} alt="Sales proof" className="w-full max-w-sm rounded-lg border border-white/20" />
-                        </div>
+                <div>
+                  <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">Selling Experience</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2"><p className="text-white/50 text-xs">Platforms</p><p className="text-white text-sm">{selectedSeller.seller_selling_platforms || 'Non fourni'}</p></div>
+                    <div><p className="text-white/50 text-xs">Years Experience</p><p className="text-white text-sm">{selectedSeller.seller_years_experience != null ? `${selectedSeller.seller_years_experience} year(s)` : 'Non fourni'}</p></div>
+                    <div className="col-span-2">
+                      <p className="text-white/50 text-xs mb-1">Proof of Sales</p>
+                      {selectedSeller.seller_selling_proof_url ? (
+                        <img src={selectedSeller.seller_selling_proof_url} alt="Sales proof" className="w-full max-w-sm rounded-lg border border-white/20" />
+                      ) : (
+                        <p className="text-white/40 text-sm italic">Pa soumèt</p>
                       )}
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* KYC Documents */}
-                {(selectedSeller.seller_kyc_document_url || selectedSeller.seller_kyc_selfie_url) && (
-                  <div>
-                    <p className="text-white/50 text-xs mb-2">KYC Documents</p>
-                    <div className="grid grid-cols-2 gap-3">
-                      {selectedSeller.seller_kyc_document_url && (
-                        <div>
-                          <p className="text-white/40 text-xs mb-1">ID Document</p>
-                          <img src={selectedSeller.seller_kyc_document_url} alt="ID" className="w-full rounded-lg border border-white/20" />
-                        </div>
+                <div>
+                  <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">KYC Documents</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-white/40 text-xs mb-1">ID Document</p>
+                      {selectedSeller.seller_kyc_document_url ? (
+                        <img src={selectedSeller.seller_kyc_document_url} alt="ID" className="w-full rounded-lg border border-white/20" />
+                      ) : (
+                        <p className="text-white/40 text-sm italic">Pa soumèt</p>
                       )}
-                      {selectedSeller.seller_kyc_selfie_url && (
-                        <div>
-                          <p className="text-white/40 text-xs mb-1">Selfie with ID</p>
-                          <img src={selectedSeller.seller_kyc_selfie_url} alt="Selfie" className="w-full rounded-lg border border-white/20" />
-                        </div>
+                    </div>
+                    <div>
+                      <p className="text-white/40 text-xs mb-1">Selfie with ID</p>
+                      {selectedSeller.seller_kyc_selfie_url ? (
+                        <img src={selectedSeller.seller_kyc_selfie_url} alt="Selfie" className="w-full rounded-lg border border-white/20" />
+                      ) : (
+                        <p className="text-white/40 text-sm italic">Pa soumèt</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* KYC Timestamps */}
+                {(selectedSeller.kyc_submitted_at || selectedSeller.seller_reviewed_at) && (
+                  <div>
+                    <p className="text-green-400 text-xs font-semibold uppercase tracking-wider mb-2">KYC Timestamps</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {selectedSeller.kyc_submitted_at && (
+                        <div><p className="text-white/50 text-xs">Submitted At</p><p className="text-white text-sm">{new Date(selectedSeller.kyc_submitted_at).toLocaleString()}</p></div>
+                      )}
+                      {selectedSeller.seller_reviewed_at && (
+                        <div><p className="text-white/50 text-xs">Reviewed At</p><p className="text-white text-sm">{new Date(selectedSeller.seller_reviewed_at).toLocaleString()}</p></div>
                       )}
                     </div>
                   </div>
