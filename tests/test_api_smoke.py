@@ -1122,13 +1122,15 @@ def test_natcash_test_sms_custom_sms_body(app_module):
 
 
 def test_natcash_test_sms_no_pending_orders(app_module):
-    """Admin test-sms with no pending orders and no custom body returns error."""
+    """Admin test-sms with no pending orders generates a demo SMS and parses it."""
     client = TestClient(app_module.app)
     r = client.post("/api/natcash/test-sms", json={"dry_run": True})
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data["ok"] is False
-    assert "error" in data
+    assert data["ok"] is True
+    assert data["parsed"]["amount_htg"] is not None
+    assert data["parsed"]["reference_code"] == "DEMO01"
+    assert data["matched"] is False
 
 
 def test_natcash_test_sms_dry_run_false_confirms_payment(app_module):

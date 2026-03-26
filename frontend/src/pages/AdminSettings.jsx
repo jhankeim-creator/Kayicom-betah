@@ -1615,6 +1615,26 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                                   <div className="text-white/40 text-xs">
                                     <p>Rate: 1 USD = {natcashTestResult.config?.usd_htg_rate} HTG | Secret: {natcashTestResult.config?.callback_secret_set ? '✅ konfigire' : '⚠️ pa konfigire'}</p>
                                   </div>
+
+                                  {natcashTestResult.recent_sms_logs?.length > 0 && (
+                                    <div className="bg-white/5 rounded p-3 text-xs text-white/70 space-y-2 mt-2 border border-white/10">
+                                      <p className="text-white/90 font-semibold flex items-center gap-1">📨 Dènye SMS ki rive nan webhook ({natcashTestResult.recent_sms_logs.length}):</p>
+                                      {natcashTestResult.recent_sms_logs.map((log, i) => (
+                                        <div key={i} className={`p-2 rounded ${log.matched_order ? 'bg-green-500/10 border border-green-500/20' : log.error ? 'bg-red-500/10 border border-red-500/20' : 'bg-yellow-500/10 border border-yellow-500/20'}`}>
+                                          <p className="text-white/80 break-all">📩 {log.sms_body || '(vid)'}</p>
+                                          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-white/50">
+                                            {log.sms_from && <span>📱 {log.sms_from}</span>}
+                                            <span>💰 {log.parsed_amount != null ? `${log.parsed_amount} HTG` : 'pa jwenn'}</span>
+                                            <span>🔑 {log.parsed_ref || 'pa jwenn'}</span>
+                                            <span>{log.matched_order ? `✅ Matche: ${log.matched_order.slice(0, 8)}...` : '❌ Pa matche'}</span>
+                                            {log.source && <span>📡 {log.source}</span>}
+                                            {log.created_at && <span>🕐 {new Date(log.created_at).toLocaleString()}</span>}
+                                          </div>
+                                          {log.error && <p className="text-red-400 mt-1">⚠️ {log.error}</p>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
