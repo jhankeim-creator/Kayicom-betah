@@ -4488,7 +4488,8 @@ async def test_binance_pay_connection():
             proxy_url=proxy_url
         )
 
-        if result.get("code") == "000000":
+        code = result.get("code")
+        if str(code) == "000000":
             tx_count = len(result.get("data", []))
             return {
                 "ok": True,
@@ -4506,9 +4507,18 @@ async def test_binance_pay_connection():
                 "proxy_used": bool(proxy_url),
             }
         else:
+            msg = result.get("message") or result.get("msg") or "Unknown"
+            hint = ""
+            if str(code) == "-1" and "restricted" in str(msg).lower():
+                hint = " — Ou bezwen yon Cloudflare Proxy URL ki fonksyone."
+            elif str(code) == "-1":
+                hint = " — Verifye API Key, Secret Key, ak Proxy URL."
             return {
                 "ok": False,
-                "error": f"Binance API erè: {result.get('message', result.get('msg', 'Unknown'))} (code: {result.get('code')})",
+                "error": f"Binance API erè: {msg} (code: {code}){hint}",
+                "raw_response": {k: v for k, v in result.items() if k in ("code", "msg", "message")},
+                "proxy_used": bool(proxy_url),
+                "proxy_url_set": proxy_url[:30] + "..." if len(proxy_url) > 30 else proxy_url,
             }
     except Exception as e:
         return {"ok": False, "error": f"Koneksyon echwe: {str(e)}"}
