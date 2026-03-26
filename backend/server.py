@@ -3507,6 +3507,21 @@ async def natcash_sms_callback(
     return {"ok": True, "matched": True, "order_id": order_id}
 
 
+@api_router.get("/natcash/sms-logs")
+async def natcash_sms_logs(limit: int = 50, offset: int = 0):
+    """Admin tool: retrieve the latest SMS messages received by the webhook.
+
+    Returns the raw SMS log entries stored by /api/webhook/natcash and
+    /api/natcash/sms-callback so admins can see what the SMS Forwarder
+    actually sent and whether each message was parsed/matched correctly.
+    """
+    docs = await db.natcash_sms_log.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).skip(offset).to_list(limit)
+    total = await db.natcash_sms_log.count_documents({})
+    return {"logs": docs, "total": total, "limit": limit, "offset": offset}
+
+
 @api_router.post("/natcash/test-sms")
 async def natcash_test_sms(request: Request):
     """Admin tool: simulate an SMS Forwarder webhook to test the NatCash pipeline.
@@ -3531,20 +3546,35 @@ async def natcash_test_sms(request: Request):
         "payment_status": "pending",
     }, {"_id": 0}).sort("created_at", -1).to_list(10)
 
+    # Fetch recent SMS logs received by the webhook so the admin can see them
+    recent_sms_logs = await db.natcash_sms_log.find(
+        {}, {"_id": 0}
+    ).sort("created_at", -1).to_list(10)
+
     if not sms_body_input:
-        if pending_orders:
+        # Use the most recent real SMS from the webhook log
+        if recent_sms_logs:
+            latest = recent_sms_logs[0]
+            sms_body_input = latest.get("sms_body") or ""
+        # Fall back to auto-generating from pending orders
+        if not sms_body_input and pending_orders:
             target = pending_orders[0]
-            amount_htg = round(float(target.get("total_amount", 0)) * rate, 2)
+            gen_amount = round(float(target.get("total_amount", 0)) * rate, 2)
             ref = target.get("natcash_reference") or "TESTRF"
-        else:
-            amount_htg = round(25.0 * rate, 2)
-            ref = "DEMO01"
-        now_str = datetime.now(timezone.utc).strftime("%H:%M %d/%m/%Y")
-        sms_body_input = (
-            f"Ou resevwa {amount_htg:.2f} HTG nan TEST KLIYAN 50900000000 "
-            f"nan {now_str}, kontni: {ref}. "
-            f"Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
-        )
+            now_str = datetime.now(timezone.utc).strftime("%H:%M %d/%m/%Y")
+            sms_body_input = (
+                f"Ou resevwa {gen_amount:.2f} HTG nan TEST KLIYAN 50900000000 "
+                f"nan {now_str}, kontni: {ref}. "
+                f"Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
+            )
+        if not sms_body_input:
+            gen_amount = round(25.0 * rate, 2)
+            now_str = datetime.now(timezone.utc).strftime("%H:%M %d/%m/%Y")
+            sms_body_input = (
+                f"Ou resevwa {gen_amount:.2f} HTG nan TEST KLIYAN 50900000000 "
+                f"nan {now_str}, kontni: DEMO01. "
+                f"Balans ou: 99999.00 HTG. Transcode: 00000000000000. Mesi"
+            )
 
     parsed = _parse_natcash_sms(sms_body_input)
     amount_htg = parsed["amount_htg"]
@@ -3583,6 +3613,20 @@ async def natcash_test_sms(request: Request):
             "usd_htg_rate": rate,
             "callback_secret_set": bool(callback_secret),
         },
+        "recent_sms_logs": [
+            {
+                "sms_body": log.get("sms_body", ""),
+                "sms_from": log.get("sms_from", ""),
+                "parsed_amount": log.get("parsed_amount"),
+                "parsed_ref": log.get("parsed_ref"),
+                "matched_order": log.get("matched_order"),
+                "match_method": log.get("match_method"),
+                "source": log.get("source", ""),
+                "created_at": log.get("created_at", ""),
+                "error": log.get("error"),
+            }
+            for log in recent_sms_logs[:5]
+        ],
     }
 
     if not dry_run and matched_order:
