@@ -1310,6 +1310,23 @@ async def _order_auto_cancel_worker():
         await asyncio.sleep(60)
 
 
+async def _is_binance_tx_used(tx_id: str) -> bool:
+    """Check if a Binance transaction ID has already been used to pay an order or topup."""
+    if not tx_id:
+        return False
+    existing_order = await db.orders.find_one({
+        "transaction_id": tx_id,
+        "payment_status": "paid",
+    }, {"_id": 0, "id": 1})
+    if existing_order:
+        return True
+    existing_topup = await db.wallet_topups.find_one({
+        "transaction_id": tx_id,
+        "payment_status": "paid",
+    }, {"_id": 0, "id": 1})
+    return bool(existing_topup)
+
+
 async def _binance_auto_check_worker():
     """Background worker that auto-verifies pending Binance Pay orders every 60 seconds."""
     while True:
@@ -1345,65 +1362,70 @@ async def _binance_auto_check_worker():
                         )
 
                         if result.get("code") == "000000" and result.get("data"):
+                            valid_txs = []
+                            for tx in result["data"]:
+                                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                    continue
+                                tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
+                                if not tx_id:
+                                    continue
+                                valid_txs.append((tx, tx_id, abs(float(tx.get("amount", 0)))))
+
                             for order in pending:
                                 order_amount = float(order.get("total_amount", 0))
-                                for tx in result["data"]:
-                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                for tx, tx_id, tx_amount in valid_txs:
+                                    if tx_amount < order_amount - 0.01:
                                         continue
-                                    tx_amount = abs(float(tx.get("amount", 0)))
-                                    if tx_amount >= order_amount - 0.01:
-                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
-                                        now_iso = datetime.now(timezone.utc).isoformat()
-                                        await db.orders.update_one({"id": order["id"]}, {"$set": {
-                                            "payment_status": "paid",
-                                            "order_status": "processing",
-                                            "transaction_id": tx_id,
-                                            "payment_proof_url": f"binance-auto-verified:{tx_id}",
-                                            "binance_pay_data": tx,
-                                            "updated_at": now_iso,
-                                        }})
-                                        await _record_coupon_usage_if_needed(order["id"])
-                                        await _record_product_orders_if_needed(order["id"])
-                                        try:
-                                            await _try_auto_deliver(order["id"])
-                                        except Exception as e:
-                                            logging.error("Auto-delivery error on Binance auto-check: %s", e)
-                                        try:
-                                            await _notify_admin_telegram("Binance Pay Auto-Verified (background)", [
-                                                f"Order: {order['id'][:8]}",
-                                                f"Amount: ${order_amount:.2f}",
-                                                f"TX: {tx_id}",
-                                                f"User: {order.get('user_email', 'N/A')}",
-                                            ])
-                                        except Exception:
-                                            pass
-                                        logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
-                                        break
+                                    if await _is_binance_tx_used(tx_id):
+                                        continue
+                                    now_iso = datetime.now(timezone.utc).isoformat()
+                                    await db.orders.update_one({"id": order["id"]}, {"$set": {
+                                        "payment_status": "paid",
+                                        "order_status": "processing",
+                                        "transaction_id": tx_id,
+                                        "payment_proof_url": f"binance-auto-verified:{tx_id}",
+                                        "binance_pay_data": tx,
+                                        "updated_at": now_iso,
+                                    }})
+                                    await _record_coupon_usage_if_needed(order["id"])
+                                    await _record_product_orders_if_needed(order["id"])
+                                    try:
+                                        await _try_auto_deliver(order["id"])
+                                    except Exception as e:
+                                        logging.error("Auto-delivery error on Binance auto-check: %s", e)
+                                    try:
+                                        await _notify_admin_telegram("Binance Pay Auto-Verified (background)", [
+                                            f"Order: {order['id'][:8]}",
+                                            f"Amount: ${order_amount:.2f}",
+                                            f"TX: {tx_id}",
+                                            f"User: {order.get('user_email', 'N/A')}",
+                                        ])
+                                    except Exception:
+                                        pass
+                                    logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
+                                    break
 
-                            # Also auto-verify pending Binance wallet topups
                             for topup in pending_topups:
                                 topup_amount = float(topup.get("amount", 0))
-                                for tx in result["data"]:
-                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                for tx, tx_id, tx_amount in valid_txs:
+                                    if tx_amount < topup_amount - 0.01:
                                         continue
-                                    tx_amount = abs(float(tx.get("amount", 0)))
-                                    if tx_amount >= topup_amount - 0.01:
-                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
-                                        now_iso = datetime.now(timezone.utc).isoformat()
-                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
-                                            "payment_status": "paid",
-                                            "transaction_id": tx_id,
-                                            "updated_at": now_iso,
-                                        }})
-                                        await db.users.update_one(
-                                            {"id": topup["user_id"]},
-                                            {"$inc": {"wallet_balance": topup_amount}}
-                                        )
-                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {"credited": True}})
-                                        logging.info("Binance auto-check: wallet topup %s auto-verified", topup["id"])
-                                        break
+                                    if await _is_binance_tx_used(tx_id):
+                                        continue
+                                    now_iso = datetime.now(timezone.utc).isoformat()
+                                    await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
+                                        "payment_status": "paid",
+                                        "transaction_id": tx_id,
+                                        "updated_at": now_iso,
+                                    }})
+                                    await db.users.update_one(
+                                        {"id": topup["user_id"]},
+                                        {"$inc": {"wallet_balance": topup_amount}}
+                                    )
+                                    await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {"credited": True}})
+                                    logging.info("Binance auto-check: wallet topup %s auto-verified (tx=%s)", topup["id"], tx_id)
+                                    break
                     except Exception as e:
                         logging.warning("Binance auto-check API call failed: %s", e)
         except Exception as e:
@@ -4838,8 +4860,10 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 if binance_id in (tx_order_id, tx_trans_id):
                     tx_amount = abs(float(tx.get("amount", 0)))
                     if tx_amount >= order_amount - 0.01:
-                        verified = True
-                        matched_tx = tx
+                        match_tx_id = tx_order_id or tx_trans_id
+                        if not await _is_binance_tx_used(match_tx_id):
+                            verified = True
+                            matched_tx = tx
                         break
 
         elif result.get("code") and result.get("code") != "000000":
@@ -4867,14 +4891,23 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                         if binance_id in (tx_order_no, tx_ad_no):
                             tx_amount = abs(float(tx.get("totalPrice") or tx.get("amount") or 0))
                             if tx_amount >= order_amount - 0.01:
-                                verified = True
-                                matched_tx = tx
-                                matched_tx["_source"] = "c2c"
+                                match_tx_id = tx_order_no or tx_ad_no
+                                if not await _is_binance_tx_used(match_tx_id):
+                                    verified = True
+                                    matched_tx = tx
+                                    matched_tx["_source"] = "c2c"
                                 break
                 if verified:
                     break
         except Exception as e:
             logging.warning(f"Binance C2C query failed: {e}")
+
+    if not verified and binance_id and await _is_binance_tx_used(binance_id):
+        return {
+            "status": "rejected",
+            "message": "This Binance transaction ID has already been used for another payment.",
+            "verified": False,
+        }
 
     verify_source = matched_tx.get("_source", "pay")
     if verified:
