@@ -3532,15 +3532,13 @@ async def natcash_test_sms(request: Request):
     }, {"_id": 0}).sort("created_at", -1).to_list(10)
 
     if not sms_body_input:
-        if not pending_orders:
-            return {
-                "ok": False,
-                "error": "Pa gen kòmand NatCash ki an atant. Kreye yon kòmand NatCash anvan ou teste.",
-                "pending_orders": [],
-            }
-        target = pending_orders[0]
-        amount_htg = round(float(target.get("total_amount", 0)) * rate, 2)
-        ref = target.get("natcash_reference") or "TESTRF"
+        if pending_orders:
+            target = pending_orders[0]
+            amount_htg = round(float(target.get("total_amount", 0)) * rate, 2)
+            ref = target.get("natcash_reference") or "TESTRF"
+        else:
+            amount_htg = round(25.0 * rate, 2)
+            ref = "DEMO01"
         now_str = datetime.now(timezone.utc).strftime("%H:%M %d/%m/%Y")
         sms_body_input = (
             f"Ou resevwa {amount_htg:.2f} HTG nan TEST KLIYAN 50900000000 "
