@@ -396,7 +396,6 @@ const AdminOrders = ({ user, logout, settings }) => {
                           <p><strong>Customer:</strong> {order.user_email}</p>
                           <p><strong>Payment Method:</strong> {
                             order.payment_method === 'crypto_plisio' ? 'Cryptocurrency' :
-                            order.payment_method === 'payerurl' ? 'Crypto (PayerURL)' :
                             order.payment_method === 'binance_pay' ? 'Binance Pay (Auto)' :
                             order.payment_method === 'binance_pay_manual' ? 'Binance Pay (Manual)' :
                             order.payment_method

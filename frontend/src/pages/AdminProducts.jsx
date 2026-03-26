@@ -391,7 +391,10 @@ const AdminProducts = ({ user, logout, settings }) => {
         
         updated.requires_player_id = requirements.requiresPlayerId;
         updated.requires_credentials = requirements.requiresCredentials;
+        updated.requires_server_id = requirements.requiresServerId || false;
         updated.player_id_label = requirements.playerIdLabel || 'Player ID';
+        updated.server_id_label = requirements.serverIdLabel || '';
+        updated.server_id_placeholder = requirements.serverIdPlaceholder || '';
         updated.credential_fields = requirements.credentialFields || ['email', 'password'];
       }
 

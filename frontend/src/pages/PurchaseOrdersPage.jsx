@@ -69,7 +69,6 @@ const PurchaseOrdersPage = ({ user, logout, settings, cart }) => {
   const getMethodLabel = (method) => {
     const labels = {
       crypto_plisio: 'Cryptocurrency',
-      payerurl: 'Crypto (PayerURL)',
       binance_pay: 'Binance Pay (Auto)',
       binance_pay_manual: 'Binance Pay (Manual)',
       wallet: 'Wallet',

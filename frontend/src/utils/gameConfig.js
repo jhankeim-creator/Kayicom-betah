@@ -14,9 +14,12 @@ export const GAME_CONFIGS = {
     name: 'Mobile Legends',
     requiresPlayerId: true,
     requiresCredentials: false,
-    playerIdLabel: 'Game ID + Zone ID',
-    playerIdPlaceholder: 'Example: 123456789 (2345)',
-    instructions: 'Profile → Account → Game ID (Zone ID)'
+    requiresServerId: true,
+    playerIdLabel: 'Player ID',
+    playerIdPlaceholder: 'Enter your Game ID',
+    serverIdLabel: 'Server ID (Zone ID)',
+    serverIdPlaceholder: 'e.g. 2345',
+    instructions: 'Profile → Account → Game ID and Zone ID'
   },
   'pubg-mobile': {
     name: 'PUBG Mobile',
@@ -30,9 +33,56 @@ export const GAME_CONFIGS = {
     name: 'Genshin Impact',
     requiresPlayerId: true,
     requiresCredentials: false,
+    requiresServerId: true,
     playerIdLabel: 'UID',
     playerIdPlaceholder: 'Enter your 9-digit UID',
-    instructions: 'Paimon Menu → Settings → Account → UID'
+    serverIdLabel: 'Server',
+    serverIdPlaceholder: 'e.g. America, Europe, Asia, TW/HK/MO',
+    instructions: 'Paimon Menu → Settings → Account → UID and Server'
+  },
+  'ragnarok': {
+    name: 'Ragnarok',
+    requiresPlayerId: true,
+    requiresCredentials: false,
+    requiresServerId: true,
+    playerIdLabel: 'User ID',
+    playerIdPlaceholder: 'Enter your User ID',
+    serverIdLabel: 'Server ID',
+    serverIdPlaceholder: 'Enter your Server ID',
+    instructions: 'Profile → User ID and Server'
+  },
+  'life-after': {
+    name: 'Life After',
+    requiresPlayerId: true,
+    requiresCredentials: false,
+    requiresServerId: true,
+    playerIdLabel: 'User ID',
+    playerIdPlaceholder: 'Enter your User ID',
+    serverIdLabel: 'Server ID',
+    serverIdPlaceholder: 'Enter your Server ID',
+    instructions: 'Settings → Account → User ID and Server'
+  },
+  'dragon-nest': {
+    name: 'Dragon Nest',
+    requiresPlayerId: true,
+    requiresCredentials: false,
+    requiresServerId: true,
+    playerIdLabel: 'Role Name',
+    playerIdPlaceholder: 'Enter your character name',
+    serverIdLabel: 'Server ID',
+    serverIdPlaceholder: 'Enter your Server',
+    instructions: 'Character select → Role Name and Server'
+  },
+  'heroes-evolved': {
+    name: 'Heroes Evolved',
+    requiresPlayerId: true,
+    requiresCredentials: false,
+    requiresServerId: true,
+    playerIdLabel: 'User ID',
+    playerIdPlaceholder: 'Enter your User ID',
+    serverIdLabel: 'Server ID',
+    serverIdPlaceholder: 'Enter your Server ID',
+    instructions: 'Profile → User ID and Server'
   },
   'call-of-duty': {
     name: 'Call of Duty Mobile',
@@ -147,7 +197,10 @@ export const detectProductRequirements = (productName, category) => {
     return {
       requiresPlayerId: gameConfig.requiresPlayerId,
       requiresCredentials: gameConfig.requiresCredentials,
+      requiresServerId: gameConfig.requiresServerId || false,
       playerIdLabel: gameConfig.playerIdLabel,
+      serverIdLabel: gameConfig.serverIdLabel,
+      serverIdPlaceholder: gameConfig.serverIdPlaceholder,
       credentialFields: gameConfig.credentialFields,
       instructions: gameConfig.instructions
     };

@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { CreditCard, Wallet, Gamepad2, CheckCircle, XCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
+import { getGameConfig } from '../utils/gameConfig';
 
 const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const [paymentMethod, setPaymentMethod] = useState('crypto_plisio');
   const [loading, setLoading] = useState(false);
   const [playerIds, setPlayerIds] = useState({});
+  const [serverIds, setServerIds] = useState({});
   const [credentials, setCredentials] = useState({});
   const [couponCode, setCouponCode] = useState('');
   const [discountAmount, setDiscountAmount] = useState(0);
@@ -34,9 +36,10 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
     if (!gameCode) { toast.info('Verification not available for this product'); return; }
     setVerifying(prev => ({ ...prev, [product.id]: true }));
     try {
-      const res = await axiosInstance.post('/verify-player-id', {
-        game_code: gameCode, player_id: pid.trim(),
-      });
+      const verifyBody = { game_code: gameCode, player_id: pid.trim() };
+      const sid = serverIds[product.id];
+      if (sid && sid.trim()) verifyBody.server_id = sid.trim();
+      const res = await axiosInstance.post('/verify-player-id', verifyBody);
       setVerifyStatus(prev => ({ ...prev, [product.id]: res.data }));
       if (res.data.valid) toast.success(res.data.message || 'Player ID verified!');
       else toast.error(res.data.message || 'Invalid Player ID');
@@ -75,6 +78,13 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
     }));
   };
 
+  const handleServerIdChange = (productId, value) => {
+    setServerIds(prev => ({
+      ...prev,
+      [productId]: value
+    }));
+  };
+
   const handleCredentialChange = (productId, field, value) => {
     setCredentials(prev => ({
       ...prev,
@@ -101,6 +111,12 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
     for (const item of cart) {
       if (item.product.requires_player_id && !playerIds[item.product.id]) {
         const label = item.product.player_id_label || 'Player ID';
+        toast.error(`Please enter ${label} for ${item.product.name}`);
+        return;
+      }
+      const gc = getGameConfig(item.product.name);
+      if ((item.product.requires_server_id || gc?.requiresServerId) && !serverIds[item.product.id]?.trim()) {
+        const label = gc?.serverIdLabel || 'Server ID';
         toast.error(`Please enter ${label} for ${item.product.name}`);
         return;
       }
@@ -131,6 +147,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         quantity: item.quantity,
         price: item.product.price,
         player_id: playerIds[item.product.id] || null,
+        server_id: serverIds[item.product.id] || null,
         credentials: credentials[item.product.id] || null,
         seller_id: item.product._seller_id || null
       }));
@@ -150,12 +167,6 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         const invoiceUrl = buildPlisioInvoiceUrl(order.plisio_invoice_url, order.plisio_invoice_id);
         toast.success('Redirecting to payment...');
         openPlisioInvoice(invoiceUrl, order.plisio_invoice_id || order.id);
-        navigate(`/track/${order.id}`);
-      } else if (paymentMethod === 'payerurl' && order.payerurl_payment_url) {
-        toast.success('Redirecting to crypto payment...');
-        window.location.href = order.payerurl_payment_url;
-      } else if (paymentMethod === 'payerurl' && !order.payerurl_payment_url) {
-        toast.error('Crypto payment is temporarily unavailable. Please try another method or check your order.');
         navigate(`/track/${order.id}`);
       } else {
         toast.success(paymentMethod === 'wallet' ? 'Paid with wallet successfully!' : 'Order created! Please submit your payment proof.');
@@ -366,20 +377,6 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     </label>
                   )}
 
-                  {/* PayerURL Crypto Payment */}
-                  <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                    paymentMethod === 'payerurl' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
-                  }`}>
-                    <RadioGroupItem value="payerurl" className="mt-1" />
-                    <div className="ml-4">
-                      <div className="flex items-center gap-2">
-                        <Wallet className="text-yellow-400" size={20} />
-                        <span className="text-white font-semibold">Crypto (USDT, BTC, ETH)</span>
-                      </div>
-                      <p className="text-white/70 text-sm mt-1">Auto-verified - Instant delivery</p>
-                    </div>
-                  </label>
-
                   {settings?.payment_gateways?.binance_pay?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
                       paymentMethod === 'binance_pay' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
@@ -480,7 +477,10 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     Player IDs Required
                   </h3>
                   <div className="space-y-4">
-                    {cart.filter(item => item.product.requires_player_id).map(item => (
+                    {cart.filter(item => item.product.requires_player_id).map(item => {
+                      const gc = getGameConfig(item.product.name);
+                      const needsServerId = item.product.requires_server_id || gc?.requiresServerId;
+                      return (
                       <div key={item.product.id}>
                         <Label htmlFor={`player-id-${item.product.id}`} className="text-white">
                           {(item.product.player_id_label || 'Player ID')} for {item.product.name}
@@ -510,8 +510,25 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                             {verifyStatus[item.product.id].message}
                           </div>
                         )}
+                        {needsServerId && (
+                          <div className="mt-3">
+                            <Label htmlFor={`server-id-${item.product.id}`} className="text-white">
+                              {gc?.serverIdLabel || 'Server ID'} for {item.product.name}
+                            </Label>
+                            <Input
+                              id={`server-id-${item.product.id}`}
+                              value={serverIds[item.product.id] || ''}
+                              onChange={(e) => handleServerIdChange(item.product.id, e.target.value)}
+                              className="bg-white/10 border-white/20 text-white placeholder:text-white/50 mt-2"
+                              placeholder={gc?.serverIdPlaceholder || 'Enter Server ID'}
+                              required
+                              data-testid={`server-id-${item.product.id}`}
+                            />
+                          </div>
+                        )}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
