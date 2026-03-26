@@ -14,9 +14,12 @@ export const GAME_CONFIGS = {
     name: 'Mobile Legends',
     requiresPlayerId: true,
     requiresCredentials: false,
-    playerIdLabel: 'Game ID + Zone ID',
-    playerIdPlaceholder: 'Example: 123456789 (2345)',
-    instructions: 'Profile → Account → Game ID (Zone ID)'
+    requiresServerId: true,
+    playerIdLabel: 'Player ID',
+    playerIdPlaceholder: 'Enter your Game ID',
+    serverIdLabel: 'Server ID (Zone ID)',
+    serverIdPlaceholder: 'e.g. 2345',
+    instructions: 'Profile → Account → Game ID and Zone ID'
   },
   'pubg-mobile': {
     name: 'PUBG Mobile',
@@ -147,7 +150,10 @@ export const detectProductRequirements = (productName, category) => {
     return {
       requiresPlayerId: gameConfig.requiresPlayerId,
       requiresCredentials: gameConfig.requiresCredentials,
+      requiresServerId: gameConfig.requiresServerId || false,
       playerIdLabel: gameConfig.playerIdLabel,
+      serverIdLabel: gameConfig.serverIdLabel,
+      serverIdPlaceholder: gameConfig.serverIdPlaceholder,
       credentialFields: gameConfig.credentialFields,
       instructions: gameConfig.instructions
     };
