@@ -1310,6 +1310,23 @@ async def _order_auto_cancel_worker():
         await asyncio.sleep(60)
 
 
+async def _is_binance_tx_used(tx_id: str) -> bool:
+    """Check if a Binance transaction ID has already been used to pay an order or topup."""
+    if not tx_id:
+        return False
+    existing_order = await db.orders.find_one({
+        "transaction_id": tx_id,
+        "payment_status": "paid",
+    }, {"_id": 0, "id": 1})
+    if existing_order:
+        return True
+    existing_topup = await db.wallet_topups.find_one({
+        "transaction_id": tx_id,
+        "payment_status": "paid",
+    }, {"_id": 0, "id": 1})
+    return bool(existing_topup)
+
+
 async def _binance_auto_check_worker():
     """Background worker that auto-verifies pending Binance Pay orders every 60 seconds."""
     while True:
@@ -1345,63 +1362,70 @@ async def _binance_auto_check_worker():
                         )
 
                         if result.get("code") == "000000" and result.get("data"):
+                            valid_txs = []
+                            for tx in result["data"]:
+                                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                    continue
+                                tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
+                                if not tx_id:
+                                    continue
+                                valid_txs.append((tx, tx_id, abs(float(tx.get("amount", 0)))))
+
                             for order in pending:
                                 order_amount = float(order.get("total_amount", 0))
-                                for tx in result["data"]:
-                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                for tx, tx_id, tx_amount in valid_txs:
+                                    if tx_amount < order_amount - 0.01:
                                         continue
-                                    tx_amount = abs(float(tx.get("amount", 0)))
-                                    if tx_amount >= order_amount - 0.01:
-                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
-                                        now_iso = datetime.now(timezone.utc).isoformat()
-                                        await db.orders.update_one({"id": order["id"]}, {"$set": {
-                                            "payment_status": "paid",
-                                            "order_status": "processing",
-                                            "transaction_id": tx_id,
-                                            "payment_proof_url": f"binance-auto-verified:{tx_id}",
-                                            "binance_pay_data": tx,
-                                            "updated_at": now_iso,
-                                        }})
-                                        try:
-                                            await _try_auto_deliver(order["id"])
-                                        except Exception as e:
-                                            logging.error("Auto-delivery error on Binance auto-check: %s", e)
-                                        try:
-                                            await _notify_admin_telegram("Binance Pay Auto-Verified (background)", [
-                                                f"Order: {order['id'][:8]}",
-                                                f"Amount: ${order_amount:.2f}",
-                                                f"TX: {tx_id}",
-                                                f"User: {order.get('user_email', 'N/A')}",
-                                            ])
-                                        except Exception:
-                                            pass
-                                        logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
-                                        break
+                                    if await _is_binance_tx_used(tx_id):
+                                        continue
+                                    now_iso = datetime.now(timezone.utc).isoformat()
+                                    await db.orders.update_one({"id": order["id"]}, {"$set": {
+                                        "payment_status": "paid",
+                                        "order_status": "processing",
+                                        "transaction_id": tx_id,
+                                        "payment_proof_url": f"binance-auto-verified:{tx_id}",
+                                        "binance_pay_data": tx,
+                                        "updated_at": now_iso,
+                                    }})
+                                    await _record_coupon_usage_if_needed(order["id"])
+                                    await _record_product_orders_if_needed(order["id"])
+                                    try:
+                                        await _try_auto_deliver(order["id"])
+                                    except Exception as e:
+                                        logging.error("Auto-delivery error on Binance auto-check: %s", e)
+                                    try:
+                                        await _notify_admin_telegram("Binance Pay Auto-Verified (background)", [
+                                            f"Order: {order['id'][:8]}",
+                                            f"Amount: ${order_amount:.2f}",
+                                            f"TX: {tx_id}",
+                                            f"User: {order.get('user_email', 'N/A')}",
+                                        ])
+                                    except Exception:
+                                        pass
+                                    logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
+                                    break
 
-                            # Also auto-verify pending Binance wallet topups
                             for topup in pending_topups:
                                 topup_amount = float(topup.get("amount", 0))
-                                for tx in result["data"]:
-                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                for tx, tx_id, tx_amount in valid_txs:
+                                    if tx_amount < topup_amount - 0.01:
                                         continue
-                                    tx_amount = abs(float(tx.get("amount", 0)))
-                                    if tx_amount >= topup_amount - 0.01:
-                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
-                                        now_iso = datetime.now(timezone.utc).isoformat()
-                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
-                                            "payment_status": "paid",
-                                            "transaction_id": tx_id,
-                                            "updated_at": now_iso,
-                                        }})
-                                        await db.users.update_one(
-                                            {"id": topup["user_id"]},
-                                            {"$inc": {"wallet_balance": topup_amount}}
-                                        )
-                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {"credited": True}})
-                                        logging.info("Binance auto-check: wallet topup %s auto-verified", topup["id"])
-                                        break
+                                    if await _is_binance_tx_used(tx_id):
+                                        continue
+                                    now_iso = datetime.now(timezone.utc).isoformat()
+                                    await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
+                                        "payment_status": "paid",
+                                        "transaction_id": tx_id,
+                                        "updated_at": now_iso,
+                                    }})
+                                    await db.users.update_one(
+                                        {"id": topup["user_id"]},
+                                        {"$inc": {"wallet_balance": topup_amount}}
+                                    )
+                                    await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {"credited": True}})
+                                    logging.info("Binance auto-check: wallet topup %s auto-verified (tx=%s)", topup["id"], tx_id)
+                                    break
                     except Exception as e:
                         logging.warning("Binance auto-check API call failed: %s", e)
         except Exception as e:
@@ -3252,11 +3276,11 @@ async def admin_g2bulk_game_fields(game: str):
 
 @api_router.get("/admin/g2bulk/games/detect-server-fields")
 async def admin_g2bulk_detect_server_fields():
-    """Detect which G2Bulk games require a server_id field.
+    """Detect which G2Bulk games require player_id / server_id fields.
 
     Calls GET /games to list all available games, then for each game calls
     POST /games/fields to inspect the required fields. Returns a list of
-    games annotated with ``requires_server_id``.
+    games annotated with field requirements from the API.
     """
     games_resp = await _g2bulk_request("GET", "/games")
     games_list = games_resp if isinstance(games_resp, list) else games_resp.get("data") or games_resp.get("games") or []
@@ -3264,21 +3288,16 @@ async def admin_g2bulk_detect_server_fields():
     for game in games_list:
         game_code = game.get("code") or game.get("game") or game.get("id") or ""
         game_name = game.get("name") or game.get("title") or str(game_code)
-        requires_server = False
+        field_info = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
         try:
             fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": game_code})
-            fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
-            for f in fields:
-                field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
-                if field_name in ("server_id", "serverid", "server"):
-                    requires_server = True
-                    break
+            field_info = _parse_g2bulk_fields(fields_resp)
         except Exception:
             pass
         results.append({
             "game_code": game_code,
             "game_name": game_name,
-            "requires_server_id": requires_server,
+            **field_info,
         })
     return {"games": results}
 
@@ -3314,18 +3333,37 @@ class G2BulkGameImportRequest(BaseModel):
     catalogues: List[Dict[str, Any]]
 
 
+def _parse_g2bulk_fields(fields_resp) -> dict:
+    """Parse G2Bulk /games/fields response into requires_player_id, requires_server_id, and labels."""
+    fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
+    needs_player_id = False
+    needs_server_id = False
+    player_id_label = "Player ID"
+    for f in fields:
+        field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
+        field_label = f.get("label") or f.get("name") or f.get("field") or ""
+        if field_name in ("user_id", "userid", "player_id", "playerid", "uid", "id"):
+            needs_player_id = True
+            if field_label:
+                player_id_label = field_label
+        elif field_name in ("server_id", "serverid", "server", "zone_id", "zoneid"):
+            needs_server_id = True
+    if not needs_player_id and fields:
+        needs_player_id = True
+    return {
+        "requires_player_id": needs_player_id,
+        "requires_server_id": needs_server_id,
+        "player_id_label": player_id_label,
+    }
+
+
 @api_router.post("/admin/g2bulk/games/import")
 async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
     """Import game top-up denominations as KayiCom topup products."""
-    needs_server_id = False
+    field_info = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
     try:
         fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": payload.game_code})
-        fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
-        for f in fields:
-            field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
-            if field_name in ("server_id", "serverid", "server"):
-                needs_server_id = True
-                break
+        field_info = _parse_g2bulk_fields(fields_resp)
     except Exception:
         pass
     imported = []
@@ -3359,9 +3397,9 @@ async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
                 delivery_time="instant",
                 g2bulk_game_code=payload.game_code,
                 g2bulk_catalogue_id=str(cat_name),
-                requires_player_id=True,
-                player_id_label="Player ID",
-                requires_server_id=needs_server_id,
+                requires_player_id=field_info["requires_player_id"],
+                player_id_label=field_info["player_id_label"],
+                requires_server_id=field_info["requires_server_id"],
             )
             normalized = _normalize_product_doc(new_product.model_dump())
             new_product.seo_title = normalized.get("seo_title")
@@ -3374,6 +3412,43 @@ async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
         except Exception as e:
             skipped.append({"catalogue": cat_name, "reason": str(e)})
     return {"imported": imported, "skipped": skipped, "total_imported": len(imported), "total_skipped": len(skipped)}
+
+
+@api_router.post("/admin/g2bulk/sync-fields")
+async def admin_g2bulk_sync_fields():
+    """Sync requires_player_id, requires_server_id, and player_id_label for all
+    G2Bulk topup products by querying the G2Bulk /games/fields API.
+
+    This updates existing products in the database so the storefront automatically
+    shows the correct fields at checkout without any hardcoded game config."""
+    products = await db.products.find(
+        {"g2bulk_game_code": {"$ne": None, "$exists": True}},
+        {"_id": 0, "id": 1, "g2bulk_game_code": 1, "name": 1}
+    ).to_list(5000)
+    game_codes = list({p["g2bulk_game_code"] for p in products if p.get("g2bulk_game_code")})
+    field_cache: Dict[str, dict] = {}
+    for code in game_codes:
+        try:
+            fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": code})
+            field_cache[code] = _parse_g2bulk_fields(fields_resp)
+        except Exception:
+            field_cache[code] = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
+    updated = 0
+    for p in products:
+        code = p.get("g2bulk_game_code")
+        info = field_cache.get(code)
+        if not info:
+            continue
+        await db.products.update_one(
+            {"id": p["id"]},
+            {"$set": {
+                "requires_player_id": info["requires_player_id"],
+                "requires_server_id": info["requires_server_id"],
+                "player_id_label": info["player_id_label"],
+            }}
+        )
+        updated += 1
+    return {"synced": updated, "game_codes": len(game_codes), "fields": field_cache}
 
 
 @api_router.post("/g2bulk/callback")
@@ -3498,12 +3573,14 @@ def _parse_natcash_sms(sms_body: str) -> dict:
 
 
 async def _match_natcash_order(reference_code, amount_htg, settings=None):
-    """Find a pending NatCash order matching the parsed reference or amount.
+    """Find a pending NatCash order or wallet topup matching the parsed reference or amount.
 
-    Returns (order_dict|None, match_method_str|None).
+    Returns (order_dict|None, match_method_str|None, kind_str).
+    kind is "order" or "wallet_topup".
     """
     order = None
     match_method = None
+    kind = "order"
 
     if reference_code:
         order = await db.orders.find_one({
@@ -3513,6 +3590,18 @@ async def _match_natcash_order(reference_code, amount_htg, settings=None):
         }, {"_id": 0})
         if order:
             match_method = "reference_code"
+
+        if not order:
+            topup = await db.wallet_topups.find_one({
+                "payment_method": "natcash",
+                "payment_status": "pending",
+                "natcash_reference": reference_code,
+                "credited": False,
+            }, {"_id": 0})
+            if topup:
+                order = topup
+                match_method = "reference_code"
+                kind = "wallet_topup"
 
     if not order and amount_htg:
         if not settings:
@@ -3530,12 +3619,55 @@ async def _match_natcash_order(reference_code, amount_htg, settings=None):
                 match_method = "amount"
                 break
 
-    return order, match_method
+        if not order:
+            topup_candidates = await db.wallet_topups.find({
+                "payment_method": "natcash",
+                "payment_status": "pending",
+                "credited": False,
+            }, {"_id": 0}).sort("created_at", -1).to_list(50)
+            for t in topup_candidates:
+                expected_htg = float(t.get("amount", 0)) * rate
+                if abs(expected_htg - amount_htg) <= tolerance:
+                    order = t
+                    match_method = "amount"
+                    kind = "wallet_topup"
+                    break
+
+    return order, match_method, kind
 
 
-async def _confirm_natcash_payment(order_id: str, sms_body: str):
-    """Mark an order as paid and trigger post-payment actions."""
+async def _confirm_natcash_payment(order_id: str, sms_body: str, kind: str = "order"):
+    """Mark an order or wallet topup as paid and trigger post-payment actions."""
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    if kind == "wallet_topup":
+        topup = await db.wallet_topups.find_one({"id": order_id}, {"_id": 0})
+        if not topup or topup.get("payment_status") == "paid":
+            return
+        await db.wallet_topups.update_one({"id": order_id}, {"$set": {
+            "payment_status": "paid",
+            "natcash_sms_body": sms_body,
+            "natcash_confirmed_at": now_iso,
+            "updated_at": now_iso,
+        }})
+        if not topup.get("credited"):
+            await db.users.update_one(
+                {"id": topup["user_id"]},
+                {"$inc": {"wallet_balance": float(topup["amount"])}}
+            )
+            await db.wallet_transactions.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": topup["user_id"],
+                "user_email": topup.get("user_email"),
+                "order_id": None,
+                "type": "topup",
+                "amount": float(topup["amount"]),
+                "reason": f"Wallet topup {order_id} (NatCash)",
+                "created_at": now_iso,
+            })
+            await db.wallet_topups.update_one({"id": order_id}, {"$set": {"credited": True}})
+        return
+
     await db.orders.update_one({"id": order_id}, {"$set": {
         "payment_status": "paid",
         "natcash_sms_body": sms_body,
@@ -3629,13 +3761,14 @@ async def natcash_sms_callback(
         })
         return {"ok": True, "matched": False, "reason": "Could not parse SMS"}
 
-    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    order, match_method, kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
         "sms_body": sms_text, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
         "match_method": match_method,
+        "match_kind": kind,
         "source": "automate",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -3645,10 +3778,10 @@ async def natcash_sms_callback(
         return {"ok": True, "matched": False, "reason": "No matching order found"}
 
     order_id = order["id"]
-    await _confirm_natcash_payment(order_id, sms_text)
-    logging.info("NatCash payment confirmed for order %s (ref=%s, amount_htg=%s)", order_id, reference_code, amount_htg)
+    await _confirm_natcash_payment(order_id, sms_text, kind)
+    logging.info("NatCash payment confirmed for %s %s (ref=%s, amount_htg=%s)", kind, order_id, reference_code, amount_htg)
 
-    return {"ok": True, "matched": True, "order_id": order_id}
+    return {"ok": True, "matched": True, "order_id": order_id, "kind": kind}
 
 
 @api_router.get("/natcash/sms-logs")
@@ -3724,8 +3857,9 @@ async def natcash_test_sms(request: Request):
     amount_htg = parsed["amount_htg"]
     reference_code = parsed["reference_code"]
 
-    matched_order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    matched_order, match_method, matched_kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
+    matched_amount_key = "total_amount" if matched_kind == "order" else "amount"
     result = {
         "ok": True,
         "dry_run": dry_run,
@@ -3736,10 +3870,11 @@ async def natcash_test_sms(request: Request):
         },
         "matched": matched_order is not None,
         "match_method": match_method,
+        "match_kind": matched_kind,
         "matched_order": {
             "id": matched_order["id"],
-            "total_amount_usd": matched_order.get("total_amount"),
-            "expected_htg": round(float(matched_order.get("total_amount", 0)) * rate, 2),
+            "total_amount_usd": matched_order.get(matched_amount_key),
+            "expected_htg": round(float(matched_order.get(matched_amount_key, 0)) * rate, 2),
             "natcash_reference": matched_order.get("natcash_reference"),
             "payment_status": matched_order.get("payment_status"),
         } if matched_order else None,
@@ -3787,9 +3922,9 @@ async def natcash_test_sms(request: Request):
             "is_test": True,
             "created_at": now_iso,
         })
-        await _confirm_natcash_payment(matched_order["id"], sms_body_input)
+        await _confirm_natcash_payment(matched_order["id"], sms_body_input, matched_kind)
         result["order_marked_paid"] = True
-        logging.info("NatCash SMS Forwarder TEST: order %s marked paid (dry_run=False)", matched_order["id"])
+        logging.info("NatCash SMS Forwarder TEST: %s %s marked paid (dry_run=False)", matched_kind, matched_order["id"])
     elif not dry_run and not matched_order:
         result["order_marked_paid"] = False
 
@@ -3882,7 +4017,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         })
         return {"status": "ignored", "reason": "Could not parse SMS"}
 
-    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    order, match_method, kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
         "sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time,
@@ -3890,6 +4025,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
         "match_method": match_method,
+        "match_kind": kind,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -3901,10 +4037,10 @@ async def natcash_webhook_sms_forwarder(request: Request):
         return {"status": "no_order_found", "matched": False, "reference": reference_code}
 
     order_id = order["id"]
-    await _confirm_natcash_payment(order_id, sms_body)
+    await _confirm_natcash_payment(order_id, sms_body, kind)
     logging.info(
-        "NatCash SMS Forwarder payment confirmed for order %s (ref=%s, amount_htg=%s)",
-        order_id, reference_code, amount_htg,
+        "NatCash SMS Forwarder payment confirmed for %s %s (ref=%s, amount_htg=%s)",
+        kind, order_id, reference_code, amount_htg,
     )
 
     return {
@@ -4318,33 +4454,42 @@ async def upload_payment_proof(proof_data: ManualPaymentProof):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.get("payment_proof_url"):
-        raise HTTPException(status_code=400, detail="Payment proof already submitted")
+    if order.get("payment_status") in ("paid", "cancelled"):
+        return {"message": "Order already processed", "payment_status": order["payment_status"]}
 
-    if order.get("payment_status") != "pending":
-        raise HTTPException(status_code=400, detail="Payment is already being processed")
+    if order.get("payment_proof_url") and order.get("payment_status") == "paid":
+        return {"message": "Payment already approved", "payment_status": "paid"}
 
-    # Update order with payment proof
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     await db.orders.update_one(
         {"id": proof_data.order_id},
         {"$set": {
             "payment_proof_url": proof_data.payment_proof_url,
             "transaction_id": proof_data.transaction_id,
-            "payment_status": "pending_verification",
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "payment_status": "paid",
+            "order_status": "processing",
+            "updated_at": now_iso,
         }}
     )
 
+    await _record_coupon_usage_if_needed(proof_data.order_id)
+    await _record_product_orders_if_needed(proof_data.order_id)
+    try:
+        await _try_auto_deliver(proof_data.order_id)
+    except Exception as e:
+        logging.error(f"Auto-delivery error on manual proof approval: {e}")
+
     await _notify_admin_telegram(
-        "Order payment proof submitted",
+        "Order auto-approved (transaction ID submitted)",
         [
             f"Order ID: {proof_data.order_id}",
             f"Transaction ID: {proof_data.transaction_id}",
-            f"Status: pending_verification",
+            f"Status: paid / processing",
         ],
     )
 
-    return {"message": "Payment proof uploaded successfully"}
+    return {"message": "Payment approved successfully", "payment_status": "paid"}
 
 @api_router.post("/payments/plisio-callback")
 async def plisio_callback(data: Dict[str, Any]):
@@ -4356,6 +4501,8 @@ async def plisio_callback(data: Dict[str, Any]):
         # First try normal orders
         order = await db.orders.find_one({"id": order_id}, {"_id": 0})
         if order:
+            if order.get("payment_status") == "paid":
+                return {"status": "ok", "message": "Already processed"}
             await db.orders.update_one(
                 {"id": order_id},
                 {"$set": {
@@ -4713,8 +4860,10 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 if binance_id in (tx_order_id, tx_trans_id):
                     tx_amount = abs(float(tx.get("amount", 0)))
                     if tx_amount >= order_amount - 0.01:
-                        verified = True
-                        matched_tx = tx
+                        match_tx_id = tx_order_id or tx_trans_id
+                        if not await _is_binance_tx_used(match_tx_id):
+                            verified = True
+                            matched_tx = tx
                         break
 
         elif result.get("code") and result.get("code") != "000000":
@@ -4742,14 +4891,23 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                         if binance_id in (tx_order_no, tx_ad_no):
                             tx_amount = abs(float(tx.get("totalPrice") or tx.get("amount") or 0))
                             if tx_amount >= order_amount - 0.01:
-                                verified = True
-                                matched_tx = tx
-                                matched_tx["_source"] = "c2c"
+                                match_tx_id = tx_order_no or tx_ad_no
+                                if not await _is_binance_tx_used(match_tx_id):
+                                    verified = True
+                                    matched_tx = tx
+                                    matched_tx["_source"] = "c2c"
                                 break
                 if verified:
                     break
         except Exception as e:
             logging.warning(f"Binance C2C query failed: {e}")
+
+    if not verified and binance_id and await _is_binance_tx_used(binance_id):
+        return {
+            "status": "rejected",
+            "message": "This Binance transaction ID has already been used for another payment.",
+            "verified": False,
+        }
 
     verify_source = matched_tx.get("_source", "pay")
     if verified:
@@ -4764,6 +4922,8 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
         )
+        await _record_coupon_usage_if_needed(req.order_id)
+        await _record_product_orders_if_needed(req.order_id)
         try:
             await _try_auto_deliver(req.order_id)
         except Exception as e:
@@ -6619,7 +6779,27 @@ async def get_settings():
 @api_router.put("/settings", response_model=SiteSettings)
 async def update_settings(updates: SettingsUpdate):
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
-    for key in ("telegram_bot_token", "telegram_admin_chat_id"):
+
+    secret_fields = [
+        "plisio_api_key",
+        "binance_pay_api_key",
+        "binance_pay_secret_key",
+        "mtcgame_api_key",
+        "gosplit_api_key",
+        "z2u_api_key",
+        "g2bulk_api_key",
+        "resend_api_key",
+        "telegram_bot_token",
+        "natcash_callback_secret",
+    ]
+    for key in secret_fields:
+        val = update_data.get(key)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            update_data.pop(key, None)
+        elif isinstance(val, str):
+            update_data[key] = val.strip()
+
+    for key in ("telegram_admin_chat_id",):
         if key in update_data and isinstance(update_data[key], str):
             cleaned = update_data[key].strip()
             if cleaned:
@@ -8224,6 +8404,9 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
         except Exception as e:
             logging.error(f"Plisio topup error: {e}")
 
+    if topup.payment_method == "natcash":
+        doc["natcash_reference"] = secrets.token_hex(3).upper()
+
     await db.wallet_topups.insert_one(doc)
     await _notify_admin_telegram(
         "Wallet topup created",
@@ -8293,37 +8476,62 @@ async def get_all_wallet_topups():
 
 @api_router.post("/wallet/topups/proof")
 async def submit_wallet_topup_proof(proof: WalletTopupProof):
-    """Submit payment proof for a wallet topup"""
-    update_data = {
-        "transaction_id": proof.transaction_id,
-        "payment_proof_url": proof.payment_proof_url,
-        "payment_status": "pending_verification",
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    res = await db.wallet_topups.update_one(
-        {"id": proof.topup_id},
-        {"$set": update_data}
-    )
-    if res.matched_count == 0:
+    """Submit payment proof for a wallet topup — auto-approves and credits wallet."""
+    topup = await db.wallet_topups.find_one({"id": proof.topup_id}, {"_id": 0})
+    if not topup:
         raise HTTPException(status_code=404, detail="Topup not found")
-    
-    # Return the updated topup document for confirmation
+
+    if topup.get("payment_status") == "paid":
+        return {"message": "Topup already approved", "topup": topup}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    await db.wallet_topups.update_one(
+        {"id": proof.topup_id},
+        {"$set": {
+            "transaction_id": proof.transaction_id,
+            "payment_proof_url": proof.payment_proof_url,
+            "payment_status": "paid",
+            "updated_at": now_iso,
+        }}
+    )
+
+    if not topup.get("credited"):
+        await db.users.update_one(
+            {"id": topup["user_id"]},
+            {"$inc": {"wallet_balance": float(topup["amount"])}}
+        )
+        await db.wallet_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": topup["user_id"],
+            "user_email": topup.get("user_email"),
+            "order_id": None,
+            "type": "topup",
+            "amount": float(topup["amount"]),
+            "reason": f"Wallet topup {proof.topup_id}",
+            "created_at": now_iso,
+        })
+        await db.wallet_topups.update_one(
+            {"id": proof.topup_id},
+            {"$set": {"credited": True}}
+        )
+
     updated = await db.wallet_topups.find_one({"id": proof.topup_id}, {"_id": 0})
-    if not updated:
-        raise HTTPException(status_code=404, detail="Topup not found after update")
-    
-    logging.info(f"Payment proof submitted for topup {proof.topup_id}, URL length: {len(proof.payment_proof_url) if proof.payment_proof_url else 0}")
+
+    logging.info(f"Wallet topup {proof.topup_id} auto-approved and credited")
     await _notify_admin_telegram(
-        "Wallet topup proof submitted",
+        "Wallet topup auto-approved (proof submitted)",
         [
             f"Topup ID: {proof.topup_id}",
+            f"User: {topup.get('user_email') or topup.get('user_id')}",
+            f"Amount: ${float(topup['amount']):.2f}",
             f"Transaction ID: {proof.transaction_id}",
-            "Status: pending_verification",
+            "Status: paid (auto-approved)",
         ],
     )
-    
+
     return {
-        "message": "Topup proof submitted",
+        "message": "Topup approved and wallet credited",
         "topup": updated
     }
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useContext } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { axiosInstance, LanguageContext } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -24,12 +24,19 @@ const SELLER_LEVEL_CONFIG = {
 
 const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
   const { t } = useContext(LanguageContext);
+  const location = useLocation();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const urlSearch = new URLSearchParams(location.search).get('search') || '';
+  const [searchQuery, setSearchQuery] = useState(urlSearch);
   const [activeCategory, setActiveCategory] = useState('all');
   const [sortBy, setSortBy] = useState('popular');
   const [deliveryFilter, setDeliveryFilter] = useState('all');
+
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('search') || '';
+    if (q !== searchQuery) setSearchQuery(q);
+  }, [location.search]);
 
   useEffect(() => { loadMarketplace(); }, []);
 
@@ -165,13 +172,11 @@ const MarketplacePage = ({ user, logout, cart, addToCart, settings }) => {
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-2">{t('featuredProducts')}</h1>
             <p className="text-white/50 text-xs md:text-sm mb-4">{t('offerSubtitle')}</p>
           </div>
-          <div className="max-w-xl mx-auto">
-            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <Search size={16} className="text-white/40 ml-3" />
-              <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search marketplace..." className="flex-1 bg-transparent px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none" />
-            </div>
-          </div>
+          {searchQuery && (
+            <p className="text-white/50 text-sm text-center mt-2">
+              Showing results for: <span className="text-green-400 font-semibold">"{searchQuery}"</span>
+            </p>
+          )}
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShoppingCart, User, LogOut, Package, Settings, Heart, Menu, X, Search, ChevronRight, Bell, MessageCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,6 +14,7 @@ import { LanguageContext, axiosInstance } from '../App';
 const Navbar = ({ user, logout, cartItemCount, settings }) => {
   const { t } = useContext(LanguageContext);
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [unreadNotifs, setUnreadNotifs] = useState(0);
@@ -41,7 +42,9 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      navigate(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+      const isMarketplace = location.pathname.startsWith('/marketplace');
+      const target = isMarketplace ? '/marketplace' : '/products';
+      navigate(`${target}?search=${encodeURIComponent(searchQuery.trim())}`);
       setSearchQuery('');
     }
   };
