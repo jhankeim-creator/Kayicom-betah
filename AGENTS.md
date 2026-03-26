@@ -32,9 +32,18 @@ cd backend && MONGO_URL=mongodb://localhost:27017 DB_NAME=kayicom python3 seed_d
 ```
 Note: `seed_demo_products.py` requires `DB_NAME` env var (unlike `create_admin.py` which defaults to `kayicom`).
 
+### Production deployment
+
+| Layer | Platform | Domain |
+|-------|----------|--------|
+| Frontend | Vercel | `kayicom.com` |
+| Backend | Render | `api.kayicom.com` |
+
+`frontend/vercel.json` has an external rewrite that proxies `/api/:path*` from Vercel to `https://api.kayicom.com/api/:path*` (the Render backend). This is critical for webhooks (e.g. NatCash SMS Forwarder) that hit the frontend domain.
+
 ### Running tests
 
-- Backend smoke tests: `python3 -m pytest tests/test_api_smoke.py -v` (24/27 pass; 3 pre-existing mock failures in wallet adjust and order count tests)
+- Backend smoke tests: `python3 -m pytest tests/test_api_smoke.py -v` (52 pass; 3 pre-existing mock failures in wallet adjust and order count tests)
 - Frontend build check: `cd frontend && yarn build`
 - Backend lint: `cd backend && flake8 server.py --max-line-length=200` (pre-existing style warnings)
 
