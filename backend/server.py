@@ -1313,7 +1313,7 @@ async def _binance_auto_check_worker():
                                         continue
                                     tx_amount = abs(float(tx.get("amount", 0)))
                                     if tx_amount >= order_amount - 0.01:
-                                        tx_id = str(tx.get("transactionId") or tx.get("orderNumber") or "")
+                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
                                         now_iso = datetime.now(timezone.utc).isoformat()
                                         await db.orders.update_one({"id": order["id"]}, {"$set": {
                                             "payment_status": "paid",
@@ -4524,7 +4524,7 @@ async def test_binance_pay_connection():
                 "transaction_count": tx_count,
                 "transactions": [
                     {
-                        "id": tx.get("transactionId") or tx.get("orderNumber"),
+                        "id": tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber"),
                         "amount": tx.get("amount"),
                         "status": tx.get("orderStatus") or tx.get("status"),
                         "currency": tx.get("currency"),
@@ -4598,7 +4598,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
                     continue
 
-                tx_order_id = str(tx.get("orderNumber", "")).strip()
+                tx_order_id = str(tx.get("orderId") or tx.get("orderNumber") or "").strip()
                 tx_trans_id = str(tx.get("transactionId", "")).strip()
 
                 if binance_id in (tx_order_id, tx_trans_id):
@@ -4628,7 +4628,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                         tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                         if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
                             continue
-                        tx_order_no = str(tx.get("orderNumber") or tx.get("advNo") or "").strip()
+                        tx_order_no = str(tx.get("orderId") or tx.get("orderNumber") or tx.get("advNo") or "").strip()
                         tx_ad_no = str(tx.get("advNo") or "").strip()
                         if binance_id in (tx_order_no, tx_ad_no):
                             tx_amount = abs(float(tx.get("totalPrice") or tx.get("amount") or 0))
