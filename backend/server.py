@@ -4383,16 +4383,20 @@ async def _binance_api_call(api_key: str, api_secret: str, path: str, extra_para
     # If proxy URL is set, use it first (Vercel/Cloudflare to bypass geo-restriction)
     if proxy_url:
         proxy_base = proxy_url.rstrip("/")
-        url = f"{proxy_base}?endpoint={path}&{full_query}"
-        try:
-            resp = requests.get(url, headers=headers, timeout=20)
-            data = resp.json()
-            msg = str(data.get("msg") or data.get("message") or "")
-            if "restricted location" not in msg.lower() and data.get("code") != -1:
-                return data
-            logging.info(f"Proxy also restricted, trying direct...")
-        except Exception as e:
-            logging.warning(f"Binance proxy call failed: {e}")
+        # Try path-based format first (e.g. proxy.dev/sapi/v1/...), then query param format
+        for proxy_fmt_url in [f"{proxy_base}{path}?{full_query}", f"{proxy_base}?endpoint={path}&{full_query}"]:
+            try:
+                resp = requests.get(proxy_fmt_url, headers=headers, timeout=20)
+                data = resp.json()
+                msg = str(data.get("msg") or data.get("message") or data.get("error") or "")
+                if "path not allowed" in msg.lower():
+                    continue
+                if "restricted location" not in msg.lower() and data.get("code") != -1:
+                    return data
+            except Exception as e:
+                logging.warning(f"Binance proxy call failed: {e}")
+                continue
+        logging.info("Proxy formats exhausted, trying direct...")
 
     for base_url in BINANCE_API_BASES:
         url = f"{base_url}{path}?{full_query}"
