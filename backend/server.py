@@ -518,6 +518,7 @@ class Product(BaseModel):
     parent_product_id: Optional[str] = None  # Link to parent product for variants
     requires_player_id: bool = False  # For topup products that need player ID
     player_id_label: Optional[str] = None  # Custom label: UID, Character ID, etc
+    requires_server_id: bool = False  # For topup products that also need server/zone ID
     requires_credentials: bool = False  # For subscription/services that need login credentials
     credential_fields: Optional[List[str]] = None  # e.g. ["email","password"]
     region: Optional[str] = None  # For gift cards: US, EU, ASIA, etc.
@@ -550,6 +551,7 @@ class ProductCreate(BaseModel):
     parent_product_id: Optional[str] = None
     requires_player_id: bool = False
     player_id_label: Optional[str] = None
+    requires_server_id: bool = False
     requires_credentials: bool = False
     credential_fields: Optional[List[str]] = None
     region: Optional[str] = None
@@ -579,6 +581,7 @@ class ProductUpdate(BaseModel):
     parent_product_id: Optional[str] = None
     requires_player_id: Optional[bool] = None
     player_id_label: Optional[str] = None
+    requires_server_id: Optional[bool] = None
     requires_credentials: Optional[bool] = None
     credential_fields: Optional[List[str]] = None
     region: Optional[str] = None
@@ -1265,12 +1268,43 @@ async def _auto_cancel_unpaid_orders() -> int:
     return len(cancelled_ids)
 
 
+async def _auto_cancel_unpaid_wallet_topups() -> int:
+    """Auto-cancel unpaid wallet topups after ORDER_PAYMENT_TIMEOUT_MINUTES."""
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(minutes=ORDER_PAYMENT_TIMEOUT_MINUTES)
+    cutoff_iso = cutoff.isoformat()
+
+    pending_topups = await db.wallet_topups.find({
+        "payment_status": {"$in": ["pending", "pending_verification"]},
+        "credited": False,
+    }, {"_id": 0}).to_list(500)
+
+    cancelled_ids = []
+    for topup in pending_topups:
+        created = topup.get("created_at", "")
+        if created and created < cutoff_iso:
+            await db.wallet_topups.update_one(
+                {"id": topup["id"]},
+                {"$set": {
+                    "payment_status": "cancelled",
+                    "cancellation_reason": f"Auto-cancelled after {ORDER_PAYMENT_TIMEOUT_MINUTES} minutes without payment",
+                    "updated_at": now.isoformat(),
+                }}
+            )
+            cancelled_ids.append(topup["id"])
+
+    return len(cancelled_ids)
+
+
 async def _order_auto_cancel_worker():
     while True:
         try:
             cancelled = await _auto_cancel_unpaid_orders()
             if cancelled > 0:
                 logging.info(f"Auto-cancelled {cancelled} unpaid order(s)")
+            cancelled_topups = await _auto_cancel_unpaid_wallet_topups()
+            if cancelled_topups > 0:
+                logging.info(f"Auto-cancelled {cancelled_topups} unpaid wallet topup(s)")
         except Exception as e:
             logging.error(f"Order auto-cancel worker error: {e}")
         await asyncio.sleep(60)
@@ -1291,7 +1325,13 @@ async def _binance_auto_check_worker():
                     "payment_status": "pending",
                 }, {"_id": 0}).sort("created_at", -1).to_list(20)
 
-                if pending:
+                pending_topups = await db.wallet_topups.find({
+                    "payment_method": "binance_pay",
+                    "payment_status": "pending",
+                    "credited": False,
+                }, {"_id": 0}).sort("created_at", -1).to_list(20)
+
+                if pending or pending_topups:
                     import time as _time
                     now_ms = int(_time.time() * 1000)
                     one_day_ms = 24 * 3600 * 1000
@@ -1337,6 +1377,30 @@ async def _binance_auto_check_worker():
                                         except Exception:
                                             pass
                                         logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
+                                        break
+
+                            # Also auto-verify pending Binance wallet topups
+                            for topup in pending_topups:
+                                topup_amount = float(topup.get("amount", 0))
+                                for tx in result["data"]:
+                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                        continue
+                                    tx_amount = abs(float(tx.get("amount", 0)))
+                                    if tx_amount >= topup_amount - 0.01:
+                                        tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
+                                        now_iso = datetime.now(timezone.utc).isoformat()
+                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
+                                            "payment_status": "paid",
+                                            "transaction_id": tx_id,
+                                            "updated_at": now_iso,
+                                        }})
+                                        await db.users.update_one(
+                                            {"id": topup["user_id"]},
+                                            {"$inc": {"wallet_balance": topup_amount}}
+                                        )
+                                        await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {"credited": True}})
+                                        logging.info("Binance auto-check: wallet topup %s auto-verified", topup["id"])
                                         break
                     except Exception as e:
                         logging.warning("Binance auto-check API call failed: %s", e)
@@ -3186,6 +3250,39 @@ async def admin_g2bulk_game_fields(game: str):
     return await _g2bulk_request("POST", "/games/fields", {"game": game})
 
 
+@api_router.get("/admin/g2bulk/games/detect-server-fields")
+async def admin_g2bulk_detect_server_fields():
+    """Detect which G2Bulk games require a server_id field.
+
+    Calls GET /games to list all available games, then for each game calls
+    POST /games/fields to inspect the required fields. Returns a list of
+    games annotated with ``requires_server_id``.
+    """
+    games_resp = await _g2bulk_request("GET", "/games")
+    games_list = games_resp if isinstance(games_resp, list) else games_resp.get("data") or games_resp.get("games") or []
+    results = []
+    for game in games_list:
+        game_code = game.get("code") or game.get("game") or game.get("id") or ""
+        game_name = game.get("name") or game.get("title") or str(game_code)
+        requires_server = False
+        try:
+            fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": game_code})
+            fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
+            for f in fields:
+                field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
+                if field_name in ("server_id", "serverid", "server"):
+                    requires_server = True
+                    break
+        except Exception:
+            pass
+        results.append({
+            "game_code": game_code,
+            "game_name": game_name,
+            "requires_server_id": requires_server,
+        })
+    return {"games": results}
+
+
 class G2BulkVerifyPlayerRequest(BaseModel):
     game_code: str
     player_id: str
@@ -3220,6 +3317,17 @@ class G2BulkGameImportRequest(BaseModel):
 @api_router.post("/admin/g2bulk/games/import")
 async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
     """Import game top-up denominations as KayiCom topup products."""
+    needs_server_id = False
+    try:
+        fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": payload.game_code})
+        fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
+        for f in fields:
+            field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
+            if field_name in ("server_id", "serverid", "server"):
+                needs_server_id = True
+                break
+    except Exception:
+        pass
     imported = []
     skipped = []
     for cat in payload.catalogues:
@@ -3253,6 +3361,7 @@ async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
                 g2bulk_catalogue_id=str(cat_name),
                 requires_player_id=True,
                 player_id_label="Player ID",
+                requires_server_id=needs_server_id,
             )
             normalized = _normalize_product_doc(new_product.model_dump())
             new_product.seo_title = normalized.get("seo_title")

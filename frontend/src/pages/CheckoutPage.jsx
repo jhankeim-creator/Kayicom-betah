@@ -388,7 +388,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                           <span className="text-white font-semibold">Binance Pay</span>
                           <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 text-[10px] font-bold uppercase tracking-wider">Auto</span>
                         </div>
-                        <p className="text-white/70 text-sm mt-1">Auto-verified via Binance API</p>
+                        <p className="text-white/70 text-sm mt-1">Auto-verified</p>
                         {settings.payment_gateways.binance_pay.email && (
                           <p className="text-white/60 text-xs mt-1">ID: {settings.payment_gateways.binance_pay.email}</p>
                         )}

@@ -276,14 +276,6 @@ const Navbar = ({ user, logout, cartItemCount, settings }) => {
               </button>
             </div>
 
-            <div className="p-4">
-              <input
-                type="text"
-                placeholder="Search your products..."
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-green-500/50"
-              />
-            </div>
-
             <div className="border-b border-white/5 pb-2">
               <Link
                 to="/marketplace"
