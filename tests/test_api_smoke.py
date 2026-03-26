@@ -1048,6 +1048,31 @@ def test_webhook_natcash_bearer_auth_accepts_correct_token(app_module):
     assert r.status_code == 200, r.text
 
 
+def test_webhook_natcash_get_with_query_params(app_module):
+    """Webhook accepts GET requests with SMS data in query parameters."""
+    app_module.db.orders._docs.append({
+        "id": "ord-nc-get-1",
+        "user_id": "u-nc-get-1",
+        "user_email": "ncget@example.com",
+        "items": [],
+        "total_amount": 5.0,
+        "payment_method": "natcash",
+        "payment_status": "pending",
+        "order_status": "pending",
+        "natcash_reference": "GETRF1",
+    })
+    client = TestClient(app_module.app)
+    r = client.get(
+        "/api/webhook/natcash",
+        params={"message": "Ou resevwa 675.00 HTG kontni: GETRF1. Balans: 9999 HTG"},
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["status"] == "success"
+    assert data["matched"] is True
+    assert data["order_id"] == "ord-nc-get-1"
+
+
 def test_webhook_natcash_matches_order_by_amount(app_module):
     """Webhook matches order by HTG amount when reference doesn't match."""
     app_module.db.settings._docs[0]["natcash_usd_htg_rate"] = 135.0
