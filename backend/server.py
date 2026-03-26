@@ -616,10 +616,9 @@ class Order(BaseModel):
     credits_awarded: Optional[int] = None
     credits_recorded: Optional[bool] = None
     currency: str = "USD"
-    payment_method: str  # wallet, crypto_plisio, payerurl, paypal, skrill, moncash, natcash, binance_pay, binance_pay_manual, zelle, cashapp
+    payment_method: str  # wallet, crypto_plisio, paypal, skrill, moncash, natcash, binance_pay, binance_pay_manual, zelle, cashapp
     payment_status: str = "pending"  # pending, paid, failed, cancelled
     order_status: str = "pending"  # pending, processing, completed, cancelled
-    payerurl_payment_url: Optional[str] = None
     payment_proof_url: Optional[str] = None
     transaction_id: Optional[str] = None
     plisio_invoice_id: Optional[str] = None
@@ -728,8 +727,6 @@ class SiteSettings(BaseModel):
     binance_pay_api_key: Optional[str] = None
     binance_pay_secret_key: Optional[str] = None
     binance_pay_proxy_url: Optional[str] = None
-    payerurl_public_key: Optional[str] = None
-    payerurl_secret_key: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -864,8 +861,6 @@ class SettingsUpdate(BaseModel):
     binance_pay_api_key: Optional[str] = None
     binance_pay_secret_key: Optional[str] = None
     binance_pay_proxy_url: Optional[str] = None
-    payerurl_public_key: Optional[str] = None
-    payerurl_secret_key: Optional[str] = None
     mtcgame_api_key: Optional[str] = None
     gosplit_api_key: Optional[str] = None
     z2u_api_key: Optional[str] = None
@@ -2845,36 +2840,6 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
             except Exception as e:
                 logging.error(f"Plisio error: {e}")
 
-    # PayerURL crypto payment
-    if order_data.payment_method == "payerurl":
-        settings = await db.settings.find_one({"id": "site_settings"})
-        pub_key = (settings or {}).get("payerurl_public_key", "")
-        sec_key = (settings or {}).get("payerurl_secret_key", "")
-        frontend_url = os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
-        if pub_key and sec_key:
-            try:
-                from payerurl_helper import PayerURLHelper
-                payer = PayerURLHelper(pub_key, sec_key)
-                callback_url = _resolve_payerurl_callback_url()
-                result = await payer.create_payment(
-                    order_id=order.id,
-                    amount=total,
-                    currency="USD",
-                    customer_name=user_doc.get("full_name", "Customer"),
-                    customer_email=user_email,
-                    redirect_url=f"{frontend_url}/payment-success?type=order&id={order.id}",
-                    notify_url=callback_url,
-                    cancel_url=f"{frontend_url}/track/{order.id}",
-                    items=", ".join(i.product_name for i in validated_items),
-                )
-                payment_url = result.get("redirectTO") or result.get("redirect_to") or result.get("payment_url")
-                if payment_url:
-                    order.payerurl_payment_url = payment_url
-                elif result.get("error"):
-                    logging.error("PayerURL API error: %s", result.get("error"))
-            except Exception as e:
-                logging.error(f"PayerURL error: {e}")
-
     if order_data.payment_method == "natcash":
         ref_code = secrets.token_hex(3).upper()
         order.natcash_reference = ref_code
@@ -4302,144 +4267,6 @@ async def plisio_callback(data: Dict[str, Any]):
                                 logger.error(f"Failed to send admin sell notification: {e}")
     
     return {"status": "ok"}
-
-
-def _resolve_payerurl_callback_url() -> str:
-    """Resolve the public callback URL for PayerURL webhooks."""
-    explicit = os.environ.get("PAYERURL_CALLBACK_URL", "").strip().rstrip("/")
-    if explicit:
-        return explicit
-    for env_key in ("BACKEND_URL", "RENDER_EXTERNAL_URL", "RAILWAY_PUBLIC_DOMAIN"):
-        val = os.environ.get(env_key, "").strip().rstrip("/")
-        if val and "localhost" not in val:
-            if not val.startswith("http"):
-                val = f"https://{val}"
-            return f"{val}/api/payments/payerurl-callback"
-    port = os.environ.get("PORT", "8000")
-    return f"http://localhost:{port}/api/payments/payerurl-callback"
-
-
-@api_router.post("/payments/payerurl-callback")
-async def payerurl_callback(request: Request):
-    """Handle PayerURL webhook callback when payment is completed."""
-    try:
-        body = await request.json()
-    except Exception:
-        try:
-            body = dict(await request.form())
-        except Exception:
-            raw = await request.body()
-            logging.error("PayerURL callback: could not parse body: %s", raw[:500])
-            return {"status": "error", "message": "Invalid body"}
-
-    logging.info("PayerURL callback received: %s", body)
-
-    order_id = str(body.get("order_id", "")).strip()
-    status_code = str(body.get("status_code", "")).strip().lower()
-    transaction_id = str(body.get("transaction_id", "")).strip()
-
-    if not order_id:
-        return {"status": "error", "message": "Missing order_id"}
-
-    settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
-    pub_key = settings.get("payerurl_public_key", "")
-    sec_key = settings.get("payerurl_secret_key", "")
-
-    if pub_key and sec_key and body.get("authStr"):
-        from payerurl_helper import PayerURLHelper
-        if not PayerURLHelper.verify_callback(pub_key, sec_key, body):
-            logging.warning("PayerURL callback auth failed for order %s", order_id)
-            return {"status": "error", "message": "Auth failed"}
-
-    if status_code not in ("2", "200", "success", "completed", "paid"):
-        logging.info("PayerURL: %s status_code=%s (not completed)", order_id, status_code)
-        return {"status": "ok"}
-
-    now_iso = datetime.now(timezone.utc).isoformat()
-    tx_id = transaction_id or f"payerurl:{order_id}"
-
-    # Try orders first
-    order = await db.orders.find_one({"id": order_id})
-    if order:
-        if order.get("payment_status") == "paid":
-            return {"status": "ok", "message": "Already paid"}
-        await db.orders.update_one(
-            {"id": order_id},
-            {"$set": {
-                "payment_status": "paid",
-                "order_status": "processing",
-                "transaction_id": tx_id,
-                "payment_proof_url": f"payerurl-verified:{transaction_id}",
-                "updated_at": now_iso,
-            }}
-        )
-        try:
-            await _try_auto_deliver(order_id)
-        except Exception as e:
-            logging.error(f"Auto-delivery error on PayerURL callback: {e}")
-        try:
-            await _notify_admin_telegram(
-                "PayerURL Payment Verified",
-                [
-                    f"Order: {order_id[:8]}",
-                    f"Amount: ${order.get('total_amount', 0):.2f}",
-                    f"TX: {transaction_id}",
-                    f"User: {order.get('user_email', 'N/A')}",
-                ],
-            )
-        except Exception:
-            pass
-        logging.info("PayerURL: order %s marked as paid (tx: %s)", order_id, transaction_id)
-        return {"status": "ok"}
-
-    # Try wallet topups
-    topup = await db.wallet_topups.find_one({"id": order_id})
-    if topup:
-        await db.wallet_topups.update_one(
-            {"id": order_id},
-            {"$set": {"payment_status": "paid", "transaction_id": tx_id, "updated_at": now_iso}}
-        )
-        if not topup.get("credited"):
-            await db.users.update_one({"id": topup["user_id"]}, {"$inc": {"wallet_balance": float(topup["amount"])}})
-            await db.wallet_transactions.insert_one({
-                "id": str(uuid.uuid4()),
-                "user_id": topup["user_id"],
-                "user_email": topup.get("user_email"),
-                "order_id": None,
-                "type": "topup",
-                "amount": float(topup["amount"]),
-                "reason": f"Wallet topup {order_id} (PayerURL)",
-                "created_at": now_iso,
-            })
-            await db.wallet_topups.update_one({"id": order_id}, {"$set": {"credited": True}})
-        logging.info("PayerURL: wallet topup %s marked as paid", order_id)
-        return {"status": "ok"}
-
-    # Try minutes transfers
-    transfer = await db.minutes_transfers.find_one({"id": order_id})
-    if transfer:
-        await db.minutes_transfers.update_one(
-            {"id": order_id},
-            {"$set": {"payment_status": "paid", "transfer_status": "processing", "transaction_id": tx_id, "updated_at": now_iso}}
-        )
-        logging.info("PayerURL: minutes transfer %s marked as paid", order_id)
-        return {"status": "ok"}
-
-    logging.warning("PayerURL callback: no matching record for %s", order_id)
-    return {"status": "ok"}
-
-
-@api_router.get("/payments/payerurl-status/{order_id}")
-async def check_payerurl_status(order_id: str):
-    """Check the payment status of a PayerURL order."""
-    order = await db.orders.find_one({"id": order_id}, {"_id": 0, "payment_status": 1, "payerurl_payment_url": 1, "order_status": 1})
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-    return {
-        "payment_status": order.get("payment_status", "pending"),
-        "order_status": order.get("order_status", "pending"),
-        "payerurl_payment_url": order.get("payerurl_payment_url"),
-    }
 
 
 @api_router.get("/payments/plisio-status/{invoice_id}")
@@ -6508,8 +6335,6 @@ async def get_settings():
         "plisio_api_key",
         "binance_pay_api_key",
         "binance_pay_secret_key",
-        "payerurl_public_key",
-        "payerurl_secret_key",
         "mtcgame_api_key",
         "gosplit_api_key",
         "z2u_api_key",
@@ -8128,35 +7953,6 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
         except Exception as e:
             logging.error(f"Plisio topup error: {e}")
 
-    # PayerURL crypto payment for wallet topup
-    if topup.payment_method == "payerurl":
-        pub_key = settings.get("payerurl_public_key", "")
-        sec_key = settings.get("payerurl_secret_key", "")
-        frontend_url = os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
-        if pub_key and sec_key:
-            try:
-                from payerurl_helper import PayerURLHelper
-                payer = PayerURLHelper(pub_key, sec_key)
-                callback_url = _resolve_payerurl_callback_url()
-                result = await payer.create_payment(
-                    order_id=topup_id,
-                    amount=float(topup.amount),
-                    currency="USD",
-                    customer_name=user_doc.get("full_name", "Customer"),
-                    customer_email=user_email,
-                    redirect_url=f"{frontend_url}/payment-success?type=wallet_topup&id={topup_id}",
-                    notify_url=callback_url,
-                    cancel_url=f"{frontend_url}/wallet",
-                    items=f"Wallet Topup ${float(topup.amount):.2f}",
-                )
-                payment_url = result.get("redirectTO") or result.get("redirect_to") or result.get("payment_url")
-                if payment_url:
-                    doc["payerurl_payment_url"] = payment_url
-                elif result.get("error"):
-                    logging.error("PayerURL wallet topup error: %s", result.get("error"))
-            except Exception as e:
-                logging.error(f"PayerURL topup error: {e}")
-
     await db.wallet_topups.insert_one(doc)
     await _notify_admin_telegram(
         "Wallet topup created",
@@ -8193,7 +7989,6 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
             "payment_proof_url": doc.get("payment_proof_url"),
             "plisio_invoice_id": doc.get("plisio_invoice_id"),
             "plisio_invoice_url": doc.get("plisio_invoice_url"),
-            "payerurl_payment_url": doc.get("payerurl_payment_url"),
             "credited": doc.get("credited"),
             "created_at": doc.get("created_at"),
             "updated_at": doc.get("updated_at"),
@@ -8467,34 +8262,6 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
         except Exception as e:
             logging.error(f"Plisio minutes transfer error: {e}")
 
-    elif payload.payment_method == "payerurl":
-        pub_key = settings.get("payerurl_public_key", "")
-        sec_key = settings.get("payerurl_secret_key", "")
-        frontend_url = os.environ.get("FRONTEND_URL", "https://kayicom.com").rstrip("/")
-        if pub_key and sec_key:
-            try:
-                from payerurl_helper import PayerURLHelper
-                payer = PayerURLHelper(pub_key, sec_key)
-                callback_url = _resolve_payerurl_callback_url()
-                result = await payer.create_payment(
-                    order_id=transfer_id,
-                    amount=float(doc["total_amount"]),
-                    currency="USD",
-                    customer_name=user_doc.get("full_name", "Customer"),
-                    customer_email=user_email,
-                    redirect_url=f"{frontend_url}/payment-success?type=minutes_transfer&id={transfer_id}",
-                    notify_url=callback_url,
-                    cancel_url=f"{frontend_url}/minutes",
-                    items=f"Mobile Topup {country} {phone}",
-                )
-                payment_url = result.get("redirectTO") or result.get("redirect_to") or result.get("payment_url")
-                if payment_url:
-                    doc["payerurl_payment_url"] = payment_url
-                elif result.get("error"):
-                    logging.error("PayerURL minutes transfer error: %s", result.get("error"))
-            except Exception as e:
-                logging.error(f"PayerURL minutes transfer error: {e}")
-
     else:
         gateways = settings.get("payment_gateways") or {}
         gateway = gateways.get(payload.payment_method) or {}
@@ -8516,7 +8283,7 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
     )
 
     payment_info = {}
-    if payload.payment_method not in ["wallet", "crypto_plisio", "payerurl"]:
+    if payload.payment_method not in ["wallet", "crypto_plisio"]:
         gateways = settings.get("payment_gateways") or {}
         gateway = gateways.get(payload.payment_method) or {}
         if gateway.get("enabled"):
@@ -8547,7 +8314,6 @@ async def create_minutes_transfer(payload: MinutesTransferCreate, user_id: str, 
             "payment_proof_url": doc.get("payment_proof_url"),
             "plisio_invoice_id": doc.get("plisio_invoice_id"),
             "plisio_invoice_url": doc.get("plisio_invoice_url"),
-            "payerurl_payment_url": doc.get("payerurl_payment_url"),
             "created_at": doc.get("created_at"),
             "updated_at": doc.get("updated_at"),
         }
