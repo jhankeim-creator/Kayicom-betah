@@ -1363,6 +1363,8 @@ async def _binance_auto_check_worker():
                                             "binance_pay_data": tx,
                                             "updated_at": now_iso,
                                         }})
+                                        await _record_coupon_usage_if_needed(order["id"])
+                                        await _record_product_orders_if_needed(order["id"])
                                         try:
                                             await _try_auto_deliver(order["id"])
                                         except Exception as e:
@@ -4826,6 +4828,8 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
         )
+        await _record_coupon_usage_if_needed(req.order_id)
+        await _record_product_orders_if_needed(req.order_id)
         try:
             await _try_auto_deliver(req.order_id)
         except Exception as e:
