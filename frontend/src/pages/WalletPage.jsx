@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
-import { HelpCircle, Filter, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { HelpCircle, Filter, ArrowUpRight, ArrowDownLeft, ExternalLink, CreditCard } from 'lucide-react';
 
 const WalletPage = ({ user, logout, settings }) => {
   const [balance, setBalance] = useState(0);
@@ -30,6 +30,7 @@ const WalletPage = ({ user, logout, settings }) => {
   const [selectedTopupId, setSelectedTopupId] = useState(null);
   const [convertCredits, setConvertCredits] = useState('');
   const [converting, setConverting] = useState(false);
+  const [paymentPanel, setPaymentPanel] = useState(null);
 
   const userId = user?.user_id || user?.id;
 
@@ -89,10 +90,34 @@ const WalletPage = ({ user, logout, settings }) => {
     try {
       const res = await axiosInstance.post(`/wallet/topups?user_id=${userId}&user_email=${user.email}`, { amount: amt, payment_method: topupMethod });
       const topupData = res.data?.topup;
-      toast.success('Topup created');
+      const paymentInfo = res.data?.payment_info;
       setTopupAmount('');
-      setSelectedTopupId(topupData?.id || null);
       setShowRecharge(false);
+
+      if (topupMethod === 'crypto_plisio') {
+        const invoiceUrl = buildPlisioInvoiceUrl(topupData?.plisio_invoice_url, topupData?.plisio_invoice_id);
+        if (invoiceUrl) {
+          toast.success('Redirecting to crypto payment...');
+          openPlisioInvoice(invoiceUrl, topupData?.id);
+        } else {
+          toast.error('Crypto payment not available — Plisio API key not configured');
+        }
+        setSelectedTopupId(topupData?.id || null);
+        setActiveTab('topups');
+      } else {
+        const gw = settings?.payment_gateways?.[topupMethod] || {};
+        setPaymentPanel({
+          topupId: topupData?.id,
+          method: topupMethod,
+          amount: amt,
+          email: paymentInfo?.email || gw.email || '',
+          instructions: paymentInfo?.instructions || gw.instructions || '',
+        });
+        setSelectedTopupId(topupData?.id || null);
+        setActiveTab('topups');
+        toast.success('Send your payment, then submit proof below');
+      }
+
       await loadAll();
     } catch (e) { toast.error(e.response?.data?.detail || 'Error creating topup'); }
     finally { setCreatingTopup(false); }
@@ -114,9 +139,12 @@ const WalletPage = ({ user, logout, settings }) => {
     if (!selectedTopupId) { toast.error('Select a topup first'); return; }
     if (!proofTxId || !proofUrl) { toast.error('Transaction ID and proof required'); return; }
     try {
-      await axiosInstance.post('/wallet/topups/proof', { topup_id: selectedTopupId, transaction_id: proofTxId, payment_proof_url: proofUrl });
-      toast.success('Proof submitted');
+      const res = await axiosInstance.post('/wallet/topups/proof', { topup_id: selectedTopupId, transaction_id: proofTxId, payment_proof_url: proofUrl });
+      const msg = res.data?.message || 'Proof submitted';
+      toast.success(msg);
       setProofTxId(''); setProofUrl('');
+      setSelectedTopupId(null);
+      setPaymentPanel(null);
       await loadAll();
     } catch (e) { toast.error(e.response?.data?.detail || 'Error submitting proof'); }
   };
@@ -274,6 +302,32 @@ const WalletPage = ({ user, logout, settings }) => {
             </div>
           )}
 
+          {/* Payment Instructions Panel */}
+          {paymentPanel && (
+            <div className="mb-6 p-5 rounded-xl bg-gradient-to-br from-yellow-500/10 to-orange-500/10 border border-yellow-400/30">
+              <div className="flex items-center gap-2 mb-3">
+                <CreditCard size={20} className="text-yellow-400" />
+                <h3 className="text-yellow-200 font-bold text-sm">
+                  Payment Instructions — {paymentPanel.method.replaceAll('_', ' ').toUpperCase()}
+                </h3>
+              </div>
+              <div className="space-y-2">
+                <p className="text-white text-lg font-bold">Amount: ${Number(paymentPanel.amount).toFixed(2)} USD</p>
+                {paymentPanel.email && (
+                  <p className="text-white/80 text-sm">Send to: <span className="font-bold text-green-400">{paymentPanel.email}</span></p>
+                )}
+                {paymentPanel.instructions && (
+                  <p className="text-white/70 text-sm">{paymentPanel.instructions}</p>
+                )}
+                <p className="text-yellow-200/80 text-xs mt-2">After sending your payment, submit your transaction ID and screenshot proof below.</p>
+              </div>
+              <Button size="sm" variant="outline" className="mt-3 border-white/20 text-white/60 hover:text-white text-xs"
+                onClick={() => setPaymentPanel(null)}>
+                Dismiss
+              </Button>
+            </div>
+          )}
+
           {/* Topup Records */}
           {activeTab === 'topups' && (
             <div className="space-y-3">
@@ -303,6 +357,18 @@ const WalletPage = ({ user, logout, settings }) => {
               {selectedTopup && selectedTopup.payment_method !== 'crypto_plisio' && ['pending', 'failed'].includes(selectedTopup.payment_status) && (
                 <div className="mt-4 p-4 rounded-xl bg-[#1a1a1a] border border-orange-500/20 space-y-3">
                   <p className="text-orange-300 text-sm font-semibold">Submit payment proof</p>
+                  {(() => {
+                    const gw = settings?.payment_gateways?.[selectedTopup.payment_method];
+                    if (!gw) return null;
+                    return (
+                      <div className="p-3 rounded-lg bg-yellow-400/10 border border-yellow-400/30 space-y-1">
+                        <p className="text-yellow-200 text-xs font-semibold">Payment Instructions — {selectedTopup.payment_method.replaceAll('_', ' ').toUpperCase()}</p>
+                        {gw.email && <p className="text-white/80 text-xs">Send to: <span className="font-semibold text-white">{gw.email}</span></p>}
+                        {gw.instructions && <p className="text-white/70 text-xs">{gw.instructions}</p>}
+                        <p className="text-yellow-200 text-xs">Amount: <span className="font-bold text-white">${Number(selectedTopup.amount).toFixed(2)}</span></p>
+                      </div>
+                    );
+                  })()}
                   <div>
                     <Label className="text-white/70 text-sm">Transaction ID</Label>
                     <Input value={proofTxId} onChange={(e) => setProofTxId(e.target.value)}

@@ -4318,33 +4318,42 @@ async def upload_payment_proof(proof_data: ManualPaymentProof):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.get("payment_proof_url"):
-        raise HTTPException(status_code=400, detail="Payment proof already submitted")
+    if order.get("payment_status") in ("paid", "cancelled"):
+        return {"message": "Order already processed", "payment_status": order["payment_status"]}
 
-    if order.get("payment_status") != "pending":
-        raise HTTPException(status_code=400, detail="Payment is already being processed")
+    if order.get("payment_proof_url") and order.get("payment_status") == "paid":
+        return {"message": "Payment already approved", "payment_status": "paid"}
 
-    # Update order with payment proof
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     await db.orders.update_one(
         {"id": proof_data.order_id},
         {"$set": {
             "payment_proof_url": proof_data.payment_proof_url,
             "transaction_id": proof_data.transaction_id,
-            "payment_status": "pending_verification",
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "payment_status": "paid",
+            "order_status": "processing",
+            "updated_at": now_iso,
         }}
     )
 
+    await _record_coupon_usage_if_needed(proof_data.order_id)
+    await _record_product_orders_if_needed(proof_data.order_id)
+    try:
+        await _try_auto_deliver(proof_data.order_id)
+    except Exception as e:
+        logging.error(f"Auto-delivery error on manual proof approval: {e}")
+
     await _notify_admin_telegram(
-        "Order payment proof submitted",
+        "Order auto-approved (transaction ID submitted)",
         [
             f"Order ID: {proof_data.order_id}",
             f"Transaction ID: {proof_data.transaction_id}",
-            f"Status: pending_verification",
+            f"Status: paid / processing",
         ],
     )
 
-    return {"message": "Payment proof uploaded successfully"}
+    return {"message": "Payment approved successfully", "payment_status": "paid"}
 
 @api_router.post("/payments/plisio-callback")
 async def plisio_callback(data: Dict[str, Any]):
@@ -4356,6 +4365,8 @@ async def plisio_callback(data: Dict[str, Any]):
         # First try normal orders
         order = await db.orders.find_one({"id": order_id}, {"_id": 0})
         if order:
+            if order.get("payment_status") == "paid":
+                return {"status": "ok", "message": "Already processed"}
             await db.orders.update_one(
                 {"id": order_id},
                 {"$set": {
@@ -8293,37 +8304,62 @@ async def get_all_wallet_topups():
 
 @api_router.post("/wallet/topups/proof")
 async def submit_wallet_topup_proof(proof: WalletTopupProof):
-    """Submit payment proof for a wallet topup"""
-    update_data = {
-        "transaction_id": proof.transaction_id,
-        "payment_proof_url": proof.payment_proof_url,
-        "payment_status": "pending_verification",
-        "updated_at": datetime.now(timezone.utc).isoformat()
-    }
-    res = await db.wallet_topups.update_one(
-        {"id": proof.topup_id},
-        {"$set": update_data}
-    )
-    if res.matched_count == 0:
+    """Submit payment proof for a wallet topup — auto-approves and credits wallet."""
+    topup = await db.wallet_topups.find_one({"id": proof.topup_id}, {"_id": 0})
+    if not topup:
         raise HTTPException(status_code=404, detail="Topup not found")
-    
-    # Return the updated topup document for confirmation
+
+    if topup.get("payment_status") == "paid":
+        return {"message": "Topup already approved", "topup": topup}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    await db.wallet_topups.update_one(
+        {"id": proof.topup_id},
+        {"$set": {
+            "transaction_id": proof.transaction_id,
+            "payment_proof_url": proof.payment_proof_url,
+            "payment_status": "paid",
+            "updated_at": now_iso,
+        }}
+    )
+
+    if not topup.get("credited"):
+        await db.users.update_one(
+            {"id": topup["user_id"]},
+            {"$inc": {"wallet_balance": float(topup["amount"])}}
+        )
+        await db.wallet_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": topup["user_id"],
+            "user_email": topup.get("user_email"),
+            "order_id": None,
+            "type": "topup",
+            "amount": float(topup["amount"]),
+            "reason": f"Wallet topup {proof.topup_id}",
+            "created_at": now_iso,
+        })
+        await db.wallet_topups.update_one(
+            {"id": proof.topup_id},
+            {"$set": {"credited": True}}
+        )
+
     updated = await db.wallet_topups.find_one({"id": proof.topup_id}, {"_id": 0})
-    if not updated:
-        raise HTTPException(status_code=404, detail="Topup not found after update")
-    
-    logging.info(f"Payment proof submitted for topup {proof.topup_id}, URL length: {len(proof.payment_proof_url) if proof.payment_proof_url else 0}")
+
+    logging.info(f"Wallet topup {proof.topup_id} auto-approved and credited")
     await _notify_admin_telegram(
-        "Wallet topup proof submitted",
+        "Wallet topup auto-approved (proof submitted)",
         [
             f"Topup ID: {proof.topup_id}",
+            f"User: {topup.get('user_email') or topup.get('user_id')}",
+            f"Amount: ${float(topup['amount']):.2f}",
             f"Transaction ID: {proof.transaction_id}",
-            "Status: pending_verification",
+            "Status: paid (auto-approved)",
         ],
     )
-    
+
     return {
-        "message": "Topup proof submitted",
+        "message": "Topup approved and wallet credited",
         "topup": updated
     }
 

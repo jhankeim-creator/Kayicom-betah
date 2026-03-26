@@ -124,19 +124,25 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     setSubmitting(true);
 
     try {
-      await axiosInstance.post('/payments/manual-proof', {
+      const res = await axiosInstance.post('/payments/manual-proof', {
         order_id: orderId,
         transaction_id: transactionId,
         payment_proof_url: proofUrl
       });
 
-      toast.success('Payment proof submitted successfully!');
-      loadOrder();
+      const status = res.data?.payment_status;
+      if (status === 'paid') {
+        toast.success('Payment approved!');
+        navigate(`/payment-success?type=order&id=${orderId}`, { replace: true });
+      } else {
+        toast.success('Payment proof submitted successfully!');
+        loadOrder();
+      }
       setProofUrl('');
       setTransactionId('');
     } catch (error) {
       console.error('Error submitting proof:', error);
-      toast.error('Error submitting payment proof');
+      toast.error(error.response?.data?.detail || 'Error submitting payment proof');
     } finally {
       setSubmitting(false);
     }
