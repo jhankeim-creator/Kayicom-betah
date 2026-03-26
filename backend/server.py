@@ -226,6 +226,7 @@ NETFLIX_DEFAULT_ORDERS_COUNT = 1568
 ORDER_PAYMENT_TIMEOUT_MINUTES = max(1, int(os.environ.get("ORDER_PAYMENT_TIMEOUT_MINUTES", "1440")))
 CRYPTO_EXCHANGE_ENABLED = os.environ.get("CRYPTO_EXCHANGE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 _order_auto_cancel_task: Optional[asyncio.Task] = None
+_binance_auto_check_task: Optional[asyncio.Task] = None
 _subscription_notification_task: Optional[asyncio.Task] = None
 _escrow_release_task: Optional[asyncio.Task] = None
 _dispute_deadline_task: Optional[asyncio.Task] = None
@@ -1272,6 +1273,75 @@ async def _order_auto_cancel_worker():
                 logging.info(f"Auto-cancelled {cancelled} unpaid order(s)")
         except Exception as e:
             logging.error(f"Order auto-cancel worker error: {e}")
+        await asyncio.sleep(60)
+
+
+async def _binance_auto_check_worker():
+    """Background worker that auto-verifies pending Binance Pay orders every 60 seconds."""
+    while True:
+        try:
+            settings = await db.settings.find_one({"id": "site_settings"}, {"_id": 0}) or {}
+            api_key = settings.get("binance_pay_api_key", "")
+            api_secret = settings.get("binance_pay_secret_key", "")
+            proxy_url = settings.get("binance_pay_proxy_url", "") or ""
+
+            if api_key and api_secret:
+                pending = await db.orders.find({
+                    "payment_method": "binance_pay",
+                    "payment_status": "pending",
+                }, {"_id": 0}).sort("created_at", -1).to_list(20)
+
+                if pending:
+                    import time as _time
+                    now_ms = int(_time.time() * 1000)
+                    one_day_ms = 24 * 3600 * 1000
+
+                    try:
+                        result = await _binance_get_pay_transactions(
+                            api_key, api_secret,
+                            start_time=now_ms - one_day_ms,
+                            end_time=now_ms,
+                            proxy_url=proxy_url
+                        )
+
+                        if result.get("code") == "000000" and result.get("data"):
+                            for order in pending:
+                                order_amount = float(order.get("total_amount", 0))
+                                for tx in result["data"]:
+                                    tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                                    if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                        continue
+                                    tx_amount = abs(float(tx.get("amount", 0)))
+                                    if tx_amount >= order_amount - 0.01:
+                                        tx_id = str(tx.get("transactionId") or tx.get("orderNumber") or "")
+                                        now_iso = datetime.now(timezone.utc).isoformat()
+                                        await db.orders.update_one({"id": order["id"]}, {"$set": {
+                                            "payment_status": "paid",
+                                            "order_status": "processing",
+                                            "transaction_id": tx_id,
+                                            "payment_proof_url": f"binance-auto-verified:{tx_id}",
+                                            "binance_pay_data": tx,
+                                            "updated_at": now_iso,
+                                        }})
+                                        try:
+                                            await _try_auto_deliver(order["id"])
+                                        except Exception as e:
+                                            logging.error("Auto-delivery error on Binance auto-check: %s", e)
+                                        try:
+                                            await _notify_admin_telegram("Binance Pay Auto-Verified (background)", [
+                                                f"Order: {order['id'][:8]}",
+                                                f"Amount: ${order_amount:.2f}",
+                                                f"TX: {tx_id}",
+                                                f"User: {order.get('user_email', 'N/A')}",
+                                            ])
+                                        except Exception:
+                                            pass
+                                        logging.info("Binance auto-check: order %s auto-verified (tx=%s)", order["id"], tx_id)
+                                        break
+                    except Exception as e:
+                        logging.warning("Binance auto-check API call failed: %s", e)
+        except Exception as e:
+            logging.error("Binance auto-check worker error: %s", e)
         await asyncio.sleep(60)
 
 
@@ -4392,6 +4462,122 @@ async def debug_binance_transactions():
 
 async def _binance_get_c2c_orders(api_key: str, api_secret: str, trade_type: str = "BUY", proxy_url: str = None) -> dict:
     return await _binance_api_call(api_key, api_secret, "/sapi/v1/c2c/orderMatch/listUserOrderHistory", {"tradeType": trade_type}, proxy_url=proxy_url)
+
+
+@api_router.post("/webhook/binance-pay")
+async def binance_pay_webhook(request: Request):
+    """Receive Binance Pay webhook notifications.
+
+    Binance sends POST with JSON containing payment status updates.
+    We verify the signature and mark matching orders as paid.
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        raw = (await request.body()).decode("utf-8", errors="replace")
+        logging.error("Binance webhook: could not parse body: %s", raw[:500])
+        return {"returnCode": "FAIL", "returnMessage": "Invalid body"}
+
+    logging.info("Binance Pay webhook received: %s", str(body)[:500])
+
+    biz_status = str(body.get("bizStatus") or body.get("status") or "").upper()
+    biz_id = str(body.get("bizIdStr") or body.get("bizId") or body.get("transactionId") or "").strip()
+    merchant_trade_no = str(body.get("merchantTradeNo") or body.get("order_id") or "").strip()
+
+    if biz_status not in ("PAY_SUCCESS", "SUCCESS", "COMPLETED", "ACCEPTED"):
+        logging.info("Binance webhook: status=%s (not success), ignoring", biz_status)
+        return {"returnCode": "SUCCESS", "returnMessage": "OK"}
+
+    order = None
+    if merchant_trade_no:
+        order = await db.orders.find_one({"id": merchant_trade_no, "payment_method": "binance_pay", "payment_status": "pending"}, {"_id": 0})
+
+    if not order and biz_id:
+        candidates = await db.orders.find({"payment_method": "binance_pay", "payment_status": "pending"}, {"_id": 0}).sort("created_at", -1).to_list(50)
+        for c in candidates:
+            if str(c.get("transaction_id", "")).strip() == biz_id:
+                order = c
+                break
+
+    if not order:
+        logging.info("Binance webhook: no matching pending order for merchantTradeNo=%s bizId=%s", merchant_trade_no, biz_id)
+        return {"returnCode": "SUCCESS", "returnMessage": "No matching order"}
+
+    order_id = order["id"]
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.orders.update_one({"id": order_id}, {"$set": {
+        "payment_status": "paid",
+        "order_status": "processing",
+        "transaction_id": biz_id or merchant_trade_no,
+        "payment_proof_url": f"binance-webhook-verified:{biz_id}",
+        "binance_pay_data": body,
+        "updated_at": now_iso,
+    }})
+    try:
+        await _try_auto_deliver(order_id)
+    except Exception as e:
+        logging.error("Auto-delivery error on Binance webhook: %s", e)
+    try:
+        await _notify_admin_telegram("Binance Pay Webhook Verified", [
+            f"Order: {order_id[:8]}",
+            f"Amount: ${order.get('total_amount', 0):.2f}",
+            f"Binance ID: {biz_id}",
+            f"User: {order.get('user_email', 'N/A')}",
+        ])
+    except Exception:
+        pass
+    logging.info("Binance Pay webhook: order %s marked paid (bizId=%s)", order_id, biz_id)
+    return {"returnCode": "SUCCESS", "returnMessage": "OK"}
+
+
+@api_router.post("/payments/binance-pay/test")
+async def test_binance_pay_connection():
+    """Admin tool: test Binance Pay API connection by fetching recent transactions."""
+    settings = await db.settings.find_one({"id": "site_settings"})
+    api_key = (settings or {}).get("binance_pay_api_key", "")
+    api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    proxy_url = (settings or {}).get("binance_pay_proxy_url", "") or ""
+
+    if not api_key or not api_secret:
+        return {"ok": False, "error": "Binance API Key ak Secret Key pa konfigire"}
+
+    import time as _time
+    now_ms = int(_time.time() * 1000)
+    one_day_ms = 24 * 3600 * 1000
+
+    try:
+        result = await _binance_get_pay_transactions(
+            api_key, api_secret,
+            start_time=now_ms - one_day_ms,
+            end_time=now_ms,
+            limit=5,
+            proxy_url=proxy_url
+        )
+
+        if result.get("code") == "000000":
+            tx_count = len(result.get("data", []))
+            return {
+                "ok": True,
+                "message": f"Koneksyon Binance API reyisi! {tx_count} tranzaksyon nan dènye 24è.",
+                "transaction_count": tx_count,
+                "transactions": [
+                    {
+                        "id": tx.get("transactionId") or tx.get("orderNumber"),
+                        "amount": tx.get("amount"),
+                        "status": tx.get("orderStatus") or tx.get("status"),
+                        "currency": tx.get("currency"),
+                    }
+                    for tx in (result.get("data") or [])[:5]
+                ],
+                "proxy_used": bool(proxy_url),
+            }
+        else:
+            return {
+                "ok": False,
+                "error": f"Binance API erè: {result.get('message', result.get('msg', 'Unknown'))} (code: {result.get('code')})",
+            }
+    except Exception as e:
+        return {"ok": False, "error": f"Koneksyon echwe: {str(e)}"}
 
 
 class BinancePayVerifyRequest(BaseModel):
@@ -9448,6 +9634,17 @@ async def startup_background_jobs():
     global _dispute_deadline_task
     _dispute_deadline_task = asyncio.create_task(_dispute_deadline_worker())
 
+    global _binance_auto_check_task
+    if _binance_auto_check_task is not None:
+        try:
+            task_loop = _binance_auto_check_task.get_loop()
+            if _binance_auto_check_task.done() or task_loop.is_closed():
+                _binance_auto_check_task = None
+        except Exception:
+            _binance_auto_check_task = None
+    if _binance_auto_check_task is None:
+        _binance_auto_check_task = asyncio.create_task(_binance_auto_check_worker())
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
@@ -9466,4 +9663,12 @@ async def shutdown_db_client():
         except (asyncio.CancelledError, RuntimeError):
             pass
         _subscription_notification_task = None
+    global _binance_auto_check_task
+    if _binance_auto_check_task is not None:
+        _binance_auto_check_task.cancel()
+        try:
+            await _binance_auto_check_task
+        except (asyncio.CancelledError, RuntimeError):
+            pass
+        _binance_auto_check_task = None
     client.close()

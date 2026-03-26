@@ -52,6 +52,8 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
   const [loading, setLoading] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [testingNatcash, setTestingNatcash] = useState(false);
+  const [testingBinance, setTestingBinance] = useState(false);
+  const [binanceTestResult, setBinanceTestResult] = useState(null);
   const [natcashTestSms, setNatcashTestSms] = useState('');
   const [natcashTestDryRun, setNatcashTestDryRun] = useState(true);
   const [natcashTestResult, setNatcashTestResult] = useState(null);
@@ -593,6 +595,26 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
       toast.error(detail);
     } finally {
       setTestingNatcash(false);
+    }
+  };
+
+  const handleBinanceTest = async () => {
+    setTestingBinance(true);
+    setBinanceTestResult(null);
+    try {
+      const response = await axiosInstance.post('/payments/binance-pay/test');
+      setBinanceTestResult(response.data);
+      if (response.data.ok) {
+        toast.success(response.data.message || 'Koneksyon Binance reyisi!');
+      } else {
+        toast.error(response.data.error || 'Koneksyon Binance echwe');
+      }
+    } catch (error) {
+      const detail = error?.response?.data?.detail || error?.response?.data?.error || 'Erè pandan tès Binance';
+      toast.error(detail);
+      setBinanceTestResult({ ok: false, error: detail });
+    } finally {
+      setTestingBinance(false);
     }
   };
 
@@ -1708,6 +1730,62 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                             <p className="text-white/30 text-xs mt-1">Deploy the Cloudflare Worker from /cloudflare-worker/binance-proxy.js</p>
                           </div>
                           <p className="text-white/40 text-xs">Binance &rarr; Account &rarr; <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">API Management</a> &rarr; Create API Key (enable "Pay" permission)</p>
+
+                          {/* Binance Webhook URL */}
+                          <div className="border-t border-yellow-400/20 pt-4 mt-4">
+                            <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
+                              🔗 Webhook URL pou Binance Pay
+                            </h5>
+                            <div className="bg-black/30 rounded p-3 font-mono text-xs text-green-400 break-all select-all">
+                              {window.location.origin.replace(':3000', ':8000')}/api/webhook/binance-pay
+                            </div>
+                            <p className="text-white/40 text-xs mt-1">Konfigire URL sa a nan Binance Merchant Dashboard → Webhook Settings</p>
+                          </div>
+
+                          {/* Binance Test */}
+                          <div className="border-t border-yellow-400/20 pt-4 mt-4">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={handleBinanceTest}
+                              disabled={testingBinance}
+                              className="border-yellow-400 text-yellow-300 hover:bg-yellow-400/10 w-full"
+                            >
+                              {testingBinance ? '⏳ Ap teste...' : '🧪 Teste Koneksyon Binance API'}
+                            </Button>
+
+                            {binanceTestResult && (
+                              <div className={`p-4 rounded-lg border text-sm space-y-2 mt-3 ${
+                                binanceTestResult.ok
+                                  ? 'bg-green-500/10 border-green-500/30'
+                                  : 'bg-red-500/10 border-red-500/30'
+                              }`}>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg">{binanceTestResult.ok ? '✅' : '❌'}</span>
+                                  <span className={`font-bold ${binanceTestResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                                    {binanceTestResult.ok ? 'Koneksyon reyisi!' : 'Koneksyon echwe'}
+                                  </span>
+                                </div>
+                                {binanceTestResult.ok && (
+                                  <div className="text-white/60 text-xs space-y-1">
+                                    <p>💰 {binanceTestResult.transaction_count} tranzaksyon nan dènye 24è</p>
+                                    <p>🌐 Proxy: {binanceTestResult.proxy_used ? '✅ Aktif' : '❌ Pa itilize'}</p>
+                                    {binanceTestResult.transactions?.length > 0 && (
+                                      <div className="bg-white/5 rounded p-2 mt-2">
+                                        <p className="text-white/90 font-semibold mb-1">Dènye tranzaksyon:</p>
+                                        {binanceTestResult.transactions.map((tx, i) => (
+                                          <p key={i} className="ml-2 text-white/50">• {tx.amount} {tx.currency} — {tx.status} — ID: {tx.id}</p>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                {binanceTestResult.error && (
+                                  <p className="text-red-400 text-xs">{binanceTestResult.error}</p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
 
