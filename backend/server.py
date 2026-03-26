@@ -3551,12 +3551,14 @@ def _parse_natcash_sms(sms_body: str) -> dict:
 
 
 async def _match_natcash_order(reference_code, amount_htg, settings=None):
-    """Find a pending NatCash order matching the parsed reference or amount.
+    """Find a pending NatCash order or wallet topup matching the parsed reference or amount.
 
-    Returns (order_dict|None, match_method_str|None).
+    Returns (order_dict|None, match_method_str|None, kind_str).
+    kind is "order" or "wallet_topup".
     """
     order = None
     match_method = None
+    kind = "order"
 
     if reference_code:
         order = await db.orders.find_one({
@@ -3566,6 +3568,18 @@ async def _match_natcash_order(reference_code, amount_htg, settings=None):
         }, {"_id": 0})
         if order:
             match_method = "reference_code"
+
+        if not order:
+            topup = await db.wallet_topups.find_one({
+                "payment_method": "natcash",
+                "payment_status": "pending",
+                "natcash_reference": reference_code,
+                "credited": False,
+            }, {"_id": 0})
+            if topup:
+                order = topup
+                match_method = "reference_code"
+                kind = "wallet_topup"
 
     if not order and amount_htg:
         if not settings:
@@ -3583,12 +3597,55 @@ async def _match_natcash_order(reference_code, amount_htg, settings=None):
                 match_method = "amount"
                 break
 
-    return order, match_method
+        if not order:
+            topup_candidates = await db.wallet_topups.find({
+                "payment_method": "natcash",
+                "payment_status": "pending",
+                "credited": False,
+            }, {"_id": 0}).sort("created_at", -1).to_list(50)
+            for t in topup_candidates:
+                expected_htg = float(t.get("amount", 0)) * rate
+                if abs(expected_htg - amount_htg) <= tolerance:
+                    order = t
+                    match_method = "amount"
+                    kind = "wallet_topup"
+                    break
+
+    return order, match_method, kind
 
 
-async def _confirm_natcash_payment(order_id: str, sms_body: str):
-    """Mark an order as paid and trigger post-payment actions."""
+async def _confirm_natcash_payment(order_id: str, sms_body: str, kind: str = "order"):
+    """Mark an order or wallet topup as paid and trigger post-payment actions."""
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    if kind == "wallet_topup":
+        topup = await db.wallet_topups.find_one({"id": order_id}, {"_id": 0})
+        if not topup or topup.get("payment_status") == "paid":
+            return
+        await db.wallet_topups.update_one({"id": order_id}, {"$set": {
+            "payment_status": "paid",
+            "natcash_sms_body": sms_body,
+            "natcash_confirmed_at": now_iso,
+            "updated_at": now_iso,
+        }})
+        if not topup.get("credited"):
+            await db.users.update_one(
+                {"id": topup["user_id"]},
+                {"$inc": {"wallet_balance": float(topup["amount"])}}
+            )
+            await db.wallet_transactions.insert_one({
+                "id": str(uuid.uuid4()),
+                "user_id": topup["user_id"],
+                "user_email": topup.get("user_email"),
+                "order_id": None,
+                "type": "topup",
+                "amount": float(topup["amount"]),
+                "reason": f"Wallet topup {order_id} (NatCash)",
+                "created_at": now_iso,
+            })
+            await db.wallet_topups.update_one({"id": order_id}, {"$set": {"credited": True}})
+        return
+
     await db.orders.update_one({"id": order_id}, {"$set": {
         "payment_status": "paid",
         "natcash_sms_body": sms_body,
@@ -3682,13 +3739,14 @@ async def natcash_sms_callback(
         })
         return {"ok": True, "matched": False, "reason": "Could not parse SMS"}
 
-    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    order, match_method, kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
         "sms_body": sms_text, "sms_from": body.get("sms_from"), "sms_time": body.get("sms_time"),
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
         "match_method": match_method,
+        "match_kind": kind,
         "source": "automate",
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
@@ -3698,10 +3756,10 @@ async def natcash_sms_callback(
         return {"ok": True, "matched": False, "reason": "No matching order found"}
 
     order_id = order["id"]
-    await _confirm_natcash_payment(order_id, sms_text)
-    logging.info("NatCash payment confirmed for order %s (ref=%s, amount_htg=%s)", order_id, reference_code, amount_htg)
+    await _confirm_natcash_payment(order_id, sms_text, kind)
+    logging.info("NatCash payment confirmed for %s %s (ref=%s, amount_htg=%s)", kind, order_id, reference_code, amount_htg)
 
-    return {"ok": True, "matched": True, "order_id": order_id}
+    return {"ok": True, "matched": True, "order_id": order_id, "kind": kind}
 
 
 @api_router.get("/natcash/sms-logs")
@@ -3777,8 +3835,9 @@ async def natcash_test_sms(request: Request):
     amount_htg = parsed["amount_htg"]
     reference_code = parsed["reference_code"]
 
-    matched_order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    matched_order, match_method, matched_kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
+    matched_amount_key = "total_amount" if matched_kind == "order" else "amount"
     result = {
         "ok": True,
         "dry_run": dry_run,
@@ -3789,10 +3848,11 @@ async def natcash_test_sms(request: Request):
         },
         "matched": matched_order is not None,
         "match_method": match_method,
+        "match_kind": matched_kind,
         "matched_order": {
             "id": matched_order["id"],
-            "total_amount_usd": matched_order.get("total_amount"),
-            "expected_htg": round(float(matched_order.get("total_amount", 0)) * rate, 2),
+            "total_amount_usd": matched_order.get(matched_amount_key),
+            "expected_htg": round(float(matched_order.get(matched_amount_key, 0)) * rate, 2),
             "natcash_reference": matched_order.get("natcash_reference"),
             "payment_status": matched_order.get("payment_status"),
         } if matched_order else None,
@@ -3840,9 +3900,9 @@ async def natcash_test_sms(request: Request):
             "is_test": True,
             "created_at": now_iso,
         })
-        await _confirm_natcash_payment(matched_order["id"], sms_body_input)
+        await _confirm_natcash_payment(matched_order["id"], sms_body_input, matched_kind)
         result["order_marked_paid"] = True
-        logging.info("NatCash SMS Forwarder TEST: order %s marked paid (dry_run=False)", matched_order["id"])
+        logging.info("NatCash SMS Forwarder TEST: %s %s marked paid (dry_run=False)", matched_kind, matched_order["id"])
     elif not dry_run and not matched_order:
         result["order_marked_paid"] = False
 
@@ -3935,7 +3995,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         })
         return {"status": "ignored", "reason": "Could not parse SMS"}
 
-    order, match_method = await _match_natcash_order(reference_code, amount_htg, settings)
+    order, match_method, kind = await _match_natcash_order(reference_code, amount_htg, settings)
 
     await db.natcash_sms_log.insert_one({
         "sms_body": sms_body, "sms_from": sms_from, "sms_time": sms_time,
@@ -3943,6 +4003,7 @@ async def natcash_webhook_sms_forwarder(request: Request):
         "parsed_amount": amount_htg, "parsed_ref": reference_code,
         "matched_order": order.get("id") if order else None,
         "match_method": match_method,
+        "match_kind": kind,
         "created_at": datetime.now(timezone.utc).isoformat(),
     })
 
@@ -3954,10 +4015,10 @@ async def natcash_webhook_sms_forwarder(request: Request):
         return {"status": "no_order_found", "matched": False, "reference": reference_code}
 
     order_id = order["id"]
-    await _confirm_natcash_payment(order_id, sms_body)
+    await _confirm_natcash_payment(order_id, sms_body, kind)
     logging.info(
-        "NatCash SMS Forwarder payment confirmed for order %s (ref=%s, amount_htg=%s)",
-        order_id, reference_code, amount_htg,
+        "NatCash SMS Forwarder payment confirmed for %s %s (ref=%s, amount_htg=%s)",
+        kind, order_id, reference_code, amount_htg,
     )
 
     return {
@@ -6685,7 +6746,27 @@ async def get_settings():
 @api_router.put("/settings", response_model=SiteSettings)
 async def update_settings(updates: SettingsUpdate):
     update_data = {k: v for k, v in updates.model_dump().items() if v is not None}
-    for key in ("telegram_bot_token", "telegram_admin_chat_id"):
+
+    secret_fields = [
+        "plisio_api_key",
+        "binance_pay_api_key",
+        "binance_pay_secret_key",
+        "mtcgame_api_key",
+        "gosplit_api_key",
+        "z2u_api_key",
+        "g2bulk_api_key",
+        "resend_api_key",
+        "telegram_bot_token",
+        "natcash_callback_secret",
+    ]
+    for key in secret_fields:
+        val = update_data.get(key)
+        if val is None or (isinstance(val, str) and not val.strip()):
+            update_data.pop(key, None)
+        elif isinstance(val, str):
+            update_data[key] = val.strip()
+
+    for key in ("telegram_admin_chat_id",):
         if key in update_data and isinstance(update_data[key], str):
             cleaned = update_data[key].strip()
             if cleaned:
@@ -8289,6 +8370,9 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
                 doc["plisio_invoice_url"] = invoice_response.get("invoice_url")
         except Exception as e:
             logging.error(f"Plisio topup error: {e}")
+
+    if topup.payment_method == "natcash":
+        doc["natcash_reference"] = secrets.token_hex(3).upper()
 
     await db.wallet_topups.insert_one(doc)
     await _notify_admin_telegram(

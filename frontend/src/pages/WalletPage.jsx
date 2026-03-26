@@ -35,6 +35,9 @@ const WalletPage = ({ user, logout, settings }) => {
     const methods = [];
     methods.push({ value: 'crypto_plisio', label: 'Crypto (Automatic)' });
     const gateways = settings?.payment_gateways || {};
+    if (gateways.natcash?.enabled) {
+      methods.push({ value: 'natcash', label: 'NatCash (Auto)' });
+    }
     if (gateways.binance_pay?.enabled) {
       methods.push({ value: 'binance_pay', label: 'Binance Pay (Auto)' });
     }
