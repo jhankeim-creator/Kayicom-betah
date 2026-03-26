@@ -3672,6 +3672,8 @@ async def natcash_webhook_sms_forwarder(request: Request):
             token = auth_header[7:]
         elif auth_header:
             token = auth_header
+        if not token:
+            token = request.query_params.get("secret", "")
         if token != expected_secret:
             raise HTTPException(status_code=401, detail="Invalid or missing Bearer token")
 
