@@ -6,10 +6,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+// Only automatic payment methods supported (crypto, binance auto)
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
-import { HelpCircle, Filter, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { HelpCircle, Filter } from 'lucide-react';
 
 const WalletPage = ({ user, logout, settings }) => {
   const [balance, setBalance] = useState(0);
@@ -24,9 +25,6 @@ const WalletPage = ({ user, logout, settings }) => {
   const [creatingTopup, setCreatingTopup] = useState(false);
   const [showRecharge, setShowRecharge] = useState(false);
 
-  const [uploading, setUploading] = useState(false);
-  const [proofTxId, setProofTxId] = useState('');
-  const [proofUrl, setProofUrl] = useState('');
   const [selectedTopupId, setSelectedTopupId] = useState(null);
   const [convertCredits, setConvertCredits] = useState('');
   const [converting, setConverting] = useState(false);
@@ -37,10 +35,11 @@ const WalletPage = ({ user, logout, settings }) => {
     const methods = [];
     methods.push({ value: 'crypto_plisio', label: 'Crypto (Automatic)' });
     const gateways = settings?.payment_gateways || {};
-    for (const key of Object.keys(gateways)) {
-      if (gateways[key]?.enabled && key !== 'crypto_usdt') {
-        methods.push({ value: key, label: key.replaceAll('_', ' ').toUpperCase() });
-      }
+    if (gateways.natcash?.enabled) {
+      methods.push({ value: 'natcash', label: 'NatCash (Auto)' });
+    }
+    if (gateways.binance_pay?.enabled) {
+      methods.push({ value: 'binance_pay', label: 'Binance Pay (Auto)' });
     }
     return methods;
   }, [settings]);
@@ -89,36 +88,26 @@ const WalletPage = ({ user, logout, settings }) => {
     try {
       const res = await axiosInstance.post(`/wallet/topups?user_id=${userId}&user_email=${user.email}`, { amount: amt, payment_method: topupMethod });
       const topupData = res.data?.topup;
-      toast.success('Topup created');
       setTopupAmount('');
-      setSelectedTopupId(topupData?.id || null);
       setShowRecharge(false);
+
+      if (topupMethod === 'crypto_plisio') {
+        const invoiceUrl = buildPlisioInvoiceUrl(topupData?.plisio_invoice_url, topupData?.plisio_invoice_id);
+        if (invoiceUrl) {
+          toast.success('Redirecting to crypto payment...');
+          openPlisioInvoice(invoiceUrl, topupData?.id);
+        } else {
+          toast.error('Crypto payment not available — Plisio API key not configured');
+        }
+      } else {
+        toast.success('Topup created — payment will be verified automatically');
+      }
+
+      setSelectedTopupId(topupData?.id || null);
+      setActiveTab('topups');
       await loadAll();
     } catch (e) { toast.error(e.response?.data?.detail || 'Error creating topup'); }
     finally { setCreatingTopup(false); }
-  };
-
-  const uploadProofFile = async (file) => {
-    if (!file) return null;
-    if (file.size > 5 * 1024 * 1024) { toast.error('File too large. Max 5MB'); return null; }
-    setUploading(true);
-    try {
-      const fd = new FormData(); fd.append('file', file);
-      const res = await axiosInstance.post('/upload/image', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      return res.data?.url || null;
-    } catch (e) { toast.error('Upload failed'); return null; }
-    finally { setUploading(false); }
-  };
-
-  const submitProof = async () => {
-    if (!selectedTopupId) { toast.error('Select a topup first'); return; }
-    if (!proofTxId || !proofUrl) { toast.error('Transaction ID and proof required'); return; }
-    try {
-      await axiosInstance.post('/wallet/topups/proof', { topup_id: selectedTopupId, transaction_id: proofTxId, payment_proof_url: proofUrl });
-      toast.success('Proof submitted');
-      setProofTxId(''); setProofUrl('');
-      await loadAll();
-    } catch (e) { toast.error(e.response?.data?.detail || 'Error submitting proof'); }
   };
 
   const selectedTopup = topups.find(t => t.id === selectedTopupId) || null;
@@ -299,27 +288,6 @@ const WalletPage = ({ user, logout, settings }) => {
                 <p className="text-white/40 text-center py-8">No topups yet.</p>
               )}
 
-              {/* Proof form for selected topup */}
-              {selectedTopup && selectedTopup.payment_method !== 'crypto_plisio' && ['pending', 'failed'].includes(selectedTopup.payment_status) && (
-                <div className="mt-4 p-4 rounded-xl bg-[#1a1a1a] border border-orange-500/20 space-y-3">
-                  <p className="text-orange-300 text-sm font-semibold">Submit payment proof</p>
-                  <div>
-                    <Label className="text-white/70 text-sm">Transaction ID</Label>
-                    <Input value={proofTxId} onChange={(e) => setProofTxId(e.target.value)}
-                      className="bg-white/5 border-white/10 text-white mt-1" placeholder="Enter transaction ID" />
-                  </div>
-                  <div>
-                    <Label className="text-white/70 text-sm">Upload Screenshot</Label>
-                    <Input type="file" accept="image/*" disabled={uploading}
-                      onChange={async (e) => { const url = await uploadProofFile(e.target.files?.[0]); if (url) { setProofUrl(url); toast.success('Uploaded'); } }}
-                      className="bg-white/5 border-white/10 text-white mt-1 cursor-pointer" />
-                    {proofUrl && <img src={proofUrl} alt="Proof" className="mt-2 max-h-24 rounded" />}
-                  </div>
-                  <Button onClick={submitProof} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-semibold rounded-full">
-                    Submit Proof
-                  </Button>
-                </div>
-              )}
             </div>
           )}
 

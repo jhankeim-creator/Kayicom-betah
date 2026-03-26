@@ -1,5 +1,5 @@
 import { useEffect, useState, useContext } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import { axiosInstance, LanguageContext } from '../App';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -19,13 +19,15 @@ const DEFAULT_GIFTCARD_TAXONOMY = DEFAULT_GIFTCARD_CATEGORIES.map((name) => ({
 const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   const { t } = useContext(LanguageContext);
   const { category } = useParams();
+  const location = useLocation();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const normalizeCategory = (value = '') => String(value || '').trim().toLowerCase();
   const normalizeGiftcardValue = (value = '') => String(value || '').trim();
   const normalizeGiftcardKey = (value = '') => normalizeGiftcardValue(value).toLowerCase();
   const [selectedCategory, setSelectedCategory] = useState(normalizeCategory(category));
-  const [search, setSearch] = useState('');
+  const urlSearch = new URLSearchParams(location.search).get('search') || '';
+  const [search, setSearch] = useState(urlSearch);
   const hasGiftcardTaxonomy = settings && Object.prototype.hasOwnProperty.call(settings, 'giftcard_taxonomy');
   const settingsGiftcardTaxonomy = hasGiftcardTaxonomy
     ? (settings?.giftcard_taxonomy || [])
@@ -36,8 +38,13 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
   }, [category]);
 
   useEffect(() => {
+    const q = new URLSearchParams(location.search).get('search') || '';
+    if (q !== search) { setSearch(q); }
+  }, [location.search]);
+
+  useEffect(() => {
     loadProducts();
-  }, [selectedCategory]);
+  }, [selectedCategory, search]);
 
   const loadProducts = async () => {
     setLoading(true);
@@ -299,32 +306,11 @@ const ProductsPage = ({ user, logout, addToCart, cart, settings }) => {
             <p className="text-white/50 text-sm md:text-base mb-6">Find the best digital deals instantly.</p>
           </div>
 
-          {/* Search */}
-          <div className="max-w-xl mx-auto">
-            <div className="flex items-center bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-              <Search size={18} className="text-white/40 ml-4" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    loadProducts();
-                  }
-                }}
-                placeholder="Search products..."
-                className="flex-1 bg-transparent px-3 py-3 text-sm text-white placeholder:text-white/40 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={loadProducts}
-                className="bg-green-500 hover:bg-green-600 text-black font-semibold px-5 py-3 text-sm transition"
-              >
-                Search
-              </button>
-            </div>
-          </div>
+          {search && (
+            <p className="text-white/50 text-sm text-center mt-2">
+              Showing results for: <span className="text-green-400 font-semibold">"{search}"</span>
+            </p>
+          )}
         </div>
       </div>
 

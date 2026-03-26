@@ -43,7 +43,7 @@ Note: `seed_demo_products.py` requires `DB_NAME` env var (unlike `create_admin.p
 
 ### Running tests
 
-- Backend smoke tests: `python3 -m pytest tests/test_api_smoke.py -v` (52 pass; 3 pre-existing mock failures in wallet adjust and order count tests)
+- Backend smoke tests: `python3 -m pytest tests/test_api_smoke.py -v` (53 pass; 3 pre-existing mock failures in wallet adjust and order count tests)
 - Frontend build check: `cd frontend && yarn build`
 - Backend lint: `cd backend && flake8 server.py --max-line-length=200` (pre-existing style warnings)
 
