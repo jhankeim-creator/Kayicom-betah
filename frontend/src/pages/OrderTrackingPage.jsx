@@ -840,8 +840,8 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
                     </a>
                   ) : (
                     <p className="text-white/50 text-sm">
-                      {order.payment_proof_url.startsWith('binance-pay') ? 'Verified via Binance Pay' :
-                       order.payment_proof_url.startsWith('binance-') ? 'Binance payment reference' :
+                      {order.payment_proof_url.startsWith('binance-pay') ? 'Auto-verified' :
+                       order.payment_proof_url.startsWith('binance-') ? 'Auto-verified' :
                        'Proof submitted'}
                     </p>
                   )}

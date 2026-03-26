@@ -190,14 +190,18 @@ export const getGameConfig = (productNameOrSlug) => {
 };
 
 // Auto-detect requirements from product
-export const detectProductRequirements = (productName, category) => {
+// product (optional): the full product object from the DB; its
+// requires_server_id field takes precedence over the hardcoded config.
+export const detectProductRequirements = (productName, category, product) => {
   const gameConfig = getGameConfig(productName);
-  
+
+  const serverIdFromDb = product?.requires_server_id === true;
+
   if (gameConfig) {
     return {
       requiresPlayerId: gameConfig.requiresPlayerId,
       requiresCredentials: gameConfig.requiresCredentials,
-      requiresServerId: gameConfig.requiresServerId || false,
+      requiresServerId: serverIdFromDb || gameConfig.requiresServerId || false,
       playerIdLabel: gameConfig.playerIdLabel,
       serverIdLabel: gameConfig.serverIdLabel,
       serverIdPlaceholder: gameConfig.serverIdPlaceholder,
@@ -211,6 +215,7 @@ export const detectProductRequirements = (productName, category) => {
     return {
       requiresPlayerId: true,
       requiresCredentials: false,
+      requiresServerId: serverIdFromDb,
       playerIdLabel: 'Player ID/UID',
       instructions: 'Enter your in-game Player ID'
     };
@@ -229,6 +234,7 @@ export const detectProductRequirements = (productName, category) => {
   return {
     requiresPlayerId: false,
     requiresCredentials: false,
+    requiresServerId: serverIdFromDb,
     instructions: 'Code will be delivered via email'
   };
 };
