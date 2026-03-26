@@ -1731,17 +1731,6 @@ const AdminSettings = ({ user, logout, settings: currentSettings, loadSettings }
                           </div>
                           <p className="text-white/40 text-xs">Binance &rarr; Account &rarr; <a href="https://www.binance.com/en/my/settings/api-management" target="_blank" rel="noopener noreferrer" className="text-yellow-400 underline">API Management</a> &rarr; Create API Key (enable "Pay" permission)</p>
 
-                          {/* Binance Webhook URL */}
-                          <div className="border-t border-yellow-400/20 pt-4 mt-4">
-                            <h5 className="text-yellow-400 font-semibold text-sm mb-2 flex items-center gap-2">
-                              🔗 Webhook URL pou Binance Pay
-                            </h5>
-                            <div className="bg-black/30 rounded p-3 font-mono text-xs text-green-400 break-all select-all">
-                              {window.location.origin.replace(':3000', ':8000')}/api/webhook/binance-pay
-                            </div>
-                            <p className="text-white/40 text-xs mt-1">Konfigire URL sa a nan Binance Merchant Dashboard → Webhook Settings</p>
-                          </div>
-
                           {/* Binance Test */}
                           <div className="border-t border-yellow-400/20 pt-4 mt-4">
                             <Button
