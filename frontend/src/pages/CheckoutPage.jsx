@@ -480,10 +480,13 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     {cart.filter(item => item.product.requires_player_id).map(item => {
                       const gc = getGameConfig(item.product.name);
                       const needsServerId = item.product.requires_server_id || gc?.requiresServerId;
+                      const pidLabel = item.product.player_id_label || gc?.playerIdLabel || 'Player ID';
+                      const sidLabel = item.product.server_id_label || gc?.serverIdLabel || 'Server ID';
+                      const sidPlaceholder = gc?.serverIdPlaceholder || `Enter ${sidLabel}`;
                       return (
                       <div key={item.product.id}>
                         <Label htmlFor={`player-id-${item.product.id}`} className="text-white">
-                          {(item.product.player_id_label || 'Player ID')} for {item.product.name}
+                          {pidLabel} for {item.product.name}
                         </Label>
                         <div className="flex gap-2 mt-2">
                           <Input
@@ -491,7 +494,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                             value={playerIds[item.product.id] || ''}
                             onChange={(e) => { handlePlayerIdChange(item.product.id, e.target.value); setVerifyStatus(prev => ({ ...prev, [item.product.id]: null })); }}
                             className="bg-white/10 border-white/20 text-white placeholder:text-white/50 flex-1"
-                            placeholder={`Enter your ${item.product.player_id_label || 'Player ID'}`}
+                            placeholder={`Enter your ${pidLabel}`}
                             required
                             data-testid={`player-id-${item.product.id}`}
                           />
@@ -513,14 +516,14 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                         {needsServerId && (
                           <div className="mt-3">
                             <Label htmlFor={`server-id-${item.product.id}`} className="text-white">
-                              {gc?.serverIdLabel || 'Server ID'} for {item.product.name}
+                              {sidLabel} for {item.product.name}
                             </Label>
                             <Input
                               id={`server-id-${item.product.id}`}
                               value={serverIds[item.product.id] || ''}
                               onChange={(e) => handleServerIdChange(item.product.id, e.target.value)}
                               className="bg-white/10 border-white/20 text-white placeholder:text-white/50 mt-2"
-                              placeholder={gc?.serverIdPlaceholder || 'Enter Server ID'}
+                              placeholder={sidPlaceholder}
                               required
                               data-testid={`server-id-${item.product.id}`}
                             />

@@ -3252,11 +3252,11 @@ async def admin_g2bulk_game_fields(game: str):
 
 @api_router.get("/admin/g2bulk/games/detect-server-fields")
 async def admin_g2bulk_detect_server_fields():
-    """Detect which G2Bulk games require a server_id field.
+    """Detect which G2Bulk games require player_id / server_id fields.
 
     Calls GET /games to list all available games, then for each game calls
     POST /games/fields to inspect the required fields. Returns a list of
-    games annotated with ``requires_server_id``.
+    games annotated with field requirements from the API.
     """
     games_resp = await _g2bulk_request("GET", "/games")
     games_list = games_resp if isinstance(games_resp, list) else games_resp.get("data") or games_resp.get("games") or []
@@ -3264,21 +3264,16 @@ async def admin_g2bulk_detect_server_fields():
     for game in games_list:
         game_code = game.get("code") or game.get("game") or game.get("id") or ""
         game_name = game.get("name") or game.get("title") or str(game_code)
-        requires_server = False
+        field_info = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
         try:
             fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": game_code})
-            fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
-            for f in fields:
-                field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
-                if field_name in ("server_id", "serverid", "server"):
-                    requires_server = True
-                    break
+            field_info = _parse_g2bulk_fields(fields_resp)
         except Exception:
             pass
         results.append({
             "game_code": game_code,
             "game_name": game_name,
-            "requires_server_id": requires_server,
+            **field_info,
         })
     return {"games": results}
 
@@ -3314,18 +3309,37 @@ class G2BulkGameImportRequest(BaseModel):
     catalogues: List[Dict[str, Any]]
 
 
+def _parse_g2bulk_fields(fields_resp) -> dict:
+    """Parse G2Bulk /games/fields response into requires_player_id, requires_server_id, and labels."""
+    fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
+    needs_player_id = False
+    needs_server_id = False
+    player_id_label = "Player ID"
+    for f in fields:
+        field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
+        field_label = f.get("label") or f.get("name") or f.get("field") or ""
+        if field_name in ("user_id", "userid", "player_id", "playerid", "uid", "id"):
+            needs_player_id = True
+            if field_label:
+                player_id_label = field_label
+        elif field_name in ("server_id", "serverid", "server", "zone_id", "zoneid"):
+            needs_server_id = True
+    if not needs_player_id and fields:
+        needs_player_id = True
+    return {
+        "requires_player_id": needs_player_id,
+        "requires_server_id": needs_server_id,
+        "player_id_label": player_id_label,
+    }
+
+
 @api_router.post("/admin/g2bulk/games/import")
 async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
     """Import game top-up denominations as KayiCom topup products."""
-    needs_server_id = False
+    field_info = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
     try:
         fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": payload.game_code})
-        fields = fields_resp if isinstance(fields_resp, list) else fields_resp.get("data") or fields_resp.get("fields") or []
-        for f in fields:
-            field_name = (f.get("field") or f.get("name") or f.get("id") or str(f)).lower()
-            if field_name in ("server_id", "serverid", "server"):
-                needs_server_id = True
-                break
+        field_info = _parse_g2bulk_fields(fields_resp)
     except Exception:
         pass
     imported = []
@@ -3359,9 +3373,9 @@ async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
                 delivery_time="instant",
                 g2bulk_game_code=payload.game_code,
                 g2bulk_catalogue_id=str(cat_name),
-                requires_player_id=True,
-                player_id_label="Player ID",
-                requires_server_id=needs_server_id,
+                requires_player_id=field_info["requires_player_id"],
+                player_id_label=field_info["player_id_label"],
+                requires_server_id=field_info["requires_server_id"],
             )
             normalized = _normalize_product_doc(new_product.model_dump())
             new_product.seo_title = normalized.get("seo_title")
@@ -3374,6 +3388,43 @@ async def admin_g2bulk_game_import(payload: G2BulkGameImportRequest):
         except Exception as e:
             skipped.append({"catalogue": cat_name, "reason": str(e)})
     return {"imported": imported, "skipped": skipped, "total_imported": len(imported), "total_skipped": len(skipped)}
+
+
+@api_router.post("/admin/g2bulk/sync-fields")
+async def admin_g2bulk_sync_fields():
+    """Sync requires_player_id, requires_server_id, and player_id_label for all
+    G2Bulk topup products by querying the G2Bulk /games/fields API.
+
+    This updates existing products in the database so the storefront automatically
+    shows the correct fields at checkout without any hardcoded game config."""
+    products = await db.products.find(
+        {"g2bulk_game_code": {"$ne": None, "$exists": True}},
+        {"_id": 0, "id": 1, "g2bulk_game_code": 1, "name": 1}
+    ).to_list(5000)
+    game_codes = list({p["g2bulk_game_code"] for p in products if p.get("g2bulk_game_code")})
+    field_cache: Dict[str, dict] = {}
+    for code in game_codes:
+        try:
+            fields_resp = await _g2bulk_request("POST", "/games/fields", {"game": code})
+            field_cache[code] = _parse_g2bulk_fields(fields_resp)
+        except Exception:
+            field_cache[code] = {"requires_player_id": True, "requires_server_id": False, "player_id_label": "Player ID"}
+    updated = 0
+    for p in products:
+        code = p.get("g2bulk_game_code")
+        info = field_cache.get(code)
+        if not info:
+            continue
+        await db.products.update_one(
+            {"id": p["id"]},
+            {"$set": {
+                "requires_player_id": info["requires_player_id"],
+                "requires_server_id": info["requires_server_id"],
+                "player_id_label": info["player_id_label"],
+            }}
+        )
+        updated += 1
+    return {"synced": updated, "game_codes": len(game_codes), "fields": field_cache}
 
 
 @api_router.post("/g2bulk/callback")
