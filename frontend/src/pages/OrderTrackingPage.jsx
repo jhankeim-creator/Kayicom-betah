@@ -12,7 +12,6 @@ import { Package, Clock, CheckCircle, AlertCircle, Upload, ShieldCheck, MessageS
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import BinancePaySection from '../components/BinancePaySection';
-import BinancePayManualSection from '../components/BinancePayManualSection';
 
 const OrderTrackingPage = ({ user, logout, settings }) => {
   const { orderId } = useParams();
@@ -194,11 +193,7 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     : [];
   const hasDeliveryInfo = order.delivery_info && (deliveryDetails || deliveryItems.length > 0);
   const autoDeliveryFailed = order.auto_delivery_failed_reason && !hasDeliveryInfo;
-  const manualPaymentMethods = ['paypal', 'skrill', 'moncash', 'binance_pay', 'binance_pay_manual', 'zelle', 'cashapp'];
-  const isManualPayment = manualPaymentMethods.includes(order.payment_method);
   const proofSubmitted = Boolean(order.payment_proof_url);
-  const isAwaitingReview = order.payment_status === 'pending_verification' || proofSubmitted;
-  const showManualProofForm = isManualPayment && order.payment_status === 'pending' && !proofSubmitted;
   const subscriptionRemaining = (() => {
     if (!subscriptionEnd) return null;
     const diffMs = subscriptionEnd.getTime() - now;
@@ -648,118 +643,13 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             </Card>
           )}
 
-          {/* Manual Payment Review Pending */}
-          {isManualPayment && isAwaitingReview && (
-            <Card className="glass-effect border-blue-500/30 border-2" data-testid="payment-review-card">
-              <CardContent className="p-6">
-                <div className="flex items-center gap-3 mb-3">
-                  <Clock className="text-blue-400" size={24} />
-                  <h3 className="text-xl font-bold text-blue-300">Payment Under Review</h3>
-                </div>
-                <p className="text-white/80 text-sm">
-                  Your payment proof has been received. Our team is reviewing it now.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Binance Pay auto-verify section */}
-          {showManualProofForm && order.payment_method === 'binance_pay' && (
+          {order.payment_method === 'binance_pay' && order.payment_status === 'pending' && !proofSubmitted && (
             <BinancePaySection
               order={order}
               settings={settings}
               onVerified={() => loadOrder()}
             />
-          )}
-
-          {/* Binance Pay manual section */}
-          {showManualProofForm && order.payment_method === 'binance_pay_manual' && (
-            <BinancePayManualSection
-              order={order}
-              settings={settings}
-              onSubmitted={() => loadOrder()}
-            />
-          )}
-
-          {/* Manual Payment Proof Upload (non-Binance methods) */}
-          {showManualProofForm && !['binance_pay', 'binance_pay_manual'].includes(order.payment_method) && (
-            <Card className="glass-effect border-white/20" data-testid="payment-proof-form">
-              <CardContent className="p-6">
-                <h3 className="text-xl font-bold text-white mb-4 flex items-center">
-                  <Upload className="mr-2" size={24} />
-                  Submit Payment Proof
-                </h3>
-                
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="transactionId" className="text-white">Transaction ID</Label>
-                    <Input
-                      id="transactionId"
-                      value={transactionId}
-                      onChange={(e) => setTransactionId(e.target.value)}
-                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                      placeholder="Enter your transaction ID"
-                      data-testid="transaction-id-input"
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="proofUrl" className="text-white">Payment Proof</Label>
-                    <div className="space-y-3 mt-2">
-                      {/* File Upload Button */}
-                      <div className="flex gap-3">
-                        <label className="flex-1">
-                          <div className="bg-cyan-500 hover:bg-cyan-600 text-white px-4 py-3 rounded cursor-pointer text-center font-semibold">
-                            {uploading ? 'Uploading...' : '📤 Upload Screenshot'}
-                          </div>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            disabled={uploading}
-                          />
-                        </label>
-                      </div>
-                      
-                      {/* OR Divider */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 border-t border-white/20"></div>
-                        <span className="text-white/50 text-sm">OR</span>
-                        <div className="flex-1 border-t border-white/20"></div>
-                      </div>
-                      
-                      {/* Link Input */}
-                      <Input
-                        id="proofUrl"
-                        value={proofUrl}
-                        onChange={(e) => setProofUrl(e.target.value)}
-                        className="bg-white/10 border-white/20 text-white placeholder:text-white/50"
-                        placeholder="Paste image link (imgur, etc.)"
-                        data-testid="proof-url-input"
-                      />
-                      
-                      {/* Preview */}
-                      {proofUrl && (
-                        <div className="mt-2">
-                          <p className="text-white/70 text-xs mb-2">Preview:</p>
-                          <img src={proofUrl} alt="Proof" className="max-h-32 rounded border border-white/20" />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <Button 
-                    onClick={handleSubmitProof}
-                    disabled={submitting}
-                    className="w-full bg-white text-green-600 hover:bg-gray-100"
-                    data-testid="submit-proof-btn"
-                  >
-                    {submitting ? 'Submitting...' : 'Submit Proof'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           )}
 
           {/* Leave a Review for Seller */}

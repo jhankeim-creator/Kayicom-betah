@@ -288,79 +288,7 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                     </div>
                   </label>
 
-                  {/* Manual Payment Methods - Only show enabled ones */}
-                  {settings?.payment_gateways?.paypal?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'paypal' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="paypal" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">PayPal</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.paypal.email && (
-                          <p className="text-white/60 text-xs mt-1">Send to: {settings.payment_gateways.paypal.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
-                  {settings?.payment_gateways?.airtm?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'airtm' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="airtm" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">AirTM</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.airtm.email && (
-                          <p className="text-white/60 text-xs mt-1">Send to: {settings.payment_gateways.airtm.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
-                  {settings?.payment_gateways?.skrill?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'skrill' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="skrill" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">Skrill</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.skrill.email && (
-                          <p className="text-white/60 text-xs mt-1">Send to: {settings.payment_gateways.skrill.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
-                  {settings?.payment_gateways?.moncash?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'moncash' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="moncash" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">MonCash</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.moncash.email && (
-                          <p className="text-white/60 text-xs mt-1">Send to: {settings.payment_gateways.moncash.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
+                  {/* NatCash - Automatic */}
                   {settings?.payment_gateways?.natcash?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
                       paymentMethod === 'natcash' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
@@ -371,12 +299,14 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                           <CreditCard className="text-yellow-400" size={20} />
                           <span className="text-white font-semibold">NatCash</span>
                           <span className="text-yellow-400/70 text-xs">(HTG)</span>
+                          <span className="px-2 py-0.5 rounded-full bg-green-500/20 text-green-300 text-[10px] font-bold uppercase tracking-wider">Auto</span>
                         </div>
                         <p className="text-white/70 text-sm mt-1">Peman otomatik — NatCash/Natcom</p>
                       </div>
                     </label>
                   )}
 
+                  {/* Binance Pay - Automatic */}
                   {settings?.payment_gateways?.binance_pay?.enabled && (
                     <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
                       paymentMethod === 'binance_pay' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
@@ -395,79 +325,8 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
                       </div>
                     </label>
                   )}
-
-                  {settings?.payment_gateways?.binance_pay_manual?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'binance_pay_manual' ? 'border-yellow-400 bg-yellow-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="binance_pay_manual" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-yellow-400" size={20} />
-                          <span className="text-white font-semibold">Binance Pay</span>
-                          <span className="px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-300 text-[10px] font-bold uppercase tracking-wider">Manual</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Send payment &amp; upload proof for admin verification</p>
-                        {settings.payment_gateways.binance_pay_manual.email && (
-                          <p className="text-white/60 text-xs mt-1">Pay ID: {settings.payment_gateways.binance_pay_manual.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
-                  {settings?.payment_gateways?.zelle?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'zelle' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="zelle" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">Zelle</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.zelle.email && (
-                          <p className="text-white/60 text-xs mt-1">Send to: {settings.payment_gateways.zelle.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
-
-                  {settings?.payment_gateways?.cashapp?.enabled && (
-                    <label className={`flex items-start p-4 rounded-lg border-2 cursor-pointer transition ${
-                      paymentMethod === 'cashapp' ? 'border-green-400 bg-green-400/10' : 'border-white/20 hover:border-white/40'
-                    }`}>
-                      <RadioGroupItem value="cashapp" className="mt-1" />
-                      <div className="ml-4">
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="text-green-400" size={20} />
-                          <span className="text-white font-semibold">CashApp</span>
-                        </div>
-                        <p className="text-white/70 text-sm mt-1">Manual verification - Proof required</p>
-                        {settings.payment_gateways.cashapp.email && (
-                          <p className="text-white/60 text-xs mt-1">Tag: {settings.payment_gateways.cashapp.email}</p>
-                        )}
-                      </div>
-                    </label>
-                  )}
                 </div>
               </RadioGroup>
-
-              {['paypal', 'airtm', 'skrill', 'binance_pay_manual'].includes(paymentMethod) && settings?.payment_gateways?.[paymentMethod] && (
-                <div className="mt-6 p-4 bg-yellow-400/10 border border-yellow-400/30 rounded-lg">
-                  <p className="text-yellow-200 text-sm mb-2">
-                    <strong>Payment Instructions:</strong>
-                  </p>
-                  {settings.payment_gateways[paymentMethod].instructions && (
-                    <p className="text-white/80 text-sm mb-2">
-                      {settings.payment_gateways[paymentMethod].instructions}
-                    </p>
-                  )}
-                  <p className="text-yellow-200 text-sm">
-                    After placing your order, submit your payment proof and transaction ID on the order tracking page.
-                  </p>
-                </div>
-              )}
 
               {/* Player ID Section */}
               {needsPlayerIds && (
