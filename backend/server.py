@@ -1312,6 +1312,7 @@ async def _order_auto_cancel_worker():
 
 async def _is_binance_tx_used(tx_id: str) -> bool:
     """Check if a Binance transaction ID has already been used to pay an order or topup."""
+    tx_id = str(tx_id or "").strip()
     if not tx_id:
         return False
     existing_order = await db.orders.find_one({
@@ -1325,6 +1326,47 @@ async def _is_binance_tx_used(tx_id: str) -> bool:
         "payment_status": "paid",
     }, {"_id": 0, "id": 1})
     return bool(existing_topup)
+
+
+def _normalize_binance_id(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _binance_tx_candidate_ids(tx: Dict[str, Any]) -> List[str]:
+    """
+    Build a list of possible identifiers Binance may return for Pay/C2C records.
+    This avoids false negatives when customer-entered ID uses a different field.
+    """
+    keys = (
+        "orderId",
+        "orderNumber",
+        "transactionId",
+        "transactId",
+        "tradeNo",
+        "merchantTradeNo",
+        "advNo",
+        "bizId",
+        "prepayId",
+        "id",
+    )
+    values: List[str] = []
+    for key in keys:
+        normalized = _normalize_binance_id(tx.get(key))
+        if normalized and normalized not in values:
+            values.append(normalized)
+    return values
+
+
+def _binance_tx_amount(tx: Dict[str, Any]) -> float:
+    for key in ("amount", "totalPrice", "totalAmount", "fiatAmount", "price"):
+        try:
+            raw = tx.get(key)
+            if raw is None or raw == "":
+                continue
+            return abs(float(raw))
+        except Exception:
+            continue
+    return 0.0
 
 
 async def _binance_auto_check_worker():
@@ -1351,26 +1393,54 @@ async def _binance_auto_check_worker():
                 if pending or pending_topups:
                     import time as _time
                     now_ms = int(_time.time() * 1000)
-                    one_day_ms = 24 * 3600 * 1000
+                    seven_days_ms = 7 * 24 * 3600 * 1000
 
                     try:
                         result = await _binance_get_pay_transactions(
                             api_key, api_secret,
-                            start_time=now_ms - one_day_ms,
+                            start_time=now_ms - seven_days_ms,
                             end_time=now_ms,
                             proxy_url=proxy_url
                         )
 
+                        valid_txs = []
                         if result.get("code") == "000000" and result.get("data"):
-                            valid_txs = []
                             for tx in result["data"]:
                                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                                 if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
                                     continue
-                                tx_id = str(tx.get("orderId") or tx.get("transactionId") or tx.get("orderNumber") or "")
+                                tx_id = (
+                                    _normalize_binance_id(tx.get("transactionId"))
+                                    or _normalize_binance_id(tx.get("orderId"))
+                                    or _normalize_binance_id(tx.get("orderNumber"))
+                                )
                                 if not tx_id:
                                     continue
-                                valid_txs.append((tx, tx_id, abs(float(tx.get("amount", 0)))))
+                                valid_txs.append((tx, tx_id, _binance_tx_amount(tx)))
+
+                        # Include C2C/P2P records as additional auto-verification source.
+                        for trade_type in ("BUY", "SELL"):
+                            c2c_result = await _binance_get_c2c_orders(api_key, api_secret, trade_type=trade_type, proxy_url=proxy_url)
+                            if c2c_result.get("code") != "000000" or not c2c_result.get("data"):
+                                continue
+                            for tx in c2c_result["data"]:
+                                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                                if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
+                                    continue
+                                tx_id = (
+                                    _normalize_binance_id(tx.get("transactionId"))
+                                    or _normalize_binance_id(tx.get("orderId"))
+                                    or _normalize_binance_id(tx.get("orderNumber"))
+                                    or _normalize_binance_id(tx.get("tradeNo"))
+                                    or _normalize_binance_id(tx.get("advNo"))
+                                )
+                                if not tx_id:
+                                    continue
+                                tx_copy = dict(tx)
+                                tx_copy["_source"] = "c2c"
+                                valid_txs.append((tx_copy, tx_id, _binance_tx_amount(tx)))
+
+                        if valid_txs:
 
                             for order in pending:
                                 order_amount = float(order.get("total_amount", 0))
@@ -1380,11 +1450,12 @@ async def _binance_auto_check_worker():
                                     if await _is_binance_tx_used(tx_id):
                                         continue
                                     now_iso = datetime.now(timezone.utc).isoformat()
+                                    tx_source = tx.get("_source", "pay")
                                     await db.orders.update_one({"id": order["id"]}, {"$set": {
                                         "payment_status": "paid",
                                         "order_status": "processing",
                                         "transaction_id": tx_id,
-                                        "payment_proof_url": f"binance-auto-verified:{tx_id}",
+                                        "payment_proof_url": f"binance-{tx_source}-auto-verified:{tx_id}",
                                         "binance_pay_data": tx,
                                         "updated_at": now_iso,
                                     }})
@@ -1417,6 +1488,8 @@ async def _binance_auto_check_worker():
                                     await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
                                         "payment_status": "paid",
                                         "transaction_id": tx_id,
+                                        "payment_proof_url": f"binance-auto-verified:{tx_id}",
+                                        "binance_pay_data": tx,
                                         "updated_at": now_iso,
                                     }})
                                     await db.users.update_one(
@@ -4817,6 +4890,11 @@ class BinancePayVerifyRequest(BaseModel):
     binance_order_id: str
 
 
+class BinancePayTopupVerifyRequest(BaseModel):
+    topup_id: str
+    binance_order_id: str
+
+
 @api_router.post("/payments/binance-pay/verify")
 async def verify_binance_pay(req: BinancePayVerifyRequest):
     settings = await db.settings.find_one({"id": "site_settings"})
@@ -4832,39 +4910,60 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
     if order.get("payment_status") in ("paid", "cancelled"):
         return {"status": order["payment_status"], "message": "Order already processed"}
 
-    binance_id = req.binance_order_id.strip()
+    binance_id = _normalize_binance_id(req.binance_order_id)
     if not binance_id:
         raise HTTPException(status_code=400, detail="Binance Pay Order ID is required")
 
     order_amount = float(order.get("total_amount", 0))
     verified = False
     matched_tx = {}
+    matched_tx_id = ""
 
     import time as _time
     now_ms = int(_time.time() * 1000)
-    one_day_ms = 24 * 3600 * 1000
+    seven_days_ms = 7 * 24 * 3600 * 1000
 
     try:
-        result = await _binance_get_pay_transactions(api_key, api_secret, start_time=now_ms - one_day_ms, end_time=now_ms, proxy_url=proxy_url)
+        # First pass: query recent records with a wider range to reduce "not found" false negatives.
+        result = await _binance_get_pay_transactions(
+            api_key,
+            api_secret,
+            start_time=now_ms - seven_days_ms,
+            end_time=now_ms,
+            proxy_url=proxy_url
+        )
         logging.info(f"Binance Pay transactions: code={result.get('code', 'N/A')}, count={len(result.get('data', []))}")
 
-        if result.get("code") == "000000" and result.get("data"):
-            for tx in result["data"]:
+        pay_rows = result.get("data") if result.get("code") == "000000" else None
+        if not pay_rows:
+            # Some accounts return data only without time filters.
+            no_time_result = await _binance_get_pay_transactions(api_key, api_secret, limit=100, proxy_url=proxy_url)
+            if no_time_result.get("code") == "000000":
+                pay_rows = no_time_result.get("data") or []
+        if pay_rows:
+            for tx in pay_rows:
                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                 if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
                     continue
 
-                tx_order_id = str(tx.get("orderId") or tx.get("orderNumber") or "").strip()
-                tx_trans_id = str(tx.get("transactionId", "")).strip()
+                tx_ids = _binance_tx_candidate_ids(tx)
+                if not tx_ids or binance_id not in tx_ids:
+                    continue
 
-                if binance_id in (tx_order_id, tx_trans_id):
-                    tx_amount = abs(float(tx.get("amount", 0)))
-                    if tx_amount >= order_amount - 0.01:
-                        match_tx_id = tx_order_id or tx_trans_id
-                        if not await _is_binance_tx_used(match_tx_id):
-                            verified = True
-                            matched_tx = tx
-                        break
+                tx_amount = _binance_tx_amount(tx)
+                if tx_amount >= order_amount - 0.01:
+                    # Prefer a stable transaction id for duplicate protection.
+                    canonical = (
+                        _normalize_binance_id(tx.get("transactionId"))
+                        or _normalize_binance_id(tx.get("orderId"))
+                        or _normalize_binance_id(tx.get("orderNumber"))
+                        or binance_id
+                    )
+                    if not await _is_binance_tx_used(canonical):
+                        verified = True
+                        matched_tx = tx
+                        matched_tx_id = canonical
+                    break
 
         elif result.get("code") and result.get("code") != "000000":
             logging.warning(f"Binance API error: {result.get('code')} - {result.get('message', '')}")
@@ -4886,17 +4985,25 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                         tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                         if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
                             continue
-                        tx_order_no = str(tx.get("orderId") or tx.get("orderNumber") or tx.get("advNo") or "").strip()
-                        tx_ad_no = str(tx.get("advNo") or "").strip()
-                        if binance_id in (tx_order_no, tx_ad_no):
-                            tx_amount = abs(float(tx.get("totalPrice") or tx.get("amount") or 0))
-                            if tx_amount >= order_amount - 0.01:
-                                match_tx_id = tx_order_no or tx_ad_no
-                                if not await _is_binance_tx_used(match_tx_id):
-                                    verified = True
-                                    matched_tx = tx
-                                    matched_tx["_source"] = "c2c"
-                                break
+                        tx_ids = _binance_tx_candidate_ids(tx)
+                        if not tx_ids or binance_id not in tx_ids:
+                            continue
+                        tx_amount = _binance_tx_amount(tx)
+                        if tx_amount >= order_amount - 0.01:
+                            canonical = (
+                                _normalize_binance_id(tx.get("orderId"))
+                                or _normalize_binance_id(tx.get("orderNumber"))
+                                or _normalize_binance_id(tx.get("transactionId"))
+                                or _normalize_binance_id(tx.get("tradeNo"))
+                                or _normalize_binance_id(tx.get("advNo"))
+                                or binance_id
+                            )
+                            if not await _is_binance_tx_used(canonical):
+                                verified = True
+                                matched_tx = tx
+                                matched_tx["_source"] = "c2c"
+                                matched_tx_id = canonical
+                            break
                 if verified:
                     break
         except Exception as e:
@@ -4911,13 +5018,14 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
 
     verify_source = matched_tx.get("_source", "pay")
     if verified:
+        tx_id_to_store = matched_tx_id or binance_id
         await db.orders.update_one(
             {"id": req.order_id},
             {"$set": {
                 "payment_status": "paid",
                 "order_status": "processing",
-                "transaction_id": binance_id,
-                "payment_proof_url": f"binance-{verify_source}-verified:{binance_id}",
+                "transaction_id": tx_id_to_store,
+                "payment_proof_url": f"binance-{verify_source}-verified:{tx_id_to_store}",
                 "binance_pay_data": matched_tx,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }}
@@ -4934,7 +5042,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 [
                     f"Order: {req.order_id[:8]}",
                     f"Amount: ${order_amount:.2f}",
-                    f"Binance ID: {binance_id}",
+                    f"Binance ID: {tx_id_to_store}",
                     f"Source: {verify_source.upper()}",
                     f"User: {order.get('user_email', 'N/A')}",
                 ],
@@ -4948,6 +5056,149 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             "message": "Payment not found yet. Make sure you entered the correct Order ID from Binance Pay or C2C, and try again in a few minutes.",
             "verified": False,
         }
+
+
+@api_router.post("/payments/binance-pay/verify-topup")
+async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
+    settings = await db.settings.find_one({"id": "site_settings"})
+    api_key = (settings or {}).get("binance_pay_api_key", "")
+    api_secret = (settings or {}).get("binance_pay_secret_key", "")
+    proxy_url = (settings or {}).get("binance_pay_proxy_url", "") or ""
+    if not api_key or not api_secret:
+        raise HTTPException(status_code=400, detail="Binance API credentials not configured. Contact admin.")
+
+    topup = await db.wallet_topups.find_one({"id": req.topup_id}, {"_id": 0})
+    if not topup:
+        raise HTTPException(status_code=404, detail="Topup not found")
+    if topup.get("payment_method") != "binance_pay":
+        raise HTTPException(status_code=400, detail="This topup is not Binance Pay")
+    if topup.get("payment_status") in ("paid", "cancelled"):
+        return {"status": topup["payment_status"], "message": "Topup already processed"}
+
+    binance_id = _normalize_binance_id(req.binance_order_id)
+    if not binance_id:
+        raise HTTPException(status_code=400, detail="Binance Pay Order ID is required")
+
+    topup_amount = float(topup.get("amount", 0))
+    verified = False
+    matched_tx = {}
+    matched_tx_id = ""
+
+    import time as _time
+    now_ms = int(_time.time() * 1000)
+    seven_days_ms = 7 * 24 * 3600 * 1000
+
+    try:
+        result = await _binance_get_pay_transactions(
+            api_key,
+            api_secret,
+            start_time=now_ms - seven_days_ms,
+            end_time=now_ms,
+            proxy_url=proxy_url
+        )
+        pay_rows = result.get("data") if result.get("code") == "000000" else None
+        if not pay_rows:
+            no_time_result = await _binance_get_pay_transactions(api_key, api_secret, limit=100, proxy_url=proxy_url)
+            if no_time_result.get("code") == "000000":
+                pay_rows = no_time_result.get("data") or []
+        if pay_rows:
+            for tx in pay_rows:
+                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                    continue
+                tx_ids = _binance_tx_candidate_ids(tx)
+                if not tx_ids or binance_id not in tx_ids:
+                    continue
+                tx_amount = _binance_tx_amount(tx)
+                if tx_amount >= topup_amount - 0.01:
+                    canonical = (
+                        _normalize_binance_id(tx.get("transactionId"))
+                        or _normalize_binance_id(tx.get("orderId"))
+                        or _normalize_binance_id(tx.get("orderNumber"))
+                        or binance_id
+                    )
+                    if not await _is_binance_tx_used(canonical):
+                        verified = True
+                        matched_tx = tx
+                        matched_tx_id = canonical
+                    break
+    except Exception as e:
+        logging.warning(f"Binance Pay topup verify failed on pay transactions: {e}")
+
+    if not verified:
+        try:
+            for trade_type in ("BUY", "SELL"):
+                c2c_result = await _binance_get_c2c_orders(api_key, api_secret, trade_type=trade_type, proxy_url=proxy_url)
+                if c2c_result.get("code") == "000000" and c2c_result.get("data"):
+                    for tx in c2c_result["data"]:
+                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                        if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
+                            continue
+                        tx_ids = _binance_tx_candidate_ids(tx)
+                        if not tx_ids or binance_id not in tx_ids:
+                            continue
+                        tx_amount = _binance_tx_amount(tx)
+                        if tx_amount >= topup_amount - 0.01:
+                            canonical = (
+                                _normalize_binance_id(tx.get("orderId"))
+                                or _normalize_binance_id(tx.get("orderNumber"))
+                                or _normalize_binance_id(tx.get("transactionId"))
+                                or _normalize_binance_id(tx.get("tradeNo"))
+                                or _normalize_binance_id(tx.get("advNo"))
+                                or binance_id
+                            )
+                            if not await _is_binance_tx_used(canonical):
+                                verified = True
+                                matched_tx = tx
+                                matched_tx["_source"] = "c2c"
+                                matched_tx_id = canonical
+                            break
+                if verified:
+                    break
+        except Exception as e:
+            logging.warning(f"Binance C2C topup verify failed: {e}")
+
+    if not verified and binance_id and await _is_binance_tx_used(binance_id):
+        return {
+            "status": "rejected",
+            "message": "This Binance transaction ID has already been used for another payment.",
+            "verified": False,
+        }
+
+    if not verified:
+        return {
+            "status": "pending",
+            "message": "Payment not found yet. Enter the correct Binance Pay/C2C order ID and try again shortly.",
+            "verified": False,
+        }
+
+    tx_id_to_store = matched_tx_id or binance_id
+    now_iso = datetime.now(timezone.utc).isoformat()
+    await db.wallet_topups.update_one(
+        {"id": req.topup_id},
+        {"$set": {
+            "payment_status": "paid",
+            "transaction_id": tx_id_to_store,
+            "payment_proof_url": f"binance-verified:{tx_id_to_store}",
+            "binance_pay_data": matched_tx,
+            "updated_at": now_iso,
+        }}
+    )
+    if not topup.get("credited"):
+        await db.users.update_one({"id": topup["user_id"]}, {"$inc": {"wallet_balance": float(topup_amount)}})
+        await db.wallet_transactions.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": topup["user_id"],
+            "user_email": topup.get("user_email"),
+            "order_id": None,
+            "type": "topup",
+            "amount": float(topup_amount),
+            "reason": f"Wallet topup {req.topup_id} (Binance auto-verified)",
+            "created_at": now_iso,
+        })
+        await db.wallet_topups.update_one({"id": req.topup_id}, {"$set": {"credited": True}})
+
+    return {"status": "paid", "message": "Topup verified and wallet credited!", "verified": True}
 
 
 # ==================== SELLER ENDPOINTS ====================

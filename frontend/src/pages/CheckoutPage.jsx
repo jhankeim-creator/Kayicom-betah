@@ -29,6 +29,18 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
   const [verifyStatus, setVerifyStatus] = useState({});
   const [verifying, setVerifying] = useState({});
 
+  const openGatewayInstructionsUrl = (method) => {
+    const instructions = settings?.payment_gateways?.[method]?.instructions || '';
+    const match = String(instructions).match(/https?:\/\/[^\s)]+/i);
+    if (!match?.[0]) return false;
+    try {
+      window.open(match[0], '_blank', 'noopener,noreferrer');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const verifyPlayerId = async (product) => {
     const pid = playerIds[product.id];
     if (!pid || !pid.trim()) { toast.error('Enter a Player ID first'); return; }
@@ -168,8 +180,15 @@ const CheckoutPage = ({ user, logout, cart, clearCart, settings }) => {
         toast.success('Redirecting to payment...');
         openPlisioInvoice(invoiceUrl, order.plisio_invoice_id || order.id);
         navigate(`/track/${order.id}`);
+      } else if (paymentMethod === 'binance_pay' || paymentMethod === 'natcash') {
+        const opened = openGatewayInstructionsUrl(paymentMethod);
+        toast.success(opened ? 'Payment instructions opened. Complete payment and confirm on tracking.' : 'Order created! Continue payment on tracking page.');
+        navigate(`/track/${order.id}`);
+      } else if (paymentMethod === 'wallet') {
+        toast.success('Paid with wallet successfully!');
+        navigate(`/track/${order.id}`);
       } else {
-        toast.success(paymentMethod === 'wallet' ? 'Paid with wallet successfully!' : 'Order created! Please submit your payment proof.');
+        toast.success('Order created! Please submit your payment proof.');
         navigate(`/track/${order.id}`);
       }
     } catch (error) {

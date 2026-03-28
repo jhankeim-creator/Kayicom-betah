@@ -26,10 +26,26 @@ const WalletPage = ({ user, logout, settings }) => {
   const [showRecharge, setShowRecharge] = useState(false);
 
   const [selectedTopupId, setSelectedTopupId] = useState(null);
+  const [binanceTopupId, setBinanceTopupId] = useState('');
+  const [verifyingTopup, setVerifyingTopup] = useState(false);
   const [convertCredits, setConvertCredits] = useState('');
   const [converting, setConverting] = useState(false);
 
   const userId = user?.user_id || user?.id;
+
+  const openGatewayInstructionsUrl = (method, paymentInfo = null) => {
+    const directInstructions = paymentInfo?.instructions || '';
+    const fallbackInstructions = settings?.payment_gateways?.[method]?.instructions || '';
+    const source = String(directInstructions || fallbackInstructions);
+    const match = source.match(/https?:\/\/[^\s)]+/i);
+    if (!match?.[0]) return false;
+    try {
+      window.open(match[0], '_blank', 'noopener,noreferrer');
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
   const enabledPaymentMethods = useMemo(() => {
     const methods = [];
@@ -88,6 +104,7 @@ const WalletPage = ({ user, logout, settings }) => {
     try {
       const res = await axiosInstance.post(`/wallet/topups?user_id=${userId}&user_email=${user.email}`, { amount: amt, payment_method: topupMethod });
       const topupData = res.data?.topup;
+      const paymentInfo = res.data?.payment_info;
       setTopupAmount('');
       setShowRecharge(false);
 
@@ -99,6 +116,9 @@ const WalletPage = ({ user, logout, settings }) => {
         } else {
           toast.error('Crypto payment not available — Plisio API key not configured');
         }
+      } else if (topupMethod === 'binance_pay' || topupMethod === 'natcash') {
+        const opened = openGatewayInstructionsUrl(topupMethod, paymentInfo);
+        toast.success(opened ? 'Payment instructions opened. Complete payment to auto-verify topup.' : 'Topup created — complete payment using the selected gateway.');
       } else {
         toast.success('Topup created — payment will be verified automatically');
       }
@@ -112,6 +132,32 @@ const WalletPage = ({ user, logout, settings }) => {
 
   const selectedTopup = topups.find(t => t.id === selectedTopupId) || null;
   const topupInvoiceUrl = selectedTopup ? buildPlisioInvoiceUrl(selectedTopup.plisio_invoice_url, selectedTopup.plisio_invoice_id) : null;
+
+  const verifyBinanceTopup = async () => {
+    const trimmed = (binanceTopupId || '').trim();
+    if (!selectedTopup?.id || !trimmed) {
+      toast.error('Enter Binance Pay/C2C Order ID');
+      return;
+    }
+    setVerifyingTopup(true);
+    try {
+      const res = await axiosInstance.post('/payments/binance-pay/verify-topup', {
+        topup_id: selectedTopup.id,
+        binance_order_id: trimmed,
+      });
+      if (res.data?.verified) {
+        toast.success(res.data?.message || 'Topup verified');
+        setBinanceTopupId('');
+      } else {
+        toast.error(res.data?.message || 'Payment not found yet');
+      }
+      await loadAll();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || 'Topup verification failed');
+    } finally {
+      setVerifyingTopup(false);
+    }
+  };
 
   useEffect(() => {
     if (!selectedTopup) return;
@@ -286,6 +332,26 @@ const WalletPage = ({ user, logout, settings }) => {
                 </button>
               )) : (
                 <p className="text-white/40 text-center py-8">No topups yet.</p>
+              )}
+
+              {selectedTopup && selectedTopup.payment_method === 'binance_pay' && selectedTopup.payment_status === 'pending' && (
+                <div className="p-4 rounded-xl bg-[#141414] border border-yellow-500/20 space-y-3">
+                  <p className="text-yellow-300 font-semibold text-sm">Binance Pay topup pending</p>
+                  <p className="text-white/60 text-xs">If auto-check has not confirmed yet, paste your Binance Pay/C2C Order ID to verify instantly.</p>
+                  <Input
+                    value={binanceTopupId}
+                    onChange={(e) => setBinanceTopupId(e.target.value)}
+                    placeholder="Binance Pay / C2C Order ID"
+                    className="bg-white/5 border-white/10 text-white"
+                  />
+                  <Button
+                    onClick={verifyBinanceTopup}
+                    disabled={verifyingTopup || !binanceTopupId.trim()}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-full"
+                  >
+                    {verifyingTopup ? 'Verifying...' : 'Verify Binance Topup'}
+                  </Button>
+                </div>
               )}
 
             </div>
