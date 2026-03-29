@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 // Only automatic payment methods supported (crypto, binance auto)
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { buildPlisioInvoiceUrl, openPlisioInvoice } from '../utils/plisioInvoice';
 import { HelpCircle, Filter } from 'lucide-react';
@@ -26,6 +27,7 @@ const WalletPage = ({ user, logout, settings }) => {
   const [showRecharge, setShowRecharge] = useState(false);
 
   const [selectedTopupId, setSelectedTopupId] = useState(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [binanceTopupId, setBinanceTopupId] = useState('');
   const [verifyingTopup, setVerifyingTopup] = useState(false);
   const [convertCredits, setConvertCredits] = useState('');
@@ -315,7 +317,7 @@ const WalletPage = ({ user, logout, settings }) => {
               {topups.length > 0 ? topups.map(t => (
                 <button
                   key={t.id}
-                  onClick={() => setSelectedTopupId(t.id)}
+                  onClick={() => { setSelectedTopupId(t.id); setDetailsOpen(true); }}
                   className={`w-full text-left p-4 rounded-xl border transition ${
                     selectedTopupId === t.id ? 'border-orange-400 bg-orange-400/5' : 'border-white/5 bg-[#141414] hover:border-white/10'
                   }`}
@@ -359,6 +361,84 @@ const WalletPage = ({ user, logout, settings }) => {
 
         </div>
       </div>
+
+      {/* Topup Details Modal */}
+      <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <DialogContent className="bg-[#111] border border-white/10 text-white max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Topup Details</DialogTitle>
+          </DialogHeader>
+          {selectedTopup ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="text-white/50">ID</div>
+                <div className="text-white/80 text-right font-mono text-xs break-all">{selectedTopup.id}</div>
+                <div className="text-white/50">Amount</div>
+                <div className="text-white/80 text-right">${Number(selectedTopup.amount).toFixed(2)}</div>
+                <div className="text-white/50">Method</div>
+                <div className="text-white/80 text-right capitalize">{selectedTopup.payment_method?.replace('_', ' ')}</div>
+                <div className="text-white/50">Status</div>
+                <div className="text-white/80 text-right">{selectedTopup.payment_status}</div>
+              </div>
+
+              {selectedTopup.payment_method === 'crypto_plisio' && selectedTopup.payment_status === 'pending' && topupInvoiceUrl && (
+                <div className="p-3 rounded bg-white/5 border border-white/10 text-sm">
+                  <p>Your crypto invoice should open automatically.</p>
+                  <Button
+                    size="sm"
+                    className="mt-2 bg-cyan-600 hover:bg-cyan-700 text-white"
+                    onClick={() => openPlisioInvoice(topupInvoiceUrl, selectedTopup.id)}
+                  >
+                    Open Plisio Invoice
+                  </Button>
+                </div>
+              )}
+
+              {selectedTopup.payment_method === 'binance_pay' && selectedTopup.payment_status === 'pending' && (
+                <div className="p-3 rounded bg-white/5 border border-yellow-500/20">
+                  <p className="text-yellow-300 font-semibold text-sm mb-2">Binance Pay · Auto Verify</p>
+                  <p className="text-white/60 text-xs mb-2">Use your Binance app to send the amount, then paste your Binance Pay/C2C Order ID below to verify instantly.</p>
+                  <div className="flex gap-2">
+                    <Input
+                      value={binanceTopupId}
+                      onChange={(e) => setBinanceTopupId(e.target.value)}
+                      placeholder="Binance Pay / C2C Order ID"
+                      className="bg-white/5 border-white/10 text-white"
+                    />
+                    <Button
+                      onClick={verifyBinanceTopup}
+                      disabled={verifyingTopup || !binanceTopupId.trim()}
+                      className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                    >
+                      {verifyingTopup ? 'Verifying...' : 'Verify'}
+                    </Button>
+                  </div>
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-white/20 text-white"
+                      onClick={() => {
+                        const opened = openGatewayInstructionsUrl('binance_pay');
+                        if (!opened) toast.info('Ask admin to add a payment link in Binance instructions.');
+                      }}
+                    >
+                      Open Payment Instructions
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-white/60 text-sm">Select a topup to see details.</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" className="border-white/20 text-white" onClick={() => setDetailsOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Footer settings={settings} />
     </div>

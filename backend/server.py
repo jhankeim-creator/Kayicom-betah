@@ -1369,6 +1369,21 @@ def _binance_tx_amount(tx: Dict[str, Any]) -> float:
     return 0.0
 
 
+_BINANCE_PAY_ACCEPTED_STATUSES = {
+    "SUCCESS", "COMPLETED", "ACCEPTED", "PAID", "FINISHED", "DONE", "SETTLED"
+}
+_BINANCE_C2C_ACCEPTED_STATUSES = {
+    "COMPLETED", "TRADING", "BUYER_PAYED", "BUYER_PAID", "PAID", "4", "5", "FINISHED"
+}
+
+
+def _binance_status_allowed(source: str, status: str) -> bool:
+    status_up = str(status or "").upper().strip()
+    if source == "c2c":
+        return status_up in _BINANCE_C2C_ACCEPTED_STATUSES
+    return status_up in _BINANCE_PAY_ACCEPTED_STATUSES
+
+
 async def _binance_auto_check_worker():
     """Background worker that auto-verifies pending Binance Pay orders every 60 seconds."""
     while True:
@@ -1407,7 +1422,7 @@ async def _binance_auto_check_worker():
                         if result.get("code") == "000000" and result.get("data"):
                             for tx in result["data"]:
                                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
+                                if not _binance_status_allowed("pay", tx_status):
                                     continue
                                 tx_id = (
                                     _normalize_binance_id(tx.get("transactionId"))
@@ -1425,7 +1440,7 @@ async def _binance_auto_check_worker():
                                 continue
                             for tx in c2c_result["data"]:
                                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                                if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
+                                if not _binance_status_allowed("c2c", tx_status):
                                     continue
                                 tx_id = (
                                     _normalize_binance_id(tx.get("transactionId"))
@@ -4942,12 +4957,13 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 pay_rows = no_time_result.get("data") or []
         if pay_rows:
             for tx in pay_rows:
-                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
-                    continue
-
                 tx_ids = _binance_tx_candidate_ids(tx)
                 if not tx_ids or binance_id not in tx_ids:
+                    continue
+
+                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                if not _binance_status_allowed("pay", tx_status):
+                    logging.info("Binance verify: matched ID in Pay rows but status not final yet: %s", tx_status)
                     continue
 
                 tx_amount = _binance_tx_amount(tx)
@@ -4982,11 +4998,12 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 logging.info(f"Binance C2C ({trade_type}): code={c2c_result.get('code', 'N/A')}, count={len(c2c_result.get('data', []))}")
                 if c2c_result.get("code") == "000000" and c2c_result.get("data"):
                     for tx in c2c_result["data"]:
-                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                        if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
-                            continue
                         tx_ids = _binance_tx_candidate_ids(tx)
                         if not tx_ids or binance_id not in tx_ids:
+                            continue
+                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                        if not _binance_status_allowed("c2c", tx_status):
+                            logging.info("Binance verify: matched ID in C2C rows but status not final yet: %s", tx_status)
                             continue
                         tx_amount = _binance_tx_amount(tx)
                         if tx_amount >= order_amount - 0.01:
@@ -5103,11 +5120,12 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
                 pay_rows = no_time_result.get("data") or []
         if pay_rows:
             for tx in pay_rows:
-                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                if tx_status not in ("SUCCESS", "COMPLETED", "ACCEPTED"):
-                    continue
                 tx_ids = _binance_tx_candidate_ids(tx)
                 if not tx_ids or binance_id not in tx_ids:
+                    continue
+                tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                if not _binance_status_allowed("pay", tx_status):
+                    logging.info("Binance topup verify: matched ID in Pay rows but status not final yet: %s", tx_status)
                     continue
                 tx_amount = _binance_tx_amount(tx)
                 if tx_amount >= topup_amount - 0.01:
@@ -5131,11 +5149,12 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
                 c2c_result = await _binance_get_c2c_orders(api_key, api_secret, trade_type=trade_type, proxy_url=proxy_url)
                 if c2c_result.get("code") == "000000" and c2c_result.get("data"):
                     for tx in c2c_result["data"]:
-                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
-                        if tx_status not in ("COMPLETED", "TRADING", "BUYER_PAYED", "4", "5"):
-                            continue
                         tx_ids = _binance_tx_candidate_ids(tx)
                         if not tx_ids or binance_id not in tx_ids:
+                            continue
+                        tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
+                        if not _binance_status_allowed("c2c", tx_status):
+                            logging.info("Binance topup verify: matched ID in C2C rows but status not final yet: %s", tx_status)
                             continue
                         tx_amount = _binance_tx_amount(tx)
                         if tx_amount >= topup_amount - 0.01:
