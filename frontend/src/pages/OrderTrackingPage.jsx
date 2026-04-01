@@ -652,6 +652,29 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
             />
           )}
 
+          {/* Binance memo/reference helper */}
+          {order.payment_method === 'binance_pay' && order.payment_status === 'pending' && order.binance_reference && (
+            <Card className="glass-effect border-yellow-500/30 border-2">
+              <CardContent className="p-6">
+                <h3 className="text-lg font-bold text-yellow-400 mb-2">Binance Payment Reference</h3>
+                <p className="text-white/70 text-sm mb-2">
+                  Please include this code in the Binance <strong className="text-white">Memo/Note</strong> when sending. The system will auto-verify your payment when it sees this code.
+                </p>
+                <div className="flex items-center gap-3">
+                  <code className="text-yellow-300 font-mono text-xl">{order.binance_reference}</code>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-yellow-500/40 text-yellow-300"
+                    onClick={() => { navigator.clipboard.writeText(order.binance_reference || ''); }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Leave a Review for Seller */}
           {order.payment_status === 'paid' && order.items?.some(i => i.seller_id) && !reviewSubmitted && (
             <Card className="glass-effect border-yellow-500/20">

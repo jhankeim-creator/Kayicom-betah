@@ -627,6 +627,7 @@ class Order(BaseModel):
     transaction_id: Optional[str] = None
     plisio_invoice_id: Optional[str] = None
     plisio_invoice_url: Optional[str] = None
+    binance_reference: Optional[str] = None  # Customer must include in Binance memo/note
     delivery_info: Optional[Dict[str, Any]] = None
     refunded_at: Optional[datetime] = None
     refunded_amount: Optional[float] = None
@@ -1384,6 +1385,25 @@ def _binance_status_allowed(source: str, status: str) -> bool:
     return status_up in _BINANCE_PAY_ACCEPTED_STATUSES
 
 
+def _binance_tx_memo(tx: Dict[str, Any]) -> str:
+    """Extract memo/note/remark-like field from Binance responses."""
+    for key in (
+        "memo", "note", "remark", "comments", "comment",
+        "orderRemark", "orderMemo", "bizSceneRemark", "bizSceneMemo",
+    ):
+        val = tx.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    # Some APIs may nest extra data
+    extra = tx.get("extraData") or tx.get("info") or {}
+    if isinstance(extra, dict):
+        for key in ("memo", "note", "remark", "comment"):
+            val = extra.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return ""
+
+
 async def _binance_auto_check_worker():
     """Background worker that auto-verifies pending Binance Pay orders every 60 seconds."""
     while True:
@@ -1459,11 +1479,17 @@ async def _binance_auto_check_worker():
 
                             for order in pending:
                                 order_amount = float(order.get("total_amount", 0))
+                                ref = (order.get("binance_reference") or "").strip()
                                 for tx, tx_id, tx_amount in valid_txs:
                                     if tx_amount < order_amount - 0.01:
                                         continue
                                     if await _is_binance_tx_used(tx_id):
                                         continue
+                                    # If we have a reference, require memo match
+                                    if ref:
+                                        memo = _binance_tx_memo(tx)
+                                        if not (memo and memo.lower() == ref.lower()):
+                                            continue
                                     now_iso = datetime.now(timezone.utc).isoformat()
                                     tx_source = tx.get("_source", "pay")
                                     await db.orders.update_one({"id": order["id"]}, {"$set": {
@@ -1494,11 +1520,16 @@ async def _binance_auto_check_worker():
 
                             for topup in pending_topups:
                                 topup_amount = float(topup.get("amount", 0))
+                                ref = (topup.get("binance_reference") or "").strip()
                                 for tx, tx_id, tx_amount in valid_txs:
                                     if tx_amount < topup_amount - 0.01:
                                         continue
                                     if await _is_binance_tx_used(tx_id):
                                         continue
+                                    if ref:
+                                        memo = _binance_tx_memo(tx)
+                                        if not (memo and memo.lower() == ref.lower()):
+                                            continue
                                     now_iso = datetime.now(timezone.utc).isoformat()
                                     await db.wallet_topups.update_one({"id": topup["id"]}, {"$set": {
                                         "payment_status": "paid",
@@ -3089,6 +3120,11 @@ async def create_order(order_data: OrderCreate, user_id: str, user_email: str):
     if order_data.payment_method == "natcash":
         ref_code = secrets.token_hex(3).upper()
         order.natcash_reference = ref_code
+
+    if order_data.payment_method == "binance_pay":
+        # Generate short human-friendly reference code for Binance memo
+        ref = "KAY-" + secrets.token_hex(3).upper()
+        order.binance_reference = ref
 
     has_seller_items = any(item.seller_id for item in validated_items)
     if has_seller_items:
@@ -4902,12 +4938,12 @@ async def test_binance_pay_connection():
 
 class BinancePayVerifyRequest(BaseModel):
     order_id: str
-    binance_order_id: str
+    binance_order_id: Optional[str] = None
 
 
 class BinancePayTopupVerifyRequest(BaseModel):
     topup_id: str
-    binance_order_id: str
+    binance_order_id: Optional[str] = None
 
 
 @api_router.post("/payments/binance-pay/verify")
@@ -4926,17 +4962,24 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
         return {"status": order["payment_status"], "message": "Order already processed"}
 
     binance_id = _normalize_binance_id(req.binance_order_id)
-    if not binance_id:
-        raise HTTPException(status_code=400, detail="Binance Pay Order ID is required")
+    # If no ID provided, we'll try reference-based verification first.
 
     order_amount = float(order.get("total_amount", 0))
     verified = False
     matched_tx = {}
     matched_tx_id = ""
+    matched_source = "pay"
 
     import time as _time
     now_ms = int(_time.time() * 1000)
     seven_days_ms = 7 * 24 * 3600 * 1000
+    created_at = order.get("created_at")
+    created_ms = None
+    if created_at:
+        try:
+            created_ms = int(datetime.fromisoformat(str(created_at)).timestamp() * 1000)
+        except Exception:
+            created_ms = None
 
     try:
         # First pass: query recent records with a wider range to reduce "not found" false negatives.
@@ -4958,8 +5001,21 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
         if pay_rows:
             for tx in pay_rows:
                 tx_ids = _binance_tx_candidate_ids(tx)
-                if not tx_ids or binance_id not in tx_ids:
+                has_id_match = bool(binance_id and tx_ids and binance_id in tx_ids)
+                # Reference-based match via memo/note if available
+                ref = (order.get("binance_reference") or "").strip()
+                memo = _binance_tx_memo(tx)
+                has_ref_match = bool(ref and memo and ref.lower() == memo.lower())
+                if not has_id_match and not has_ref_match:
                     continue
+                # If we have created time, ensure transaction is not older than order creation
+                if created_ms:
+                    try:
+                        tx_time_ms = int(tx.get("transactTime") or tx.get("transactionTime") or tx.get("orderTime") or now_ms)
+                        if tx_time_ms + 1e-9 < created_ms - 5 * 60 * 1000:  # allow 5-minute lead tolerance
+                            continue
+                    except Exception:
+                        pass
 
                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                 if not _binance_status_allowed("pay", tx_status):
@@ -4979,6 +5035,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                         verified = True
                         matched_tx = tx
                         matched_tx_id = canonical
+                        matched_source = "pay"
                     break
 
         elif result.get("code") and result.get("code") != "000000":
@@ -4999,8 +5056,19 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                 if c2c_result.get("code") == "000000" and c2c_result.get("data"):
                     for tx in c2c_result["data"]:
                         tx_ids = _binance_tx_candidate_ids(tx)
-                        if not tx_ids or binance_id not in tx_ids:
+                        has_id_match = bool(binance_id and tx_ids and binance_id in tx_ids)
+                        ref = (order.get("binance_reference") or "").strip()
+                        memo = _binance_tx_memo(tx)
+                        has_ref_match = bool(ref and memo and ref.lower() == memo.lower())
+                        if not has_id_match and not has_ref_match:
                             continue
+                        if created_ms:
+                            try:
+                                tx_time_ms = int(tx.get("orderTime") or now_ms)
+                                if tx_time_ms + 1e-9 < created_ms - 5 * 60 * 1000:
+                                    continue
+                            except Exception:
+                                pass
                         tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                         if not _binance_status_allowed("c2c", tx_status):
                             logging.info("Binance verify: matched ID in C2C rows but status not final yet: %s", tx_status)
@@ -5020,6 +5088,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
                                 matched_tx = tx
                                 matched_tx["_source"] = "c2c"
                                 matched_tx_id = canonical
+                                matched_source = "c2c"
                             break
                 if verified:
                     break
@@ -5033,7 +5102,7 @@ async def verify_binance_pay(req: BinancePayVerifyRequest):
             "verified": False,
         }
 
-    verify_source = matched_tx.get("_source", "pay")
+    verify_source = matched_tx.get("_source", matched_source or "pay")
     if verified:
         tx_id_to_store = matched_tx_id or binance_id
         await db.orders.update_one(
@@ -5093,13 +5162,13 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
         return {"status": topup["payment_status"], "message": "Topup already processed"}
 
     binance_id = _normalize_binance_id(req.binance_order_id)
-    if not binance_id:
-        raise HTTPException(status_code=400, detail="Binance Pay Order ID is required")
+    # Allow reference-based verification without ID
 
     topup_amount = float(topup.get("amount", 0))
     verified = False
     matched_tx = {}
     matched_tx_id = ""
+    matched_source = "pay"
 
     import time as _time
     now_ms = int(_time.time() * 1000)
@@ -5121,7 +5190,11 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
         if pay_rows:
             for tx in pay_rows:
                 tx_ids = _binance_tx_candidate_ids(tx)
-                if not tx_ids or binance_id not in tx_ids:
+                has_id_match = bool(binance_id and tx_ids and binance_id in tx_ids)
+                ref = (topup.get("binance_reference") or "").strip()
+                memo = _binance_tx_memo(tx)
+                has_ref_match = bool(ref and memo and ref.lower() == memo.lower())
+                if not has_id_match and not has_ref_match:
                     continue
                 tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                 if not _binance_status_allowed("pay", tx_status):
@@ -5139,6 +5212,7 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
                         verified = True
                         matched_tx = tx
                         matched_tx_id = canonical
+                        matched_source = "pay"
                     break
     except Exception as e:
         logging.warning(f"Binance Pay topup verify failed on pay transactions: {e}")
@@ -5150,7 +5224,11 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
                 if c2c_result.get("code") == "000000" and c2c_result.get("data"):
                     for tx in c2c_result["data"]:
                         tx_ids = _binance_tx_candidate_ids(tx)
-                        if not tx_ids or binance_id not in tx_ids:
+                        has_id_match = bool(binance_id and tx_ids and binance_id in tx_ids)
+                        ref = (topup.get("binance_reference") or "").strip()
+                        memo = _binance_tx_memo(tx)
+                        has_ref_match = bool(ref and memo and ref.lower() == memo.lower())
+                        if not has_id_match and not has_ref_match:
                             continue
                         tx_status = (tx.get("orderStatus") or tx.get("status") or "").upper()
                         if not _binance_status_allowed("c2c", tx_status):
@@ -5171,6 +5249,7 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
                                 matched_tx = tx
                                 matched_tx["_source"] = "c2c"
                                 matched_tx_id = canonical
+                                matched_source = "c2c"
                             break
                 if verified:
                     break
@@ -5198,7 +5277,7 @@ async def verify_binance_pay_topup(req: BinancePayTopupVerifyRequest):
         {"$set": {
             "payment_status": "paid",
             "transaction_id": tx_id_to_store,
-            "payment_proof_url": f"binance-verified:{tx_id_to_store}",
+            "payment_proof_url": f"binance-{matched_source}-verified:{tx_id_to_store}",
             "binance_pay_data": matched_tx,
             "updated_at": now_iso,
         }}
@@ -8646,6 +8725,7 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
         "payment_proof_url": None,
         "plisio_invoice_id": None,
         "plisio_invoice_url": None,
+        "binance_reference": None,
         "credited": False,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
@@ -8676,6 +8756,9 @@ async def create_wallet_topup(topup: WalletTopupCreate, user_id: str, user_email
 
     if topup.payment_method == "natcash":
         doc["natcash_reference"] = secrets.token_hex(3).upper()
+
+    if topup.payment_method == "binance_pay":
+        doc["binance_reference"] = "KAY-" + secrets.token_hex(3).upper()
 
     await db.wallet_topups.insert_one(doc)
     await _notify_admin_telegram(
