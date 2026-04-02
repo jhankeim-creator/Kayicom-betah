@@ -14,6 +14,7 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
 
   const binanceUid = settings?.payment_gateways?.binance_pay?.email || '';
   const instructions = settings?.payment_gateways?.binance_pay?.instructions || '';
+  const reference = (order?.binance_reference || '').trim();
 
   const handleCopyUid = async () => {
     try {
@@ -98,6 +99,13 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
               <><Copy size={16} className="mr-2" /> Copy UID</>
             )}
           </Button>
+          {reference && (
+            <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-center">
+              <p className="text-white/60 text-[11px] uppercase tracking-wider mb-1">Payment Reference (Memo/Note)</p>
+              <p className="text-yellow-300 font-mono text-lg font-bold">{reference}</p>
+              <p className="text-white/50 text-xs mt-1">Include this code in Binance Memo/Note when sending.</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

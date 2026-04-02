@@ -1347,6 +1347,7 @@ def _binance_tx_candidate_ids(tx: Dict[str, Any]) -> List[str]:
         "merchantTradeNo",
         "advNo",
         "bizId",
+        "bizIdStr",
         "prepayId",
         "id",
     )
@@ -1390,6 +1391,7 @@ def _binance_tx_memo(tx: Dict[str, Any]) -> str:
     for key in (
         "memo", "note", "remark", "comments", "comment",
         "orderRemark", "orderMemo", "bizSceneRemark", "bizSceneMemo",
+        "transferRemark", "transferMemo", "description", "desc", "title",
     ):
         val = tx.get(key)
         if isinstance(val, str) and val.strip():
