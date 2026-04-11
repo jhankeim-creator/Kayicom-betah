@@ -72,6 +72,22 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
     return () => clearInterval(poll);
   }, [order?.id, order?.payment_method, order?.payment_status]);
 
+  useEffect(() => {
+    if (!order) return;
+    if (order.payment_method !== 'binance_pay' || order.payment_status !== 'pending') return;
+    const poll = setInterval(async () => {
+      try {
+        const res = await axiosInstance.post('/payments/binance-pay/verify', { order_id: order.id });
+        if (res.data.verified) {
+          toast.success(res.data.message || 'Payment verified!');
+          loadOrder();
+          clearInterval(poll);
+        }
+      } catch (_) { /* silent */ }
+    }, 10000);
+    return () => clearInterval(poll);
+  }, [order?.id, order?.payment_method, order?.payment_status]);
+
   const loadOrder = async () => {
     try {
       const response = await axiosInstance.get(`/orders/${orderId}`);
@@ -650,29 +666,6 @@ const OrderTrackingPage = ({ user, logout, settings }) => {
               settings={settings}
               onVerified={() => loadOrder()}
             />
-          )}
-
-          {/* Binance memo/reference helper */}
-          {order.payment_method === 'binance_pay' && order.payment_status === 'pending' && order.binance_reference && (
-            <Card className="glass-effect border-yellow-500/30 border-2">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-bold text-yellow-400 mb-2">Binance Payment Reference</h3>
-                <p className="text-white/70 text-sm mb-2">
-                  Please include this code in the Binance <strong className="text-white">Memo/Note</strong> when sending. The system will auto-verify your payment when it sees this code.
-                </p>
-                <div className="flex items-center gap-3">
-                  <code className="text-yellow-300 font-mono text-xl">{order.binance_reference}</code>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-yellow-500/40 text-yellow-300"
-                    onClick={() => { navigator.clipboard.writeText(order.binance_reference || ''); }}
-                  >
-                    Copy
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
           )}
 
           {/* Leave a Review for Seller */}

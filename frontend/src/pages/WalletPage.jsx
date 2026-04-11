@@ -28,7 +28,6 @@ const WalletPage = ({ user, logout, settings }) => {
 
   const [selectedTopupId, setSelectedTopupId] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [binanceTopupId, setBinanceTopupId] = useState('');
   const [verifyingTopup, setVerifyingTopup] = useState(false);
   const [convertCredits, setConvertCredits] = useState('');
   const [converting, setConverting] = useState(false);
@@ -136,20 +135,18 @@ const WalletPage = ({ user, logout, settings }) => {
   const topupInvoiceUrl = selectedTopup ? buildPlisioInvoiceUrl(selectedTopup.plisio_invoice_url, selectedTopup.plisio_invoice_id) : null;
 
   const verifyBinanceTopup = async () => {
-    const trimmed = (binanceTopupId || '').trim();
-    if (!selectedTopup?.id || !trimmed) {
-      toast.error('Enter Binance Pay/C2C Order ID');
+    if (!selectedTopup?.id) return;
+    if (!selectedTopup.binance_reference) {
+      toast.error('This topup has no memo reference. Create a new Binance topup or contact support.');
       return;
     }
     setVerifyingTopup(true);
     try {
       const res = await axiosInstance.post('/payments/binance-pay/verify-topup', {
         topup_id: selectedTopup.id,
-        binance_order_id: trimmed,
       });
       if (res.data?.verified) {
         toast.success(res.data?.message || 'Topup verified');
-        setBinanceTopupId('');
       } else {
         toast.error(res.data?.message || 'Payment not found yet');
       }
@@ -339,16 +336,28 @@ const WalletPage = ({ user, logout, settings }) => {
               {selectedTopup && selectedTopup.payment_method === 'binance_pay' && selectedTopup.payment_status === 'pending' && (
                 <div className="p-4 rounded-xl bg-[#141414] border border-yellow-500/20 space-y-3">
                   <p className="text-yellow-300 font-semibold text-sm">Binance Pay topup pending</p>
-                  <p className="text-white/60 text-xs">If auto-check has not confirmed yet, paste your Binance Pay/C2C Order ID to verify instantly.</p>
-                  <Input
-                    value={binanceTopupId}
-                    onChange={(e) => setBinanceTopupId(e.target.value)}
-                    placeholder="Binance Pay / C2C Order ID"
-                    className="bg-white/5 border-white/10 text-white"
-                  />
+                  {selectedTopup.binance_reference && (
+                    <div className="p-3 rounded bg-white/5 border border-white/10">
+                      <p className="text-white/60 text-xs mb-1">Include this code in Binance Memo/Note:</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-yellow-300 font-mono text-base">{selectedTopup.binance_reference}</code>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-yellow-500/40 text-yellow-300"
+                          onClick={() => { navigator.clipboard.writeText(selectedTopup.binance_reference || ''); }}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-white/60 text-xs">
+                    Send the amount with the memo code above, then verify here (memo + amount match—no order ID needed).
+                  </p>
                   <Button
                     onClick={verifyBinanceTopup}
-                    disabled={verifyingTopup || !binanceTopupId.trim()}
+                    disabled={verifyingTopup || !selectedTopup.binance_reference}
                     className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold rounded-full"
                   >
                     {verifyingTopup ? 'Verifying...' : 'Verify Binance Topup'}
@@ -397,22 +406,19 @@ const WalletPage = ({ user, logout, settings }) => {
               {selectedTopup.payment_method === 'binance_pay' && selectedTopup.payment_status === 'pending' && (
                 <div className="p-3 rounded bg-white/5 border border-yellow-500/20">
                   <p className="text-yellow-300 font-semibold text-sm mb-2">Binance Pay · Auto Verify</p>
-                  <p className="text-white/60 text-xs mb-2">Use your Binance app to send the amount, then paste your Binance Pay/C2C Order ID below to verify instantly.</p>
-                  <div className="flex gap-2">
-                    <Input
-                      value={binanceTopupId}
-                      onChange={(e) => setBinanceTopupId(e.target.value)}
-                      placeholder="Binance Pay / C2C Order ID"
-                      className="bg-white/5 border-white/10 text-white"
-                    />
-                    <Button
-                      onClick={verifyBinanceTopup}
-                      disabled={verifyingTopup || !binanceTopupId.trim()}
-                      className="bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
-                    >
-                      {verifyingTopup ? 'Verifying...' : 'Verify'}
-                    </Button>
-                  </div>
+                  <p className="text-white/60 text-xs mb-2">
+                    Put the memo code on your topup in Binance when you send, then tap verify—no order ID required.
+                  </p>
+                  {selectedTopup.binance_reference && (
+                    <p className="text-yellow-200/90 font-mono text-sm mb-2">Memo: {selectedTopup.binance_reference}</p>
+                  )}
+                  <Button
+                    onClick={verifyBinanceTopup}
+                    disabled={verifyingTopup || !selectedTopup.binance_reference}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-black font-semibold"
+                  >
+                    {verifyingTopup ? 'Verifying...' : 'Verify payment'}
+                  </Button>
                   <div className="mt-3">
                     <Button
                       size="sm"
