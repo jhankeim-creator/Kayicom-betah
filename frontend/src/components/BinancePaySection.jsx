@@ -7,6 +7,7 @@ import { axiosInstance } from '../App';
 
 const BinancePaySection = ({ order, settings, onVerified }) => {
   const [copied, setCopied] = useState(false);
+  const [copiedMemo, setCopiedMemo] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verifyResult, setVerifyResult] = useState(null);
 
@@ -28,6 +29,23 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
     setCopied(true);
     toast.success('UID copied!');
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyMemo = async () => {
+    if (!reference) return;
+    try {
+      await navigator.clipboard.writeText(reference);
+    } catch {
+      const el = document.createElement('textarea');
+      el.value = reference;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
+    setCopiedMemo(true);
+    toast.success('Memo copied!');
+    setTimeout(() => setCopiedMemo(false), 2000);
   };
 
   const handleVerify = async () => {
@@ -96,10 +114,36 @@ const BinancePaySection = ({ order, settings, onVerified }) => {
             )}
           </Button>
           {reference && (
-            <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20 text-center">
-              <p className="text-white/60 text-[11px] uppercase tracking-wider mb-1">Payment Reference (Memo/Note)</p>
-              <p className="text-yellow-300 font-mono text-lg font-bold">{reference}</p>
-              <p className="text-white/50 text-xs mt-1">Include this code in Binance Memo/Note when sending.</p>
+            <div className="mt-4 p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+              <p className="text-white/60 text-[11px] uppercase tracking-wider mb-2 text-center">
+                Payment Reference (Memo/Note)
+              </p>
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                <p
+                  className="text-yellow-300 font-mono text-lg font-bold text-center break-all"
+                  data-testid="binance-memo"
+                >
+                  {reference}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={handleCopyMemo}
+                  className="shrink-0 h-10 w-10 border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/20 hover:text-yellow-200"
+                  aria-label="Copy memo code"
+                  data-testid="copy-memo-btn"
+                >
+                  {copiedMemo ? (
+                    <CheckCircle size={18} className="text-green-400" />
+                  ) : (
+                    <Copy size={18} />
+                  )}
+                </Button>
+              </div>
+              <p className="text-white/50 text-xs mt-2 text-center">
+                Include this code in Binance Memo/Note when sending.
+              </p>
             </div>
           )}
         </CardContent>
